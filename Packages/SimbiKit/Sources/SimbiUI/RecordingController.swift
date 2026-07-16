@@ -1,4 +1,5 @@
 import AVFoundation
+import CodexKit
 import Foundation
 import Observation
 import SimbiAudio
@@ -15,6 +16,8 @@ public final class RecordingController {
     /// would corrupt the timeline. Controllers are kept for the app's
     /// lifetime; they are tiny when idle.
     private static var controllers: [URL: RecordingController] = [:]
+    /// One app-server process for the whole app (SPEC.md §5.1).
+    private static let appServer = AppServerClient()
 
     public static func shared(noteFolderURL: URL) -> RecordingController {
         if let existing = controllers[noteFolderURL] {
@@ -78,6 +81,13 @@ public final class RecordingController {
             return
         }
         do {
+            // Fixer (SPEC.md §5.2): reuses the note's saved thread if any.
+            let savedThreadId = (try? NoteRecordingState.load(noteFolder: noteFolderURL))?
+                .fixerThreadId
+            await pipeline.attachFixer(
+                TranscriptFixer(
+                    noteFolderURL: noteFolderURL, client: Self.appServer,
+                    savedThreadId: savedThreadId))
             try await pipeline.start()
             let capture = MicCapture()
             self.capture = capture

@@ -28,16 +28,21 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     public var totalSamples: Int
     public var lastSessionEnd: Date?
     public var activeSession: ActiveSession?
+    /// The note's transcript-fixer Codex thread (SPEC.md §5.2), reused
+    /// across sessions and app restarts.
+    public var fixerThreadId: String?
 
     public init(
         nextCueIndex: Int = 1, sessionCount: Int = 0, totalSamples: Int = 0,
-        lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil
+        lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil,
+        fixerThreadId: String? = nil
     ) {
         self.nextCueIndex = nextCueIndex
         self.sessionCount = sessionCount
         self.totalSamples = totalSamples
         self.lastSessionEnd = lastSessionEnd
         self.activeSession = activeSession
+        self.fixerThreadId = fixerThreadId
     }
 
     // Forward-compatible decoding, same pattern as SimbiSettings.
@@ -48,6 +53,7 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         totalSamples = try container.decodeIfPresent(Int.self, forKey: .totalSamples) ?? 0
         lastSessionEnd = try container.decodeIfPresent(Date.self, forKey: .lastSessionEnd)
         activeSession = try container.decodeIfPresent(ActiveSession.self, forKey: .activeSession)
+        fixerThreadId = try container.decodeIfPresent(String.self, forKey: .fixerThreadId)
     }
 
     public static func fileURL(noteFolder: URL) -> URL {
