@@ -1,0 +1,46 @@
+# Xcode project spec — regenerate with `xcodegen generate`.
+# The app target is a thin shell; all logic lives in Packages/SimbiKit.
+name: Simbi
+options:
+  bundleIdPrefix: ac.clap
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+packages:
+  SimbiKit:
+    path: Packages/SimbiKit
+
+targets:
+  Simbi:
+    type: application
+    platform: macOS
+    sources:
+      - path: App
+    dependencies:
+      - package: SimbiKit
+        product: SimbiUI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ac.clap.simbi
+        SWIFT_VERSION: "6.0"
+        ENABLE_HARDENED_RUNTIME: YES
+        # App Sandbox off (SPEC.md §1): we spawn the codex binary, read
+        # ~/.codex/auth.json, and write ~/Simbi.
+        ENABLE_APP_SANDBOX: NO
+        CODE_SIGN_STYLE: Automatic
+        DEAD_CODE_STRIPPING: YES
+    info:
+      path: App/Info.plist
+      properties:
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSMicrophoneUsageDescription: >-
+          Simbi records meeting audio from your microphone to transcribe and
+          diarize it into your notes.
+        NSAudioCaptureUsageDescription: >-
+          Simbi can also capture system audio (the other side of a call, videos)
+          so both sides of a conversation land in the transcript.
+    entitlements:
+      path: App/Simbi.entitlements
+      properties:
+        com.apple.security.device.audio-input: true

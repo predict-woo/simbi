@@ -1,0 +1,58 @@
+# Simbi
+
+An open-source macOS notetaking app that lives symbiotically with the Codex
+(ChatGPT desktop) app. Simbi records and diarizes meeting audio locally,
+transcribes it through the ChatGPT backend, and delegates all "intelligence"
+(transcript fixing, file conversion, chat) to Codex threads.
+
+**Status: M0 (skeleton).** See [SPEC.md](SPEC.md) for the full design and
+milestone plan, and [docs/recording-algorithm.md](docs/recording-algorithm.md)
+for the normative recording-pipeline algorithm.
+
+## Layout
+
+```
+App/                    # thin SwiftUI shell (the only Xcode-target code)
+Packages/SimbiKit/      # all real logic, headless-buildable:
+  Sources/SimbiKit/     #   notes, file tree, VTT, state, settings
+  Sources/SimbiAudio/   #   capture, diarization, segmenting, Opus/WebM (M2+)
+  Sources/CodexKit/     #   app-server JSON-RPC + transcription clients (M1+)
+  Sources/SimbiUI/      #   SwiftUI views (sidebar, note view, editor)
+project.yml             # XcodeGen spec for the app shell
+references/             # read-only research material (verified API notes)
+```
+
+## Building
+
+Requires Xcode 26+ (Swift 6). Packages build and test headless:
+
+```bash
+swift build --package-path Packages/SimbiKit
+swift test  --package-path Packages/SimbiKit
+```
+
+The app shell needs a generated project ([XcodeGen](https://github.com/yonaskolb/XcodeGen),
+`brew install xcodegen`):
+
+```bash
+xcodegen generate
+open Simbi.xcodeproj        # or: xcodebuild -scheme Simbi build
+```
+
+Formatting is enforced with the toolchain-bundled formatter:
+
+```bash
+swift format --in-place --recursive App Packages/SimbiKit/Sources Packages/SimbiKit/Tests
+```
+
+## Stack (decided in M0, 2026-07)
+
+| Concern | Choice | Notes |
+|---|---|---|
+| UI | Swift 6 + SwiftUI, macOS 14+ | system-audio capture path needs 14.4+ |
+| Diarization | [FluidAudio](https://github.com/FluidInference/FluidAudio) `0.15.5` (exact pin) | streaming Sortformer `fastV2_1`, CoreML/ANE |
+| Markdown editor | [STTextView](https://github.com/krzyzanowskim/STTextView) + Neon (tree-sitter-markdown) | via STTextView-Plugin-Neon for the spike; to be vendored against upstream Neon before release |
+| Markdown preview | MarkdownUI 2.4.x (planned, M5+) | successor Textual needs macOS 15 — adopt when the floor rises |
+| Audio format | WebM/Opus everywhere, vendored libopus + libwebm (M1) | codex-native; no raw audio on disk |
+| Project generation | XcodeGen (`project.yml` in git, no `.xcodeproj`) | thin app shell only |
+| CI | GitHub Actions `macos-26`: format lint, `swift test`, unsigned app build | |
