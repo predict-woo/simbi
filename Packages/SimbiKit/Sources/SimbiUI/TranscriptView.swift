@@ -63,9 +63,13 @@ struct TranscriptView: View {
     @State private var renameText = ""
     @FocusState private var renameFieldFocused: Bool
 
+    /// Keyed by ROW, not just name — the same speaker appears on many
+    /// rows, and a name-keyed binding would anchor the popover on the
+    /// last row that matches instead of the one that was clicked.
     private struct RenameTarget: Identifiable {
         let name: String
-        var id: String { name }
+        let row: Int
+        var id: String { "\(row):\(name)" }
     }
 
     static let speakerColors: [Color] = [.blue, .green, .orange, .purple]
@@ -88,8 +92,8 @@ struct TranscriptView: View {
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
-                        ForEach(Array(document.entries.enumerated()), id: \.offset) { _, entry in
-                            entryView(entry)
+                        ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
+                            entryView(entry, row: index)
                         }
                     }
                     .padding(12)
@@ -106,14 +110,14 @@ struct TranscriptView: View {
     }
 
     @ViewBuilder
-    private func entryView(_ entry: VTTEntry) -> some View {
+    private func entryView(_ entry: VTTEntry, row: Int) -> some View {
         switch entry {
         case .cue(_, let start, _, let speaker, let text, let continuation):
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Button {
                         renameText = speaker
-                        renameTarget = RenameTarget(name: speaker)
+                        renameTarget = RenameTarget(name: speaker, row: row)
                     } label: {
                         Text(speaker)
                             .font(.caption.weight(.semibold))
@@ -124,7 +128,7 @@ struct TranscriptView: View {
                     .help("Rename this speaker across the transcript")
                     .popover(
                         item: Binding(
-                            get: { renameTarget?.name == speaker ? renameTarget : nil },
+                            get: { renameTarget?.row == row ? renameTarget : nil },
                             set: { if $0 == nil { renameTarget = nil } })
                     ) { target in
                         renamePopover(target: target)

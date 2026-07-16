@@ -24,7 +24,16 @@ covered by the silent manual-rendering test in AudioPlaybackTests.
 
 ## Fixes that came out of verification
 
-Two real popover-focus issues were found and fixed:
+User-reported after ship: clicking the TOP speaker always opened the
+popover at the BOTTOM row. Cause: the popover binding was keyed by
+speaker NAME, and the same name appears on many rows — every matching
+row presented, and the last one won the anchor. Fixed by keying the
+popover to the clicked row. `06-popover-anchor-top.png` /
+`07-popover-anchor-bottom.png` show each popover anchored at its own
+row (with the field focused and text pre-selected — the focus fixes
+visibly working).
+
+Two real popover-focus issues were also found and fixed:
 1. no auto-focus on open → `@FocusState` set in `onAppear`;
 2. stale focus state on REPEAT opens → reset in `onDisappear`, plus
    `.defaultFocus` on the popover scope (initial-focus timing on popover
