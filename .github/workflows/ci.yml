@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    name: swift-format lint
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Lint (toolchain-bundled swift format)
+        # Explicit paths: never sweep .build/ dependency checkouts.
+        run: >
+          swift format lint --strict --recursive
+          App Packages/SimbiKit/Sources Packages/SimbiKit/Tests
+          Packages/SimbiKit/Package.swift
+
+  test:
+    name: Build & test packages
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        with:
+          path: |
+            Packages/SimbiKit/.build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+      - name: Build
+        run: swift build --package-path Packages/SimbiKit
+      - name: Test
+        run: swift test --package-path Packages/SimbiKit
+
+  app-build:
+    name: Assemble app (unsigned)
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build app
+        run: >
+          xcodebuild -project Simbi.xcodeproj -scheme Simbi
+          -destination 'platform=macOS' build
+          CODE_SIGNING_ALLOWED=NO
