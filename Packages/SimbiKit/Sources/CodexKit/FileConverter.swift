@@ -12,6 +12,8 @@ public actor FileConverter {
 
     private let noteFolderURL: URL
     private let client: AppServerClient
+    /// Model override for conversion turns (SPEC.md §5.5); nil = default.
+    private let model: String?
     /// Generous ceiling — odd formats can send the agent exploring.
     private let turnTimeout: Duration
 
@@ -24,10 +26,12 @@ public actor FileConverter {
     private var completedTurns: Set<String> = []
 
     public init(
-        noteFolderURL: URL, client: AppServerClient, turnTimeout: Duration = .seconds(900)
+        noteFolderURL: URL, client: AppServerClient, model: String? = nil,
+        turnTimeout: Duration = .seconds(900)
     ) {
         self.noteFolderURL = noteFolderURL
         self.client = client
+        self.model = model
         self.turnTimeout = turnTimeout
     }
 
@@ -105,14 +109,16 @@ public actor FileConverter {
             "excludeTmpdirEnvVar": false,
             "excludeSlashTmp": false,
         ]
-        _ = try await client.request(
-            method: "turn/start",
-            params: [
-                "threadId": threadId,
-                "input": input,
-                "approvalPolicy": "never",
-                "sandboxPolicy": sandboxPolicy,
-            ])
+        var turnParams: [String: any Sendable] = [
+            "threadId": threadId,
+            "input": input,
+            "approvalPolicy": "never",
+            "sandboxPolicy": sandboxPolicy,
+        ]
+        if let model {
+            turnParams["model"] = model
+        }
+        _ = try await client.request(method: "turn/start", params: turnParams)
         try await awaitTurnCompletion(threadId: threadId)
 
         let output = noteFolderURL.appending(path: "context/\(fileName).md")

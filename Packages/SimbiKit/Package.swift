@@ -108,6 +108,11 @@ let package = Package(
             name: "simbi-tap-spike",
             dependencies: ["SimbiAudio"]
         ),
+        // M7 spike: chat-in-codex round-trip + model/list.
+        .executableTarget(
+            name: "simbi-chat-spike",
+            dependencies: ["CodexKit", "SimbiKit"]
+        ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
         .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),

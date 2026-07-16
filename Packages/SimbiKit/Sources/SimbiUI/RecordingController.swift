@@ -100,10 +100,12 @@ public final class RecordingController {
             // Fixer (SPEC.md §5.2): reuses the note's saved thread if any.
             let savedThreadId = (try? NoteRecordingState.load(noteFolder: noteFolderURL))?
                 .fixerThreadId
+            let settings =
+                (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
             await pipeline.attachFixer(
                 TranscriptFixer(
                     noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                    savedThreadId: savedThreadId))
+                    savedThreadId: savedThreadId, model: settings.fixerModel))
             try await pipeline.start()
             let capture = MixedCapture()
             self.capture = capture

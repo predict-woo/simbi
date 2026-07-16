@@ -50,9 +50,23 @@ final class TranscriptModel {
 }
 
 /// Renders the live transcript: cues with per-speaker colors, gap and
-/// session markers (SPEC.md §6; playback/seek arrives in M7).
+/// session markers, click-to-seek playback and speaker rename (SPEC.md §6).
 struct TranscriptView: View {
     let model: TranscriptModel
+    /// Click on a cue timestamp seeks playback there (nil = disabled,
+    /// e.g. while recording).
+    var onSeek: ((TimeInterval) -> Void)?
+    /// Rename a speaker across the whole file (old name, new name).
+    var onRenameSpeaker: ((String, String) -> Void)?
+
+    @State private var renameTarget: RenameTarget?
+    @State private var renameText = ""
+    @FocusState private var renameFieldFocused: Bool
+
+    private struct RenameTarget: Identifiable {
+        let name: String
+        var id: String { name }
+    }
 
     static let speakerColors: [Color] = [.blue, .green, .orange, .purple]
 
@@ -97,12 +111,34 @@ struct TranscriptView: View {
         case .cue(_, let start, _, let speaker, let text, let continuation):
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(speaker)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Self.color(forSpeaker: speaker))
-                    Text(VTT.timestamp(start))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    Button {
+                        renameText = speaker
+                        renameTarget = RenameTarget(name: speaker)
+                    } label: {
+                        Text(speaker)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Self.color(forSpeaker: speaker))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onRenameSpeaker == nil)
+                    .help("Rename this speaker across the transcript")
+                    .popover(
+                        item: Binding(
+                            get: { renameTarget?.name == speaker ? renameTarget : nil },
+                            set: { if $0 == nil { renameTarget = nil } })
+                    ) { target in
+                        renamePopover(target: target)
+                    }
+                    Button {
+                        onSeek?(start)
+                    } label: {
+                        Text(VTT.timestamp(start))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onSeek == nil)
+                    .help("Play from here")
                     if continuation {
                         Text("cont.")
                             .font(.caption2)
@@ -132,5 +168,43 @@ struct TranscriptView: View {
         case .sessionEnd:
             EmptyView()
         }
+    }
+
+    private func renamePopover(target: RenameTarget) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Rename \(target.name)")
+                .font(.caption.weight(.semibold))
+            TextField("Name", text: $renameText)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 180)
+                .focused($renameFieldFocused)
+                .onSubmit { submitRename(target: target) }
+                .onAppear { renameFieldFocused = true }
+                // Reset on close: a stale `true` would make the next
+                // presentation's `= true` a no-op and leave focus outside
+                // the popover (found by the M7 UI verification worker).
+                .onDisappear { renameFieldFocused = false }
+            HStack {
+                Spacer()
+                Button("Cancel") { renameTarget = nil }
+                Button("Rename") { submitRename(target: target) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(
+                        renameText.trimmingCharacters(in: .whitespaces).isEmpty
+                            || renameText == target.name)
+            }
+        }
+        .padding(12)
+        // The popover is its own focus scope; make the field its default
+        // focus in addition to the onAppear set (initial-focus timing on
+        // popover child windows is racy otherwise).
+        .defaultFocus($renameFieldFocused, true)
+    }
+
+    private func submitRename(target: RenameTarget) {
+        let name = renameText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name != target.name else { return }
+        onRenameSpeaker?(target.name, name)
+        renameTarget = nil
     }
 }

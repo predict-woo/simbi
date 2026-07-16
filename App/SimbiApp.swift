@@ -9,5 +9,8 @@ struct SimbiApp: App {
         WindowGroup {
             SimbiRootView()
         }
+        Settings {
+            SettingsView()
+        }
     }
 }
