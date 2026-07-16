@@ -102,6 +102,12 @@ let package = Package(
             name: "simbi-converter-spike",
             dependencies: ["CodexKit", "SimbiKit"]
         ),
+        // M6 spike: SILENT system-audio tap E2E — process-specific tap with
+        // muteBehavior=mutedWhenTapped, tone never audible.
+        .executableTarget(
+            name: "simbi-tap-spike",
+            dependencies: ["SimbiAudio"]
+        ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
         .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),

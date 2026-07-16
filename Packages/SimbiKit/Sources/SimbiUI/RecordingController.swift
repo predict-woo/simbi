@@ -43,10 +43,18 @@ public final class RecordingController {
     private(set) var tentativeSpeaker: Int?
     /// True when the note already has a recording (button says Resume).
     private(set) var hasRecording: Bool
+    /// Source toggle (SPEC.md §3.1: mic / mic+system); default from
+    /// settings.json, changes persist back as the new default.
+    var systemAudioEnabled: Bool {
+        didSet { persistAudioSource() }
+    }
+    /// Set when mic+system was requested but the tap couldn't start —
+    /// recording proceeds mic-only with this banner (SPEC.md §7).
+    private(set) var systemAudioBanner: String?
 
     private let noteFolderURL: URL
     private let pipeline: RecordingPipeline
-    private var capture: MicCapture?
+    private var capture: MixedCapture?
     private var ingestTask: Task<Void, Never>?
     private var liveTask: Task<Void, Never>?
 
@@ -59,6 +67,16 @@ public final class RecordingController {
         let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
         self.hasRecording = state.sessionCount > 0 || state.activeSession != nil
         self.elapsed = TimeInterval(state.totalSamples) / 16000
+        let settings =
+            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+        self.systemAudioEnabled = settings.audioSource == .micAndSystem
+    }
+
+    private func persistAudioSource() {
+        let home = SimbiHome()
+        var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
+        settings.audioSource = systemAudioEnabled ? .micAndSystem : .mic
+        try? settings.save(to: home.settingsFileURL)
     }
 
     public func toggle() {
@@ -87,9 +105,11 @@ public final class RecordingController {
                     noteFolderURL: noteFolderURL, client: CodexServices.appServer,
                     savedThreadId: savedThreadId))
             try await pipeline.start()
-            let capture = MicCapture()
+            let capture = MixedCapture()
             self.capture = capture
-            let stream = try capture.start()
+            let stream = try capture.start(
+                source: systemAudioEnabled ? .micAndSystem : .mic)
+            systemAudioBanner = capture.systemAudioFailure
             status = .recording
             hasRecording = true
 

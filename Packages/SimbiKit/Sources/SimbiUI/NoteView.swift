@@ -92,9 +92,20 @@ struct NoteView: View {
 /// Record/Stop button with live elapsed time and the tentative speaker
 /// indicator.
 struct RecordingHeader: View {
-    let recorder: RecordingController
+    @Bindable var recorder: RecordingController
 
     var body: some View {
+        VStack(spacing: 6) {
+            controls
+            if let banner = recorder.systemAudioBanner {
+                systemAudioBanner(banner)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var controls: some View {
         HStack(spacing: 10) {
             Button(action: { recorder.toggle() }) {
                 switch recorder.status {
@@ -117,6 +128,19 @@ struct RecordingHeader: View {
                 .font(.body.monospacedDigit())
                 .foregroundStyle(recorder.status == .recording ? .primary : .secondary)
 
+            // Source toggle (SPEC.md §3.1: mic / mic+system). Locked while
+            // recording — the mix can't change mid-session.
+            Toggle(isOn: $recorder.systemAudioEnabled) {
+                Image(systemName: "speaker.wave.2")
+            }
+            .toggleStyle(.button)
+            .controlSize(.small)
+            .disabled(recorder.status != .idle)
+            .help(
+                recorder.systemAudioEnabled
+                    ? "System audio is captured too (mic + system)"
+                    : "Mic only — click to also capture system audio")
+
             Spacer()
 
             if recorder.status == .recording {
@@ -137,8 +161,27 @@ struct RecordingHeader: View {
                     .lineLimit(2)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+    }
+
+    /// Mic-only degraded-state banner with the System Settings deep link
+    /// (SPEC.md §7).
+    private func systemAudioBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Label(message, systemImage: "speaker.slash")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Spacer()
+            Button("Open System Settings") {
+                if let url = URL(
+                    string:
+                        "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
+                ) {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+        }
     }
 
     private var elapsedText: String {
