@@ -239,47 +239,98 @@ public final class OpusWebMDecoder {
     ) throws -> (
         samples: [Float], startTime: TimeInterval
     ) {
-        var err: Int32 = 0
-        guard
-            let decoder = opus_decoder_create(
-                OpusWebMFormat.sampleRate, OpusWebMFormat.channels, &err), err == OPUS_OK
-        else {
-            throw OpusWebMError.decoderCreateFailed(err)
-        }
-        defer { opus_decoder_destroy(decoder) }
-
-        guard let iter = swebm_iter_create(reader, Int64(startTime * 1e9)) else {
-            throw OpusWebMError.fileParseFailed
-        }
-        defer { swebm_iter_free(iter) }
-
+        let iterator = try packets(from: startTime)
         var samples: [Float] = []
         var firstTime: TimeInterval?
-        var packet = [UInt8](repeating: 0, count: 8192)
-        var pcm = [Float](repeating: 0, count: OpusWebMFormat.frameSamples * 6)
-        while true {
-            var timeNs: Int64 = 0
-            var len = 0
-            let rc = packet.withUnsafeMutableBufferPointer { buf in
-                swebm_iter_next(iter, &timeNs, buf.baseAddress, buf.count, &len)
-            }
-            if rc == 0 { break }
-            if rc == -2 {
-                packet = [UInt8](repeating: 0, count: len)
-                continue
-            }
-            guard rc == 1 else { throw OpusWebMError.fileParseFailed }
-            let decoded = packet.withUnsafeBufferPointer { inBuf in
-                pcm.withUnsafeMutableBufferPointer { outBuf in
-                    opus_decode_float(
-                        decoder, inBuf.baseAddress!, opus_int32(len),
-                        outBuf.baseAddress!, Int32(outBuf.count), 0)
-                }
-            }
-            guard decoded > 0 else { throw OpusWebMError.decodeFailed(decoded) }
-            if firstTime == nil { firstTime = TimeInterval(timeNs) / 1e9 }
-            samples.append(contentsOf: pcm.prefix(Int(decoded)))
+        while let chunk = try iterator.next(maxSamples: .max) {
+            if firstTime == nil { firstTime = chunk.startTime }
+            samples.append(contentsOf: chunk.samples)
         }
         return (samples, firstTime ?? 0)
+    }
+
+    /// Incremental decode for playback (SPEC.md §3.1): packets from the
+    /// cluster containing `startTime`, decoded in bounded chunks so a long
+    /// recording never has to sit in memory whole.
+    public func packets(from startTime: TimeInterval = 0) throws -> PacketIterator {
+        try PacketIterator(owner: self, reader: reader, startTime: startTime)
+    }
+
+    /// Chunked decoder over one seek's packet run. Holds its parent decoder
+    /// alive (the libwebm reader must outlive the iterator).
+    public final class PacketIterator {
+        private let owner: OpusWebMDecoder
+        private let iter: OpaquePointer
+        private let decoder: OpaquePointer
+        private var packet = [UInt8](repeating: 0, count: 8192)
+        private var pcm = [Float](repeating: 0, count: OpusWebMFormat.frameSamples * 6)
+        private var finished = false
+
+        fileprivate init(
+            owner: OpusWebMDecoder, reader: OpaquePointer, startTime: TimeInterval
+        )
+            throws
+        {
+            var err: Int32 = 0
+            guard
+                let decoder = opus_decoder_create(
+                    OpusWebMFormat.sampleRate, OpusWebMFormat.channels, &err), err == OPUS_OK
+            else {
+                throw OpusWebMError.decoderCreateFailed(err)
+            }
+            guard let iter = swebm_iter_create(reader, Int64(startTime * 1e9)) else {
+                opus_decoder_destroy(decoder)
+                throw OpusWebMError.fileParseFailed
+            }
+            self.owner = owner
+            self.iter = iter
+            self.decoder = decoder
+        }
+
+        deinit {
+            swebm_iter_free(iter)
+            opus_decoder_destroy(decoder)
+        }
+
+        /// Decodes whole packets until at least `maxSamples` are gathered
+        /// (or EOF). Returns nil once the file is exhausted. `startTime` is
+        /// the timeline time of the chunk's first sample.
+        public func next(
+            maxSamples: Int = OpusWebMFormat.frameSamples * 50
+        ) throws -> (
+            samples: [Float], startTime: TimeInterval
+        )? {
+            guard !finished else { return nil }
+            var samples: [Float] = []
+            var firstTime: TimeInterval?
+            while samples.count < maxSamples {
+                var timeNs: Int64 = 0
+                var len = 0
+                let rc = packet.withUnsafeMutableBufferPointer { buf in
+                    swebm_iter_next(iter, &timeNs, buf.baseAddress, buf.count, &len)
+                }
+                if rc == 0 {
+                    finished = true
+                    break
+                }
+                if rc == -2 {
+                    packet = [UInt8](repeating: 0, count: len)
+                    continue
+                }
+                guard rc == 1 else { throw OpusWebMError.fileParseFailed }
+                let decoded = packet.withUnsafeBufferPointer { inBuf in
+                    pcm.withUnsafeMutableBufferPointer { outBuf in
+                        opus_decode_float(
+                            decoder, inBuf.baseAddress!, opus_int32(len),
+                            outBuf.baseAddress!, Int32(outBuf.count), 0)
+                    }
+                }
+                guard decoded > 0 else { throw OpusWebMError.decodeFailed(decoded) }
+                if firstTime == nil { firstTime = TimeInterval(timeNs) / 1e9 }
+                samples.append(contentsOf: pcm.prefix(Int(decoded)))
+            }
+            guard let firstTime else { return nil }
+            return (samples, firstTime)
+        }
     }
 }

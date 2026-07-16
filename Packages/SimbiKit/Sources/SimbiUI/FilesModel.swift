@@ -48,8 +48,11 @@ final class FilesModel {
 
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
+        let settings =
+            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
         self.converter = FileConverter(
-            noteFolderURL: noteFolderURL, client: CodexServices.appServer)
+            noteFolderURL: noteFolderURL, client: CodexServices.appServer,
+            model: settings.converterModel)
         refresh()
         // Watch the note folder so external drops into files/ and converter
         // output in context/ show up live — same pattern as TranscriptModel.

@@ -10,6 +10,8 @@ import Foundation
 public actor TranscriptFixer {
     private let noteFolderURL: URL
     private let client: AppServerClient
+    /// Model override for fixer turns (SPEC.md §5.5); nil = thread default.
+    private let model: String?
     /// Persisted by the caller in .simbi/state.json across app restarts.
     public private(set) var threadId: String?
     private let savedThreadId: String?
@@ -19,11 +21,15 @@ public actor TranscriptFixer {
     private var newestCue = 0
     private var stopping = false
 
-    public init(noteFolderURL: URL, client: AppServerClient, savedThreadId: String?) {
+    public init(
+        noteFolderURL: URL, client: AppServerClient, savedThreadId: String?,
+        model: String? = nil
+    ) {
         self.noteFolderURL = noteFolderURL
         self.client = client
         self.savedThreadId = savedThreadId
         self.threadId = savedThreadId
+        self.model = model
     }
 
     private static let instructions = """
@@ -149,14 +155,16 @@ public actor TranscriptFixer {
                 "excludeTmpdirEnvVar": false,
                 "excludeSlashTmp": false,
             ]
-            _ = try await client.request(
-                method: "turn/start",
-                params: [
-                    "threadId": threadId,
-                    "input": input,
-                    "approvalPolicy": "never",
-                    "sandboxPolicy": sandboxPolicy,
-                ])
+            var params: [String: any Sendable] = [
+                "threadId": threadId,
+                "input": input,
+                "approvalPolicy": "never",
+                "sandboxPolicy": sandboxPolicy,
+            ]
+            if let model {
+                params["model"] = model
+            }
+            _ = try await client.request(method: "turn/start", params: params)
         } catch {
             turnActive = false
             throw error

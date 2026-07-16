@@ -5,9 +5,13 @@ An open-source macOS notetaking app that lives symbiotically with the Codex
 transcribes it through the ChatGPT backend, and delegates all "intelligence"
 (transcript fixing, file conversion, chat) to Codex threads.
 
-**Status: M0 (skeleton).** See [SPEC.md](SPEC.md) for the full design and
-milestone plan, and [docs/recording-algorithm.md](docs/recording-algorithm.md)
-for the normative recording-pipeline algorithm.
+**Status: feature-complete (M0–M7).** Recording + diarization, real
+transcription, fixer/converter/chat Codex threads, system-audio capture,
+playback, speaker rename, and per-feature model selectors are all
+implemented and verified (see `docs/verification/`). See [SPEC.md](SPEC.md)
+for the full design and
+[docs/recording-algorithm.md](docs/recording-algorithm.md) for the normative
+recording-pipeline algorithm.
 
 ## Layout
 
@@ -15,8 +19,10 @@ for the normative recording-pipeline algorithm.
 App/                    # thin SwiftUI shell (the only Xcode-target code)
 Packages/SimbiKit/      # all real logic, headless-buildable:
   Sources/SimbiKit/     #   notes, file tree, VTT, state, settings
-  Sources/SimbiAudio/   #   capture, diarization, segmenting, Opus/WebM (M2+)
-  Sources/CodexKit/     #   app-server JSON-RPC + transcription clients (M1+)
+  Sources/SimbiAudio/   #   capture (mic + system), diarization, segmenting,
+                        #   Opus/WebM encode/decode, mixing, playback
+  Sources/CodexKit/     #   app-server JSON-RPC, transcription, fixer,
+                        #   converter, chat, model list
   Sources/SimbiUI/      #   SwiftUI views (sidebar, note view, editor)
 project.yml             # XcodeGen spec for the app shell
 references/             # read-only research material (verified API notes)
