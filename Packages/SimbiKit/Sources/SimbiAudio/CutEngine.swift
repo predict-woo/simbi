@@ -12,7 +12,15 @@ public enum CutConstants {
     public static let activeProbability: Float = 0.5
     public static let minSpeechFrames = 3
     public static let minSilenceFrames = 2
-    public static let silenceDiscardFrames = 25
+    /// Silence ≥ this is discarded (its middle, at least): flush the buffer,
+    /// emit a `NOTE gap`. Shorter silences glue into the buffer.
+    public static let silenceDiscardFrames = 75
+    /// Silence kept in the UPLOAD at each edge of a discarded gap: the flush
+    /// before the gap carries this much trailing silence, and the first
+    /// segment after it starts this much early. Cue extents are unaffected —
+    /// the pads exist so the ASR hears natural pauses and so the diarizer's
+    /// speech-onset lag after a long silence can't clip resumed speech.
+    public static let silencePadFrames = 25
     public static let maxBufferFrames = 125
     public static let flushLookbackFrames = 37
     public static let stopPadSeconds = 2.0
@@ -61,9 +69,9 @@ public struct Run: Equatable, Sendable {
 /// pipeline maps frames to note time, assigns cue indices, slices the ring
 /// and encodes.
 public enum CutAction: Equatable, Sendable {
-    /// Encode and upload `[startFrame, endFrame) · 1280` samples as one cue.
+    /// Encode and upload one cue's segment.
     case flush(FlushCommand)
-    /// Emit a `NOTE gap` block for a discarded ≥ 2 s silence.
+    /// Emit a `NOTE gap` block for a discarded ≥ 6 s silence.
     case gap(startFrame: Int, endFrame: Int)
 }
 
@@ -75,9 +83,16 @@ public enum FlushReason: Equatable, Sendable {
 }
 
 public struct FlushCommand: Equatable, Sendable {
+    /// Cue extents: start of the first buffered frame to the end of the
+    /// last SPEECH frame (trailing silence items trimmed, §6.3 step 1).
     public let startFrame: Int
-    /// Exclusive; trailing silence items are already trimmed (§6.3 step 1).
+    /// Exclusive.
     public let endFrame: Int
+    /// Upload-slice extents: equal to the cue extents except at a discarded
+    /// gap's edges, where they extend up to `silencePadFrames` into the
+    /// silence (§6.3) — the pads are uploaded, never on the cue timeline.
+    public let uploadStartFrame: Int
+    public let uploadEndFrame: Int
     public let speaker: Int
     public let reason: FlushReason
     /// True when this cue continues the previous same-speaker cue
@@ -227,6 +242,12 @@ struct BufferManager {
     private var items: [Item] = []
     private var speaker: Int?
     private var bufferStart = 0
+    /// Upload-slice start: `bufferStart`, or `silencePadFrames` earlier when
+    /// this buffer opened right after a discarded gap (§6.3 pads).
+    private var bufferUploadStart = 0
+    /// End frame of the last emitted gap — the next buffer starting exactly
+    /// there gets the leading upload pad.
+    private var padStartAfterGapEnd: Int?
     /// Frames of the open run already shipped by a MAX_BUFFER hard cut.
     private var openConsumedUpTo = 0
     /// Speaker of the last MAX_BUFFER flush (§6.2 / §6.3 step 10).
@@ -265,6 +286,7 @@ struct BufferManager {
                 if isEmpty {
                     speaker = s
                     bufferStart = start
+                    bufferUploadStart = uploadStart(forBufferStart: start)
                 }
                 items.append(Item(isSpeech: true, start: start, end: run.end))
             }
@@ -275,12 +297,15 @@ struct BufferManager {
             let effectiveEnd = min(run.end, realFrameEnd)
             if effectiveEnd - run.start >= CutConstants.silenceDiscardFrames {
                 if !isEmpty {
-                    // Safety net: the run can close before its latched ≥ 25
+                    // Safety net: the run can close before its latched
                     // progress event fires (§6.1); flushing first keeps
                     // outbox entries in timestamp order.
                     actions.append(contentsOf: flush(.longSilence))
                 }
                 actions.append(.gap(startFrame: run.start, endFrame: effectiveEnd))
+                // The next buffer (the successor speech starts at run.end)
+                // gets the leading upload pad into this silence.
+                padStartAfterGapEnd = run.end
             } else if !isEmpty, let speaker, successor?.label == .speech(slot: speaker) {
                 items.append(Item(isSpeech: false, start: run.start, end: run.end))
             }
@@ -364,6 +389,7 @@ struct BufferManager {
         if isEmpty {
             speaker = open.label.slot!
             bufferStart = openStart
+            bufferUploadStart = uploadStart(forBufferStart: openStart)
         }
         items.append(Item(isSpeech: true, start: openStart, end: open.end))
         openConsumedUpTo = open.end
@@ -386,9 +412,17 @@ struct BufferManager {
             pendingContinuation = nil
             return []
         }
+        let endFrame = min(items.last!.end, realFrameEnd)
         let command = FlushCommand(
             startFrame: bufferStart,
-            endFrame: min(items.last!.end, realFrameEnd),
+            endFrame: endFrame,
+            uploadStartFrame: bufferUploadStart,
+            // A long-silence flush carries the trailing upload pad into the
+            // silence it is being cut by (§6.3); the silence run extends at
+            // least `silenceDiscardFrames` real frames past `endFrame`.
+            uploadEndFrame: reason == .longSilence
+                ? min(endFrame + CutConstants.silencePadFrames, realFrameEnd)
+                : endFrame,
             speaker: speaker,
             reason: reason,
             continuation: pendingContinuation == speaker)
@@ -396,6 +430,15 @@ struct BufferManager {
         items.removeAll()
         self.speaker = nil
         return [.flush(command)]
+    }
+
+    /// Leading upload pad (§6.3): a buffer opening exactly where a
+    /// discarded gap ended starts its upload `silencePadFrames` early, so
+    /// speech the diarizer detected late is still heard by the ASR.
+    private mutating func uploadStart(forBufferStart start: Int) -> Int {
+        defer { padStartAfterGapEnd = nil }
+        guard padStartAfterGapEnd == start else { return start }
+        return max(0, start - CutConstants.silencePadFrames)
     }
 
     /// MAX_BUFFER boundary cut: flush items before `cut`, keep the tail
@@ -409,11 +452,14 @@ struct BufferManager {
 
         var actions: [CutAction] = []
         if let speaker, prefix.contains(where: \.isSpeech) {
+            let endFrame = min(prefix.last!.end, realFrameEnd)
             actions.append(
                 .flush(
                     FlushCommand(
                         startFrame: bufferStart,
-                        endFrame: min(prefix.last!.end, realFrameEnd),
+                        endFrame: endFrame,
+                        uploadStartFrame: bufferUploadStart,
+                        uploadEndFrame: endFrame,
                         speaker: speaker,
                         reason: .maxBuffer,
                         continuation: pendingContinuation == speaker)))
@@ -423,6 +469,7 @@ struct BufferManager {
         }
         items = kept
         bufferStart = cut
+        bufferUploadStart = cut  // the kept tail is mid-speech, never padded
         return actions
     }
 }
