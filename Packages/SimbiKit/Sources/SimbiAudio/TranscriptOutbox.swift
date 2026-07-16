@@ -1,19 +1,32 @@
+import CodexKit
 import Foundation
 import SimbiKit
 
-/// Transcription backend. M2 ships the stub; M3 replaces it with the real
-/// `backend-api/transcribe` uploader (same protocol, same queueing).
+/// Transcription backend. The real implementation uploads to
+/// `backend-api/transcribe`; tests use the stub.
 public protocol Transcriber: Sendable {
     /// Returns the transcription text for one encoded WebM/Opus segment.
+    /// Single attempt; the pipeline owns retry/backoff (guide §9.2).
     func transcribe(webmFile: URL) async throws -> String
 }
 
-/// M2 stub transcriber (SPEC.md §8: "stub transcriber"). Always succeeds.
+/// Stub transcriber for tests and degraded development use.
 public struct StubTranscriber: Transcriber {
     public init() {}
 
     public func transcribe(webmFile: URL) async throws -> String {
         "[transcription arrives in M3]"
+    }
+}
+
+/// The production transcriber (M3): Codex-credentialed uploads.
+public struct CodexTranscriber: Transcriber {
+    private let client = TranscriptionClient()
+
+    public init() {}
+
+    public func transcribe(webmFile: URL) async throws -> String {
+        try await client.transcribe(webmData: Data(contentsOf: webmFile))
     }
 }
 

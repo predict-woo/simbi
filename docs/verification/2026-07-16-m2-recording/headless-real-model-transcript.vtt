@@ -1,25 +1,25 @@
 WEBVTT
 
-NOTE simbi note="Spike Note"
+NOTE simbi note="M3 Transcription Demo"
 
-NOTE session 1 start=2026-07-16T18:30:09+09:00 offset=00:00:00.000
+NOTE session 1 start=2026-07-16T18:41:28+09:00 offset=00:00:00.000
 
 1
 00:00:00.000 --> 00:00:09.040
-<v Speaker 1>[transcription arrives in M3]
+<v Speaker 1>Hello, this is the first speaker. I am talking about the Simby recording pipeline, and I will keep going long enough to make a solid first segment.
 
 NOTE gap start=00:00:09.040 end=00:00:12.080
 
 2
 00:00:12.080 --> 00:00:19.360
-<v Speaker 2>[transcription arrives in M3]
+<v Speaker 2>a completely different second speaker, with a lower voice, responding right after the first one finished talking.
 
-NOTE session 1 end=2026-07-16T18:30:14+09:00 offset=00:00:19.616
+NOTE session 1 end=2026-07-16T18:41:31+09:00 offset=00:00:19.616
 
-NOTE session 2 start=2026-07-16T18:30:14+09:00 offset=00:00:19.616
+NOTE session 2 start=2026-07-16T18:41:31+09:00 offset=00:00:19.616
 
 3
 00:00:19.616 --> 00:00:22.976
-<v Speaker 1>[transcription arrives in M3]
+<v Speaker 1>Back again after resuming the recording in a brand new session.
 
-NOTE session 2 end=2026-07-16T18:30:15+09:00 offset=00:00:23.380
+NOTE session 2 end=2026-07-16T18:41:31+09:00 offset=00:00:23.380

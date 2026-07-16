@@ -51,9 +51,24 @@ func synthesize(_ text: String, voice: String, in dir: URL) throws -> [Float] {
 
 let workDir = FileManager.default.temporaryDirectory
     .appending(path: "simbi-pipeline-spike-\(UUID().uuidString)")
-let noteFolder = workDir.appending(path: "Spike Note")
-try FileManager.default.createDirectory(at: noteFolder, withIntermediateDirectories: true)
+try FileManager.default.createDirectory(at: workDir, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: workDir) }
+
+// --note <path>: write into a real note folder (kept) instead of temp.
+let noteFolder: URL
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--note"),
+    CommandLine.arguments.count > flagIndex + 1
+{
+    noteFolder = URL(filePath: CommandLine.arguments[flagIndex + 1])
+    try FileManager.default.createDirectory(at: noteFolder, withIntermediateDirectories: true)
+    let marker = noteFolder.appending(path: "note.md")
+    if !FileManager.default.fileExists(atPath: marker.path) {
+        try "# M3 transcription demo\n".write(to: marker, atomically: true, encoding: .utf8)
+    }
+} else {
+    noteFolder = workDir.appending(path: "Spike Note")
+    try FileManager.default.createDirectory(at: noteFolder, withIntermediateDirectories: true)
+}
 
 print("synthesizing speech (files only — silent)…")
 let speechA1 = try synthesize(
@@ -74,7 +89,13 @@ session1.append(contentsOf: [Float](repeating: 0, count: 3 * 16000))
 session1.append(contentsOf: speechB)
 session1.append(contentsOf: [Float](repeating: 0, count: 16000))
 
-let pipeline = RecordingPipeline(noteFolderURL: noteFolder, diarizer: SortformerStream())
+// --real: M3 mode — upload segments to the real transcribe endpoint.
+let useRealTranscriber = CommandLine.arguments.contains("--real")
+let transcriber: any Transcriber =
+    useRealTranscriber ? CodexTranscriber() : StubTranscriber()
+print("transcriber: \(useRealTranscriber ? "REAL backend-api/transcribe" : "stub")")
+let pipeline = RecordingPipeline(
+    noteFolderURL: noteFolder, transcriber: transcriber, diarizer: SortformerStream())
 
 print("loading Sortformer models (cached after first run)…")
 let prepStart = Date()
@@ -105,8 +126,17 @@ for batchStart in stride(from: 0, to: session2.count, by: 1600) {
 try await pipeline.stop()
 print("session 2 stopped")
 
-// Give the (instant) stub uploads a beat to drain the outbox.
-try await Task.sleep(for: .milliseconds(500))
+// Let the outbox drain (instant for the stub; network time for --real):
+// poll until the session 2 end note lands in the file.
+let vttPollURL = noteFolder.appending(path: "transcript.vtt")
+for _ in 0..<120 {
+    if let text = try? String(contentsOf: vttPollURL, encoding: .utf8),
+        text.contains("NOTE session 2 end")
+    {
+        break
+    }
+    try await Task.sleep(for: .milliseconds(500))
+}
 
 // --- Validation ---------------------------------------------------------
 let vttURL = noteFolder.appending(path: "transcript.vtt")
@@ -128,8 +158,16 @@ for entry in document.entries {
     switch entry {
     case .cue(let index, let start, let end, let speaker, let text, _):
         cues.append((index, start, end, speaker))
-        guard text == "[transcription arrives in M3]" else {
-            fail("cue", "unexpected stub text: \(text)")
+        _ = text
+        if useRealTranscriber {
+            guard text != "[transcription arrives in M3]", text != "[inaudible]" else {
+                fail("cue", "cue \(index) has no real transcription: \(text)")
+            }
+            print("cue \(index) [\(speaker)]: \(text)")
+        } else {
+            guard text == "[transcription arrives in M3]" else {
+                fail("cue", "unexpected stub text: \(text)")
+            }
         }
     case .gap: gaps += 1
     case .sessionStart(let n, _, _): sessionStarts.append(n)

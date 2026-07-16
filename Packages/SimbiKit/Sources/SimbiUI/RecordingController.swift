@@ -52,7 +52,9 @@ public final class RecordingController {
     public init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
         self.pipeline = RecordingPipeline(
-            noteFolderURL: noteFolderURL, diarizer: SortformerStream())
+            noteFolderURL: noteFolderURL,
+            transcriber: CodexTranscriber(),
+            diarizer: SortformerStream())
         let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
         self.hasRecording = state.sessionCount > 0 || state.activeSession != nil
         self.elapsed = TimeInterval(state.totalSamples) / 16000
