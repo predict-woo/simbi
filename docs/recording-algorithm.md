@@ -95,8 +95,8 @@ normative values; the seconds column is informative.
 | `ACTIVE_PROB` | 0.5 | — | slot active if p ≥ ACTIVE_PROB |
 | `MIN_SPEECH_FRAMES` | 3 | 0.24 | shorter speech runs are absorbed (intent: 0.25 s) |
 | `MIN_SILENCE_FRAMES` | 2 | 0.16 | shorter silence runs are absorbed (intent: gaps < 0.1 s close; 1 frame = 80 ms is absorbed, 2 frames = 160 ms stands) |
-| `SILENCE_DISCARD_FRAMES` | 75 | 6.00 | silence ≥ this: flush buffer, discard the silence's middle, emit `NOTE gap` |
-| `SILENCE_PAD_FRAMES` | 25 | 2.00 | silence kept in the UPLOAD at each edge of a discarded gap (cue extents unaffected) |
+| `SILENCE_DISCARD_FRAMES` | 25 | 2.00 | silence ≥ this: flush buffer, discard the silence's middle, emit `NOTE gap` |
+| `SILENCE_PAD_FRAMES` | 12 | 0.96 | silence kept in the UPLOAD at each edge of a discarded gap (cue extents unaffected); 2·pad < discard so padded uploads never overlap |
 | `MAX_BUFFER_FRAMES` | 125 | 10.00 | flush when buffered speech+glue reaches this |
 | `FLUSH_LOOKBACK_FRAMES` | 37 | 2.96 | boundary search window for the MAX_BUFFER cut |
 | `STOP_PAD_SEC` | 2.0 | 2.0 | zeros fed to the diarizer (only) at stop |
@@ -199,15 +199,15 @@ continuation, text?}`. Invariants:
   `realAudioEndSec` (§10.1).
 - Cues never overlap and are strictly increasing in `startSec` in file order.
 
-**Gap** — a discarded silence: `{startSec, endSec}` with duration ≥ 6.0 s
-(or ≥ 75 frames measured at commit). Rendered as a `NOTE gap` block covering
+**Gap** — a discarded silence: `{startSec, endSec}` with duration ≥ 2.0 s
+(or ≥ 25 frames measured at commit). Rendered as a `NOTE gap` block covering
 the WHOLE silence. The audio of a gap exists in `audio.webm`; it is simply
 not covered by any cue. The uploads adjacent to a gap each carry
-`SILENCE_PAD_FRAMES` (2 s) of the gap's edge audio — the trailing pad keeps
-the pause natural for the ASR, and the leading pad recovers speech the
-diarizer detected late after a long silence (its onset probability ramps up
-over ~0.5–1 s, which would otherwise clip the first words of resumed
-speech). Pads never overlap: a gap is ≥ 6 s, the two pads total 4 s.
+`SILENCE_PAD_FRAMES` (0.96 s) of the gap's edge audio — the trailing pad
+keeps the upload from cutting off abruptly, and the leading pad recovers
+speech the diarizer detected late after a pause (its onset probability ramps
+up over ~0.5–1 s, which would otherwise clip the first words of resumed
+speech). Pads never overlap: a gap is ≥ 25 frames, the two pads total 24.
 
 **Session** — one start/stop of recording. `{n, baseSamples, wallStart,
 wallEnd}`. Note-timeline is contiguous across sessions: session n+1's frame 0
@@ -333,12 +333,12 @@ Consumes smoother events; owns the upload buffer; decides flushes.
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Idle: SILENCE_COMMITTED / gap NOTE if ≥ 75 frames, else drop
+    Idle --> Idle: SILENCE_COMMITTED / gap NOTE if ≥ 25 frames, else drop
     Idle --> Buffering: SPEECH_COMMITTED(S) / start buffer(S)
     Buffering --> Buffering: SPEECH_COMMITTED(S == spk) / append · MAX_BUFFER check
-    Buffering --> Buffering: SILENCE_COMMITTED(< 75, next is spk) / append glue
-    Buffering --> Idle: SILENCE_COMMITTED ≥ 75 / safety-net FLUSH + gap NOTE
-    Buffering --> Idle: SILENCE_OPEN extent ≥ 75 (latched) / FLUSH(longSilence)
+    Buffering --> Buffering: SILENCE_COMMITTED(< 25, next is spk) / append glue
+    Buffering --> Idle: SILENCE_COMMITTED ≥ 25 / safety-net FLUSH + gap NOTE
+    Buffering --> Idle: SILENCE_OPEN extent ≥ 25 (latched) / FLUSH(longSilence)
     Buffering --> Idle: SPEECH_OPEN(S ≠ spk) stable / FLUSH(speakerSwitch)
     Buffering --> Buffering: MAX_BUFFER boundary cut / FLUSH prefix, keep tail
     Buffering --> Idle: MAX_BUFFER hard cut / FLUSH all, continuation
@@ -362,13 +362,13 @@ stateDiagram-v2
 - `run.label == SILENCE`:
   1. If `run.length ≥ SILENCE_DISCARD_FRAMES`: if the buffer is non-empty,
      `flush(.longSilence)` **first** (safety net — the run can close before
-     its latched ≥ 75 progress event ever fires, e.g. a reopen-merge jumps
-     the length past 75 and a label change follows immediately; flushing
+     its latched ≥ 25 progress event ever fires, e.g. a reopen-merge jumps
+     the length past 25 and a label change follows immediately; flushing
      before emitting the gap keeps outbox entries in timestamp order).
      Then emit `NOTE gap [noteTime(run.start), noteTime(run.end))` to the
      outbox and remember `run.end`: the next buffer to open exactly there
      gets the leading upload pad (§6.3). Normally the buffer was already
-     flushed when the open run crossed 75 frames. Do not append anything.
+     flushed when the open run crossed 25 frames. Do not append anything.
   2. Else (short silence): if buffer non-empty **and** the successor run —
      which is known at commit time, since a run commits only when its
      successor is stable — is `SPEECH(buffer.speaker)`: append as glue.
@@ -386,7 +386,7 @@ stateDiagram-v2
 - `run.label == SILENCE` and `run.length ≥ SILENCE_DISCARD_FRAMES` and
   buffer non-empty: `flush(.longSilence)`. (Latched: fires at most once per
   run, the first time its length reaches **or exceeds** the threshold — a
-  reopen-merge can jump the length past 75 without ever equalling it, §5.)
+  reopen-merge can jump the length past 25 without ever equalling it, §5.)
 - `run.label == SPEECH(S)`, `S ≠ buffer.speaker`, buffer non-empty, and
   `run.length ≥ MIN_SPEECH_FRAMES` (latched, once per run):
   `flush(.speakerSwitch)`. This is the primary switch cut: it fires ~3
@@ -397,7 +397,7 @@ stateDiagram-v2
   `checkMaxBuffer()` counting the open extent (see below).
 
 `stop` (§10): force-close `current`, commit all pending, then
-`flush(.stop)`; emit trailing `NOTE gap` if the final silence ≥ 75 frames.
+`flush(.stop)`; emit trailing `NOTE gap` if the final silence ≥ 25 frames.
 
 ### 6.2 `checkMaxBuffer()`
 
@@ -454,7 +454,7 @@ by design; no compensation is applied.
 3. cueIndex = nextCueIndex++            # persisted counter
 4. startSec = noteTime(buffer.startFrame)
    endSec   = min(noteTime(buffer.endFrame), realAudioEndSec)
-5. uploadStart = buffer.uploadStart          # §3: startFrame, or 2 s earlier
+5. uploadStart = buffer.uploadStart          # §3: startFrame, or one pad earlier
    #                                            when opening after a gap
    uploadEnd   = (reason == .longSilence)
                  ? min(endFrame + SILENCE_PAD_FRAMES, realFrameEnd)
@@ -486,19 +486,19 @@ emitted by the smoother; "—" = impossible by construction.
 | # | State | Event | Action → next state |
 |---|---|---|---|
 | 1 | Idle | SPEECH_COMMITTED(S) | start buffer(S), append (minus any `openConsumedUpTo` prefix), MAX check → Buf(S) |
-| 2 | Idle | SILENCE_COMMITTED ≥ 75 | emit NOTE gap, arm leading pad → Idle |
-| 3 | Idle | SILENCE_COMMITTED < 75 | drop (leading silence) → Idle |
+| 2 | Idle | SILENCE_COMMITTED ≥ 25 | emit NOTE gap, arm leading pad → Idle |
+| 3 | Idle | SILENCE_COMMITTED < 25 | drop (leading silence) → Idle |
 | 4 | Idle | SPEECH_OPEN stable (any S) | MAX check (buffer empty ⇒ only open extent counts; can hard-cut a >10 s opening monologue) → Idle or Buf(S) via hard cut |
-| 5 | Idle | SILENCE_OPEN ≥ 75 (latched) | nothing to flush → Idle |
+| 5 | Idle | SILENCE_OPEN ≥ 25 (latched) | nothing to flush → Idle |
 | 6 | Buf(S) | SPEECH_COMMITTED(S) | append, MAX check → Buf(S) |
 | 7 | Buf(S) | SPEECH_COMMITTED(T ≠ S) | safety-net flush(.speakerSwitch), then as row 1 → Buf(T) |
-| 8 | Buf(S) | SILENCE_COMMITTED < 75, successor = S | append glue → Buf(S) |
-| 9 | Buf(S) | SILENCE_COMMITTED < 75, successor ≠ S | drop → Buf(S) (switch flush follows on the successor's events) |
-| 10 | Buf(S) | SILENCE_COMMITTED ≥ 75 | safety-net `flush(.longSilence)` (with trailing pad), then emit NOTE gap, arm leading pad → Idle (rare: only when the run closed before its latched ≥ 75 progress event fired, e.g. a reopen-merge jump followed immediately by a label change; normally row 12 already emptied the buffer and this event arrives in Idle, row 2) |
+| 8 | Buf(S) | SILENCE_COMMITTED < 25, successor = S | append glue → Buf(S) |
+| 9 | Buf(S) | SILENCE_COMMITTED < 25, successor ≠ S | drop → Buf(S) (switch flush follows on the successor's events) |
+| 10 | Buf(S) | SILENCE_COMMITTED ≥ 25 | safety-net `flush(.longSilence)` (with trailing pad), then emit NOTE gap, arm leading pad → Idle (rare: only when the run closed before its latched ≥ 25 progress event fired, e.g. a reopen-merge jump followed immediately by a label change; normally row 12 already emptied the buffer and this event arrives in Idle, row 2) |
 | 11 | Buf(S) | SPEECH_OPEN stable, speaker S | MAX check → Buf(S) |
-| 12 | Buf(S) | SILENCE_OPEN ≥ 75 (latched) | flush(.longSilence) with trailing pad → Idle |
+| 12 | Buf(S) | SILENCE_OPEN ≥ 25 (latched) | flush(.longSilence) with trailing pad → Idle |
 | 13 | Buf(S) | SPEECH_OPEN stable, speaker T ≠ S, length ≥ 3 (latched) | flush(.speakerSwitch) → Idle (T's run enters on commit, row 1) |
-| 14 | any | STOP | close/commit everything, flush(.stop), trailing gap NOTE if ≥ 75 → terminal |
+| 14 | any | STOP | close/commit everything, flush(.stop), trailing gap NOTE if ≥ 25 → terminal |
 
 Interleaving rule for edge cases named in review:
 
@@ -508,9 +508,9 @@ Interleaving rule for edge cases named in review:
   then (d) MAX check. A switch flush therefore always precedes the MAX check
   in the same frame, and the MAX check then sees an empty buffer. Determinism
   follows from the fixed (a)–(d) order.
-- **"silence crossing 6.0 s while a segment is still open"**: impossible —
+- **"silence crossing 2.0 s while a segment is still open"**: impossible —
   the silence open run reaching 2 frames forces the preceding speech run to
-  commit (§5 commit rule) before the 75-frame progress event can fire.
+  commit (§5 commit rule) before the 25-frame progress event can fire.
 
 ---
 
@@ -788,7 +788,7 @@ Notation: `f` = frame index (80 ms each), times are note-timeline seconds.
 
 Audio: A speaks 0.00–4.00 (f0–49), 0.40 s gap (f50–54), B speaks 4.40–7.20
 (f55–89), 0.24 s gap (f90–92), A speaks 7.44–9.60 (f93–119), then a long
-silence (> 6 s).
+silence (> 2 s).
 
 ```
 f:      0........49|50..54|55............89|90.92|93.........119|120......
@@ -803,17 +803,17 @@ label:  AAAAAAAAAAAA SSSSS  BBBBBBBBBBBBBBBB SSSSS AAAAAAAAAAAAAAA SSSSS...
 | f91: silence run4 reaches 2 frames | run3 B[55,90) commits → buffer(B) |
 | f95: A open run reaches 3 frames | run4 dropped; **flush(.speakerSwitch)** → **cue 2: Speaker B, 00:04.400 → 00:07.200** |
 | f121: silence reaches 2 frames | run5 A[93,120) commits → buffer(A) |
-| f195: silence reaches 75 frames | **flush(.longSilence)** → **cue 3: Speaker A, 00:07.440 → 00:09.600**, uploaded WITH the 2 s trailing pad (slice ends f145 = 00:11.600) |
-| silence run eventually commits / stop | ≥ 75 frames ⇒ `NOTE gap start=00:09.600 end=…`; leading pad armed for the next segment |
+| f145: silence reaches 25 frames | **flush(.longSilence)** → **cue 3: Speaker A, 00:07.440 → 00:09.600**, uploaded WITH the 0.96 s trailing pad (slice ends f132 = 00:10.560) |
+| silence run eventually commits / stop | ≥ 25 frames ⇒ `NOTE gap start=00:09.600 end=…`; leading pad armed for the next segment |
 
 Uploads 1–3 run concurrently (≤ 2 at a time); cues append in order 1, 2, 3
 regardless of completion order. The 0.40 s and 0.24 s gaps are inside no cue
-and get no NOTE (< 6 s) — the timestamps alone account for them.
+and get no NOTE (< 2 s) — the timestamps alone account for them.
 
 ### 12.2 Monologue crossing 10 s with an embedded 1 s pause
 
 Audio: A speaks 0.00–6.00 (f0–74), 1.04 s pause (f75–87), A speaks
-7.04–13.04 (f88–162), then a long silence (> 6 s).
+7.04–13.04 (f88–162), then a long silence (> 2 s).
 
 ```
 f:      0...........74|75....87|88..................162|163......
@@ -824,11 +824,11 @@ label:  AAAAAAAAAAAAAAA SSSSSSSS AAAAAAAAAAAAAAAAAAAAAAAA SSSS...
 | When | Effect |
 |---|---|
 | f76 | run1 A[0,75) commits → buffer(A) = 75 frames |
-| f75–87 | silence open run: 13 frames < 75 ⇒ no longSilence flush |
+| f75–87 | silence open run: 13 frames < 25 ⇒ no longSilence flush |
 | f90 (A stable again) | run2 sil[75,88) commits; successor is A == buffer speaker ⇒ **glued**: buffer = 88 frames |
 | f124 (open A extent 37) | total = 88 + 37 = 125 = `MAX_BUFFER_FRAMES` → boundary search: boundary at f88 (glue│open), `bufEnd 125 − 88 = 37 ≤ FLUSH_LOOKBACK` ⇒ cut at f88 → trim trailing glue [75,88) → **cue 4: Speaker A, 00:00.000 → 00:06.000**; `pendingContinuation = A`; open run keeps buffering from f88 |
 | f164 | run3 A[88,163) commits (remainder beyond `openConsumedUpTo` = all of it, no hard cut happened) → buffer = 75 frames |
-| f238 (silence = 75) | **flush(.longSilence)** → **cue 5 (`NOTE continuation`): Speaker A, 00:07.040 → 00:13.040**, uploaded with the 2 s trailing pad |
+| f188 (silence = 25) | **flush(.longSilence)** → **cue 5 (`NOTE continuation`): Speaker A, 00:07.040 → 00:13.040**, uploaded with the 0.96 s trailing pad |
 
 Note the boundary cut used the natural pause: cue 4 ends exactly where speech
 stopped (6.00), not at the 10 s mark, and the 1.04 s pause sits between the
@@ -839,7 +839,7 @@ Had the pause not existed (one unbroken 13 s run): at open extent 125 with no
 boundary in range, hard cut at f125 → cue: 00:00.000 → 00:10.000, and the run
 continues buffering from f125 with `openConsumedUpTo = 125`.
 
-### 12.3 Pause > 6 s, same speaker resumes (gap-edge pads)
+### 12.3 Pause > 2 s, same speaker resumes (gap-edge pads)
 
 Audio: A speaks 0.00–3.04 (f0–37), 6.40 s silence (f38–117), A speaks
 9.44–11.60 (f118–144), user presses Stop at 12.64 s (`realSamples =
@@ -854,10 +854,10 @@ label:  AAAAAAAAAA SSSSSSSSSSSSSSSSSSSSSSSSSSSS AAAAAAAAAAAA SSSSSSSSS
 | When | Effect |
 |---|---|
 | f39 | run1 A[0,38) commits → buffer(A) |
-| f113 (silence = 75) | **flush(.longSilence)** → **cue 6: Speaker A, 00:00.000 → 00:03.040**, upload slice [f0, f63) — the 2 s trailing pad reaches into the silence |
-| f120 (A stable) | run2 sil[38,118) commits: 80 frames ≥ 75 ⇒ **`NOTE gap start=00:03.040 end=00:09.440`**; leading pad armed at f118 |
-| f146 | run3 A[118,145) commits → buffer(A) opens at f118 with `uploadStart = f93` (2 s into the gap's tail — speech the diarizer detected late is still uploaded) |
-| stop | pad zeros → frames ≥ 158 forced SILENCE; run4 sil[145,158) = 13 frames < 75 ⇒ no gap NOTE; **flush(.stop)** → **cue 7: Speaker A, 00:09.440 → 00:11.600**, upload slice [f93, f145) |
+| f63 (silence = 25) | **flush(.longSilence)** → **cue 6: Speaker A, 00:00.000 → 00:03.040**, upload slice [f0, f50) — the 0.96 s trailing pad reaches into the silence |
+| f120 (A stable) | run2 sil[38,118) commits: 80 frames ≥ 25 ⇒ **`NOTE gap start=00:03.040 end=00:09.440`**; leading pad armed at f118 |
+| f146 | run3 A[118,145) commits → buffer(A) opens at f118 with `uploadStart = f106` (0.96 s into the gap's tail — speech the diarizer detected late is still uploaded) |
+| stop | pad zeros → frames ≥ 158 forced SILENCE; run4 sil[145,158) = 13 frames < 25 ⇒ no gap NOTE; **flush(.stop)** → **cue 7: Speaker A, 00:09.440 → 00:11.600**, upload slice [f106, f145) |
 
 Final file (once uploads land), abridged:
 
@@ -877,9 +877,9 @@ NOTE session 1 end=… offset=00:00:12.640
 
 `audio.webm` contains all 12.64 s including both silences; every cue
 timestamp seeks correctly into it. The pads live only in the uploaded
-segments (cue 6's upload carries 00:03.040–00:05.040 of silence after its
-speech; cue 7's carries 00:07.440–00:09.440 before its speech) — cue
-timestamps and the gap NOTE are unaffected. A pause of 2.80 s under this
+segments (cue 6's upload carries 00:03.040–00:04.000 of silence after its
+speech; cue 7's carries 00:08.480–00:09.440 before its speech) — cue
+timestamps and the gap NOTE are unaffected. A pause of 1.5 s under this
 design would simply glue: one cue spanning both speech stretches, no gap.
 
 ---
@@ -890,7 +890,7 @@ design would simply glue: one cue spanning both speech stretches, no gap.
    runs ≥ 3 frames, silence runs ≥ 2 frames.
 2. Every cue's `[startSec, endSec)` lies inside real audio; cues are disjoint
    and ordered; `endSec − startSec ≤ 10.0 s + 0.4 s` (burst overshoot).
-3. Union of (cues ∪ gap NOTEs ∪ sub-6 s uncovered silences ∪
+3. Union of (cues ∪ gap NOTEs ∪ sub-2 s uncovered silences ∪
    leading/trailing silence) = the whole note timeline; no sample is
    double-covered by cues.
 4. Every upload's PCM slice equals `audio.webm`'s decoded samples over the

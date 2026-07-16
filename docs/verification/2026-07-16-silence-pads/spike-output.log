@@ -1,17 +1,17 @@
-[23:34:14.891] [INFO] [FluidAudio.SortformerModels] Loading Sortformer models from HuggingFace...
-[23:34:14.894] [INFO] [FluidAudio.SortformerModels] Downloading Sortformer models from HuggingFace from bundle: v3/fp16/Sortformer_v2.1.mlmodelc...
-[23:34:14.897] [INFO] [FluidAudio.DownloadUtils] Host environment: macOS Version 26.3 (Build 25D125), arch=arm64, chip=Apple M2 Pro, cores=12/12, mem=16 GB, rosetta=false
-[23:34:14.897] [INFO] [FluidAudio.DownloadUtils] Found sortformer locally, no download needed
-[23:34:24.344] [INFO] [FluidAudio.DownloadUtils] Compiled model v3/fp16/Sortformer_v2.1.mlmodelc in 9445.14 ms :: macOS Version 26.3 (Build 25D125), arch=arm64, chip=Apple M2 Pro, cores=12/12, mem=16 GB, rosetta=false
-[23:34:24.354] [INFO] [FluidAudio.SortformerModels] Sortformer models loaded from HuggingFace in 9.45s
-[23:34:24.354] [INFO] [FluidAudio.SortformerDiarizerPipeline] Sortformer initialized with pre-loaded models
-[23:34:24.354] [DEBUG] [FluidAudio.SortformerDiarizerPipeline] Sortformer state reset
-[23:34:27.683] [DEBUG] [FluidAudio.SortformerDiarizerPipeline] Sortformer state reset
+[23:52:42.284] [INFO] [FluidAudio.SortformerModels] Loading Sortformer models from HuggingFace...
+[23:52:42.287] [INFO] [FluidAudio.SortformerModels] Downloading Sortformer models from HuggingFace from bundle: v3/fp16/Sortformer_v2.1.mlmodelc...
+[23:52:42.289] [INFO] [FluidAudio.DownloadUtils] Host environment: macOS Version 26.3 (Build 25D125), arch=arm64, chip=Apple M2 Pro, cores=12/12, mem=16 GB, rosetta=false
+[23:52:42.289] [INFO] [FluidAudio.DownloadUtils] Found sortformer locally, no download needed
+[23:52:50.953] [INFO] [FluidAudio.DownloadUtils] Compiled model v3/fp16/Sortformer_v2.1.mlmodelc in 8662.82 ms :: macOS Version 26.3 (Build 25D125), arch=arm64, chip=Apple M2 Pro, cores=12/12, mem=16 GB, rosetta=false
+[23:52:50.956] [INFO] [FluidAudio.SortformerModels] Sortformer models loaded from HuggingFace in 8.67s
+[23:52:50.956] [INFO] [FluidAudio.SortformerDiarizerPipeline] Sortformer initialized with pre-loaded models
+[23:52:50.956] [DEBUG] [FluidAudio.SortformerDiarizerPipeline] Sortformer state reset
+[23:52:53.924] [DEBUG] [FluidAudio.SortformerDiarizerPipeline] Sortformer state reset
 synthesizing speech (files only — silent)…
 transcriber: stub
 loading Sortformer models (cached after first run)…
-session 1 started (prepare took 9.5 s)
-session 1: 23.6 s audio diarized in 3.3 s (7.1x realtime)
+session 1 started (prepare took 8.7 s)
+session 1: 23.6 s audio diarized in 3.0 s (8.0x realtime)
 session 2 stopped
 
 --- transcript.vtt ---
@@ -19,7 +19,7 @@ WEBVTT
 
 NOTE simbi note="Spike Note"
 
-NOTE session 1 start=2026-07-16T23:34:24+09:00 offset=00:00:00.000
+NOTE session 1 start=2026-07-16T23:52:50+09:00 offset=00:00:00.000
 
 1
 00:00:00.000 --> 00:00:09.040
@@ -31,15 +31,15 @@ NOTE gap start=00:00:09.040 end=00:00:16.160
 00:00:16.160 --> 00:00:23.520
 <v Speaker 2>[transcription arrives in M3]
 
-NOTE session 1 end=2026-07-16T23:34:27+09:00 offset=00:00:23.616
+NOTE session 1 end=2026-07-16T23:52:53+09:00 offset=00:00:23.616
 
-NOTE session 2 start=2026-07-16T23:34:27+09:00 offset=00:00:23.616
+NOTE session 2 start=2026-07-16T23:52:53+09:00 offset=00:00:23.616
 
 3
 00:00:23.616 --> 00:00:26.976
 <v Speaker 1>[transcription arrives in M3]
 
-NOTE session 2 end=2026-07-16T23:34:28+09:00 offset=00:00:27.380
+NOTE session 2 end=2026-07-16T23:52:54+09:00 offset=00:00:27.380
 
 ----------------------
 PASS sessions: 1 and 2 both opened and closed
