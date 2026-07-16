@@ -1,3 +1,4 @@
+import CodexKit
 import FluidAudio
 import Foundation
 import SimbiKit
@@ -46,10 +47,19 @@ public actor RecordingPipeline {
     private var sessionNumber = 0
     private var recording = false
 
-    /// Upload queue (guide §9.2): ≤ 2 concurrent; the stub transcriber
-    /// resolves instantly, the M3 uploader will not.
+    /// Upload queue (guide §9.2): ≤ 2 concurrent, 3 attempts each with
+    /// 1 s / 4 s backoff; missing/rejected auth pauses the whole queue
+    /// (disk-backed — nothing is lost) and retries every 30 s.
     private var uploadQueue: [Int] = []
     private var uploadsInFlight = 0
+    private var uploadsPaused = false
+    /// Cues reserved in the outbox by THIS process — start-time re-enqueue
+    /// is for cross-restart recovery and must skip segments that are merely
+    /// still uploading (their pending files are live, not orphaned).
+    private var trackedCues: Set<Int> = []
+    private static let uploadMaxAttempts = 3
+    private static let uploadBackoff: [Duration] = [.seconds(1), .seconds(4)]
+    private static let authRetryDelay: Duration = .seconds(30)
 
     private var liveContinuation: AsyncStream<RecordingLiveUpdate>.Continuation?
 
@@ -90,6 +100,19 @@ public actor RecordingPipeline {
 
         if state.activeSession != nil {
             try recoverFromCrash()
+        } else {
+            // Pending segments from a previous run (auth outage, quit before
+            // the queue drained): their cues — and the session-end note that
+            // was queued behind them — were never rendered. Re-enqueue in
+            // cueIndex order, then close the old session in the transcript.
+            let reenqueued = reenqueuePendingSegments()
+            if reenqueued > 0, state.sessionCount > 0 {
+                try outbox.append(
+                    .sessionEnd(
+                        n: state.sessionCount,
+                        wallClock: state.lastSessionEnd ?? .now,
+                        offset: TimeInterval(state.totalSamples) / 16000))
+            }
         }
 
         sessionNumber = state.sessionCount + 1
@@ -214,6 +237,7 @@ public actor RecordingPipeline {
         // the cue to the outbox and upload queue.
         state.nextCueIndex += 1
         try? state.save(noteFolder: noteFolderURL)
+        trackedCues.insert(cueIndex)
         outbox.reserveCue(
             index: cueIndex, start: startSec, end: endSec,
             speaker: "Speaker \(command.speaker + 1)",
@@ -233,29 +257,74 @@ public actor RecordingPipeline {
     }
 
     private func kickUploads() {
-        while uploadsInFlight < 2, !uploadQueue.isEmpty {
+        while !uploadsPaused, uploadsInFlight < 2, !uploadQueue.isEmpty {
             let cueIndex = uploadQueue.removeFirst()
             uploadsInFlight += 1
-            let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
-            let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
-            Task {
-                let text: String
-                do {
-                    text = try await self.transcriber.transcribe(webmFile: webmURL)
-                    try? FileManager.default.removeItem(at: webmURL)
-                    try? FileManager.default.removeItem(at: jsonURL)
-                } catch {
-                    // Terminal failure: keep pending files for retry tooling.
-                    text = "[inaudible]"
+            Task { await self.runUpload(cueIndex: cueIndex) }
+        }
+    }
+
+    private func runUpload(cueIndex: Int) async {
+        let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
+        let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
+
+        for attempt in 1...Self.uploadMaxAttempts {
+            do {
+                let text = try await transcriber.transcribe(webmFile: webmURL)
+                try? FileManager.default.removeItem(at: webmURL)
+                try? FileManager.default.removeItem(at: jsonURL)
+                uploadFinished(cueIndex: cueIndex, text: text)
+                return
+            } catch let error as TranscriptionClient.TranscriptionError {
+                switch error {
+                case .authUnavailable, .authRejected:
+                    // Not this segment's fault: requeue it, pause the whole
+                    // queue, retry after a delay (SPEC.md §7 — the queue is
+                    // disk-backed and drains on recovery).
+                    pauseUploads(requeuing: cueIndex)
+                    return
+                case .requestFailed, .malformedResponse:
+                    break  // retryable
                 }
-                self.uploadFinished(cueIndex: cueIndex, text: text)
+            } catch {
+                // Unknown error: treat as retryable transport failure.
+            }
+            if attempt < Self.uploadMaxAttempts {
+                try? await Task.sleep(for: Self.uploadBackoff[attempt - 1])
             }
         }
+
+        // Terminal failure: the timeline stays complete with [inaudible];
+        // the encoded segment moves to failed/ for post-hoc retry tooling
+        // (pending/ must only hold cues not yet rendered to the VTT).
+        let failedDir = noteFolderURL.appending(path: ".simbi/failed")
+        try? FileManager.default.createDirectory(at: failedDir, withIntermediateDirectories: true)
+        for url in [webmURL, jsonURL] {
+            try? FileManager.default.moveItem(
+                at: url, to: failedDir.appending(path: url.lastPathComponent))
+        }
+        uploadFinished(cueIndex: cueIndex, text: "[inaudible]")
     }
 
     private func uploadFinished(cueIndex: Int, text: String) {
         try? outbox.fulfillCue(index: cueIndex, text: text)
         uploadsInFlight -= 1
+        kickUploads()
+    }
+
+    private func pauseUploads(requeuing cueIndex: Int) {
+        uploadQueue.insert(cueIndex, at: 0)
+        uploadsInFlight -= 1
+        guard !uploadsPaused else { return }
+        uploadsPaused = true
+        Task {
+            try? await Task.sleep(for: Self.authRetryDelay)
+            self.resumeUploads()
+        }
+    }
+
+    private func resumeUploads() {
+        uploadsPaused = false
         kickUploads()
     }
 
@@ -294,6 +363,34 @@ public actor RecordingPipeline {
         try state.save(noteFolder: noteFolderURL)
         liveContinuation?.finish()
         liveContinuation = nil
+    }
+
+    /// Reserves + enqueues every segment left in `.simbi/pending/`, in
+    /// cueIndex order (guide §9.2 / §11: the disk queue survives restarts;
+    /// smaller indices re-enter the outbox ahead of any new entries).
+    /// Returns the number of re-enqueued segments.
+    private func reenqueuePendingSegments() -> Int {
+        let pendingIndices =
+            ((try? FileManager.default.contentsOfDirectory(
+                at: pendingDirURL, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+            .compactMap { Int($0.deletingPathExtension().lastPathComponent) }
+            .sorted()
+        var count = 0
+        for cueIndex in pendingIndices where !trackedCues.contains(cueIndex) {
+            let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
+            guard let data = try? Data(contentsOf: jsonURL),
+                let sidecar = try? JSONDecoder().decode(PendingSegment.self, from: data)
+            else { continue }
+            trackedCues.insert(cueIndex)
+            outbox.reserveCue(
+                index: sidecar.cueIndex, start: sidecar.startSec, end: sidecar.endSec,
+                speaker: "Speaker \(sidecar.speaker + 1)",
+                continuation: sidecar.continuation)
+            enqueueUpload(sidecar.cueIndex)
+            count += 1
+        }
+        return count
     }
 
     // MARK: - Crash recovery (§10.3)

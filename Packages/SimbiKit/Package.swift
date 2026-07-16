@@ -61,6 +61,7 @@ let package = Package(
             name: "SimbiAudio",
             dependencies: [
                 "SimbiKit",
+                "CodexKit",
                 "CLibOpus",
                 "CLibWebM",
                 .product(name: "FluidAudio", package: "FluidAudio"),
