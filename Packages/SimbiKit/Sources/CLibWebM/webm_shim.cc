@@ -234,8 +234,9 @@ swebm_reader* swebm_reader_open(const char* path) {
     long parse_len = 0;
     const long status = r->segment->LoadCluster(parse_pos, parse_len);
     if (status < 0) {
-      delete r;
-      return nullptr;
+      // Truncated trailing cluster (e.g. after a crash): keep everything
+      // parsed so far and drop the tail (guide §10.3 step 1).
+      break;
     }
     if (status != 0) break;  // 1 = reached end of segment
     // LoadCluster may return 0 without new clusters at EOF; detect by

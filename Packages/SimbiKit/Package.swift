@@ -60,6 +60,7 @@ let package = Package(
         .target(
             name: "SimbiAudio",
             dependencies: [
+                "SimbiKit",
                 "CLibOpus",
                 "CLibWebM",
                 .product(name: "FluidAudio", package: "FluidAudio"),
@@ -70,6 +71,7 @@ let package = Package(
             name: "SimbiUI",
             dependencies: [
                 "SimbiKit",
+                "SimbiAudio",
                 "CodexKit",
                 .product(name: "STTextView", package: "STTextView"),
                 .product(name: "STTextView-Plugin-Neon", package: "STTextView-Plugin-Neon"),
@@ -80,6 +82,13 @@ let package = Package(
         .executableTarget(
             name: "simbi-audio-spike",
             dependencies: ["SimbiAudio", "CodexKit"]
+        ),
+        // M2 spike: silent headless run of the full recording pipeline with
+        // the REAL Sortformer models — synthesized speech is fed straight in
+        // as PCM (no mic, no speakers). Not shipped in the app.
+        .executableTarget(
+            name: "simbi-pipeline-spike",
+            dependencies: ["SimbiAudio"]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),

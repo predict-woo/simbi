@@ -37,13 +37,17 @@ final class NoteDocument {
     }
 }
 
-/// The note view: title, `note.md` editor, and (until M2) a placeholder
-/// where the recording controls and live transcript pane will live.
+/// The note view: title, `note.md` editor, recording controls and the live
+/// transcript pane (SPEC.md §6).
 struct NoteView: View {
     @State private var document: NoteDocument
+    @State private var recorder: RecordingController
+    @State private var transcript: TranscriptModel
 
     init(noteFolderURL: URL) {
         self._document = State(initialValue: NoteDocument(noteFolderURL: noteFolderURL))
+        self._recorder = State(initialValue: RecordingController.shared(noteFolderURL: noteFolderURL))
+        self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
     }
 
     var body: some View {
@@ -51,12 +55,14 @@ struct NoteView: View {
             editorPane
                 .frame(minWidth: 320, idealWidth: 560)
             transcriptPane
-                .frame(minWidth: 240, idealWidth: 360)
+                .frame(minWidth: 260, idealWidth: 380)
         }
         .navigationTitle(document.noteFolderURL.lastPathComponent)
         .onChange(of: document.text) {
             document.scheduleAutosave()
         }
+        // Recording deliberately continues if the view goes away (the
+        // controller is shared per note); only the Stop button ends it.
         .onDisappear {
             document.saveNow()
         }
@@ -67,12 +73,70 @@ struct NoteView: View {
     }
 
     private var transcriptPane: some View {
-        ContentUnavailableView(
-            "No Recording",
-            systemImage: "waveform",
-            description: Text("Recording and the live transcript arrive in M2.")
-        )
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            RecordingHeader(recorder: recorder)
+            Divider()
+            TranscriptView(model: transcript)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
         .background(.background.secondary)
+    }
+}
+
+/// Record/Stop button with live elapsed time and the tentative speaker
+/// indicator.
+struct RecordingHeader: View {
+    let recorder: RecordingController
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: { recorder.toggle() }) {
+                switch recorder.status {
+                case .idle, .failed:
+                    Label(
+                        recorder.hasRecording ? "Resume" : "Record",
+                        systemImage: "record.circle")
+                case .preparing:
+                    Label("Preparing…", systemImage: "hourglass")
+                case .recording:
+                    Label("Stop", systemImage: "stop.circle.fill")
+                case .stopping:
+                    Label("Stopping…", systemImage: "hourglass")
+                }
+            }
+            .tint(recorder.status == .recording ? .red : nil)
+            .disabled(recorder.status == .preparing || recorder.status == .stopping)
+
+            Text(elapsedText)
+                .font(.body.monospacedDigit())
+                .foregroundStyle(recorder.status == .recording ? .primary : .secondary)
+
+            Spacer()
+
+            if recorder.status == .recording {
+                if let slot = recorder.tentativeSpeaker {
+                    Label("Speaker \(slot + 1) speaking…", systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(TranscriptView.speakerColors[slot % 4])
+                } else {
+                    Label("silence", systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            if case .failed(let message) = recorder.status {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    private var elapsedText: String {
+        let total = Int(recorder.elapsed)
+        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }

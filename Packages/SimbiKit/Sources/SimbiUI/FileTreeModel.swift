@@ -52,7 +52,13 @@ public final class FileTreeModel {
 
     public func refresh() {
         nodes = FileTreeScanner.scan(root: home.rootURL)
-        if let selection, FileTreeNode.find(selection, in: nodes) == nil {
+        // Clear the selection only when the item is truly gone from disk —
+        // a transient scan miss during heavy file churn (e.g. the recording
+        // pipeline writing into the note folder) must not tear down the
+        // selected note view mid-recording.
+        if let selection, FileTreeNode.find(selection, in: nodes) == nil,
+            !FileManager.default.fileExists(atPath: selection.path)
+        {
             self.selection = nil
         }
     }

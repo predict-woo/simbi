@@ -1,0 +1,25 @@
+WEBVTT
+
+NOTE simbi note="Spike Note"
+
+NOTE session 1 start=2026-07-16T18:30:09+09:00 offset=00:00:00.000
+
+1
+00:00:00.000 --> 00:00:09.040
+<v Speaker 1>[transcription arrives in M3]
+
+NOTE gap start=00:00:09.040 end=00:00:12.080
+
+2
+00:00:12.080 --> 00:00:19.360
+<v Speaker 2>[transcription arrives in M3]
+
+NOTE session 1 end=2026-07-16T18:30:14+09:00 offset=00:00:19.616
+
+NOTE session 2 start=2026-07-16T18:30:14+09:00 offset=00:00:19.616
+
+3
+00:00:19.616 --> 00:00:22.976
+<v Speaker 1>[transcription arrives in M3]
+
+NOTE session 2 end=2026-07-16T18:30:15+09:00 offset=00:00:23.380
