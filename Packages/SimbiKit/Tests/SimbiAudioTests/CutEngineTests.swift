@@ -45,12 +45,12 @@ struct CutEngineTests {
                         startFrame: 55, endFrame: 90,
                         uploadStartFrame: 55, uploadEndFrame: 90, speaker: 1,
                         reason: .speakerSwitch, continuation: false)),
-                // Long-silence flush carries the 2 s trailing upload pad
+                // Long-silence flush carries the ~1 s trailing upload pad
                 // into the silence; the cue still ends at the speech.
                 .flush(
                     FlushCommand(
                         startFrame: 93, endFrame: 120,
-                        uploadStartFrame: 93, uploadEndFrame: 145, speaker: 0,
+                        uploadStartFrame: 93, uploadEndFrame: 132, speaker: 0,
                         reason: .longSilence, continuation: false)),
                 .gap(startFrame: 120, endFrame: 200),
             ])
@@ -79,7 +79,7 @@ struct CutEngineTests {
                 .flush(
                     FlushCommand(
                         startFrame: 88, endFrame: 163,
-                        uploadStartFrame: 88, uploadEndFrame: 188, speaker: 0,
+                        uploadStartFrame: 88, uploadEndFrame: 175, speaker: 0,
                         reason: .longSilence, continuation: true)),
                 .gap(startFrame: 163, endFrame: 243),
             ])
@@ -103,18 +103,18 @@ struct CutEngineTests {
                 .flush(
                     FlushCommand(
                         startFrame: 125, endFrame: 163,
-                        uploadStartFrame: 125, uploadEndFrame: 188, speaker: 0,
+                        uploadStartFrame: 125, uploadEndFrame: 175, speaker: 0,
                         reason: .longSilence, continuation: true)),
                 .gap(startFrame: 163, endFrame: 243),
             ])
     }
 
-    @Test("§12.3 pause > 6 s: pads on both gap edges, stop with pad")
+    @Test("§12.3 pause > 2 s: pads on both gap edges, stop with pad")
     func scenario3() {
         var engine = CutEngine()
         var actions: [CutAction] = []
         feed(&engine, A, 38, into: &actions)  // f0–37
-        feed(&engine, S, 80, into: &actions)  // f38–117 (6.4 s)
+        feed(&engine, S, 80, into: &actions)  // f38–117 (6.4 s > 2 s)
         feed(&engine, A, 27, into: &actions)  // f118–144
         feed(&engine, S, 13, into: &actions)  // f145–157 real silence
         // Stop at 12.64 s: realFrameEnd = 158; the pipeline announces the
@@ -128,45 +128,45 @@ struct CutEngineTests {
                 .flush(
                     FlushCommand(
                         startFrame: 0, endFrame: 38,
-                        uploadStartFrame: 0, uploadEndFrame: 63, speaker: 0,
+                        uploadStartFrame: 0, uploadEndFrame: 50, speaker: 0,
                         reason: .longSilence, continuation: false)),
                 .gap(startFrame: 38, endFrame: 118),
-                // The resumed segment's upload starts 2 s into the gap's
+                // The resumed segment's upload starts ~1 s into the gap's
                 // tail (leading pad); its cue still starts at the speech.
                 // Final silence has only 13 real frames: no gap, trailing
                 // silence trimmed from both cue and upload at .stop.
                 .flush(
                     FlushCommand(
                         startFrame: 118, endFrame: 145,
-                        uploadStartFrame: 93, uploadEndFrame: 145, speaker: 0,
+                        uploadStartFrame: 106, uploadEndFrame: 145, speaker: 0,
                         reason: .stop, continuation: false)),
             ])
     }
 
-    @Test("silence ≤ 6 s between same-speaker speech glues into one cue")
-    func mediumSilenceGlues() {
+    @Test("silence < 2 s between same-speaker speech glues into one cue")
+    func shortSilenceGlues() {
         var engine = CutEngine()
         var actions: [CutAction] = []
         feed(&engine, A, 20, into: &actions)  // f0–19
-        feed(&engine, S, 60, into: &actions)  // f20–79 (4.8 s — glued now)
-        feed(&engine, A, 20, into: &actions)  // f80–99
-        actions.append(contentsOf: engine.stop(realFrameEnd: 100))
+        feed(&engine, S, 20, into: &actions)  // f20–39 (1.6 s — glued)
+        feed(&engine, A, 20, into: &actions)  // f40–59
+        actions.append(contentsOf: engine.stop(realFrameEnd: 60))
         #expect(
             actions == [
                 .flush(
                     FlushCommand(
-                        startFrame: 0, endFrame: 100,
-                        uploadStartFrame: 0, uploadEndFrame: 100, speaker: 0,
+                        startFrame: 0, endFrame: 60,
+                        uploadStartFrame: 0, uploadEndFrame: 60, speaker: 0,
                         reason: .stop, continuation: false))
             ])
     }
 
-    @Test("silence ≤ 6 s before a different speaker is dropped, no gap")
-    func mediumSilenceAcrossSwitch() {
+    @Test("silence > 2 s before a different speaker: gap with pads both sides")
+    func gapAcrossSwitch() {
         var engine = CutEngine()
         var actions: [CutAction] = []
         feed(&engine, A, 20, into: &actions)  // f0–19
-        feed(&engine, S, 60, into: &actions)  // f20–79
+        feed(&engine, S, 60, into: &actions)  // f20–79 (4.8 s > 2 s)
         feed(&engine, B, 20, into: &actions)  // f80–99
         actions.append(contentsOf: engine.stop(realFrameEnd: 100))
         #expect(
@@ -174,12 +174,13 @@ struct CutEngineTests {
                 .flush(
                     FlushCommand(
                         startFrame: 0, endFrame: 20,
-                        uploadStartFrame: 0, uploadEndFrame: 20, speaker: 0,
-                        reason: .speakerSwitch, continuation: false)),
+                        uploadStartFrame: 0, uploadEndFrame: 32, speaker: 0,
+                        reason: .longSilence, continuation: false)),
+                .gap(startFrame: 20, endFrame: 80),
                 .flush(
                     FlushCommand(
                         startFrame: 80, endFrame: 100,
-                        uploadStartFrame: 80, uploadEndFrame: 100, speaker: 1,
+                        uploadStartFrame: 68, uploadEndFrame: 100, speaker: 1,
                         reason: .stop, continuation: false)),
             ])
     }

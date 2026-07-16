@@ -14,13 +14,15 @@ public enum CutConstants {
     public static let minSilenceFrames = 2
     /// Silence ≥ this is discarded (its middle, at least): flush the buffer,
     /// emit a `NOTE gap`. Shorter silences glue into the buffer.
-    public static let silenceDiscardFrames = 75
+    public static let silenceDiscardFrames = 25
     /// Silence kept in the UPLOAD at each edge of a discarded gap: the flush
     /// before the gap carries this much trailing silence, and the first
     /// segment after it starts this much early. Cue extents are unaffected —
-    /// the pads exist so the ASR hears natural pauses and so the diarizer's
-    /// speech-onset lag after a long silence can't clip resumed speech.
-    public static let silencePadFrames = 25
+    /// the pads exist so uploads don't cut off abruptly and so the
+    /// diarizer's speech-onset lag after a pause can't clip resumed speech.
+    /// MUST satisfy 2·pad < discard (12+12 = 24 < 25) or adjacent padded
+    /// uploads would overlap inside a minimal gap and duplicate words.
+    public static let silencePadFrames = 12
     public static let maxBufferFrames = 125
     public static let flushLookbackFrames = 37
     public static let stopPadSeconds = 2.0
