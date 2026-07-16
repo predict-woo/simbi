@@ -231,10 +231,12 @@ public actor RecordingPipeline {
         let startSec = noteTime(command.startFrame)
         let endSec = min(noteTime(command.endFrame), realAudioEndSec)
 
-        // One contiguous PCM slice (§6.3 step 5); the upper bound clamps to
-        // written audio for the stop-time final frame.
-        let sliceEnd = min(command.endFrame * 1280, ring.writeHead)
-        let pcm = ring.slice((command.startFrame * 1280)..<sliceEnd)
+        // One contiguous PCM slice (§6.3 step 5) over the UPLOAD extents —
+        // these can carry up to 2 s of silence pad at a discarded gap's
+        // edges; cue timestamps stay on the speech extents. The upper bound
+        // clamps to written audio for the stop-time final frame.
+        let sliceEnd = min(command.uploadEndFrame * 1280, ring.writeHead)
+        let pcm = ring.slice((command.uploadStartFrame * 1280)..<sliceEnd)
 
         let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
         let segmentEncoder = try OpusWebMEncoder(fileURL: webmURL, mode: .create)

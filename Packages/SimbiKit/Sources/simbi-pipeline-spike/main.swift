@@ -83,9 +83,10 @@ let speechA2 = try synthesize(
     "Back again after resuming the recording in a brand new session.",
     voice: "Samantha", in: workDir)
 
-// Session 1 timeline: A, 3 s silence, B, 1 s silence tail.
+// Session 1 timeline: A, 7 s silence (> 6 s ⇒ NOTE gap with 2 s upload
+// pads at both edges), B, 1 s silence tail.
 var session1: [Float] = speechA1
-session1.append(contentsOf: [Float](repeating: 0, count: 3 * 16000))
+session1.append(contentsOf: [Float](repeating: 0, count: 7 * 16000))
 session1.append(contentsOf: speechB)
 session1.append(contentsOf: [Float](repeating: 0, count: 16000))
 
@@ -194,7 +195,12 @@ let session1End = Double(session1.count) / 16000
 let hasSession2Cue = cues.contains { $0.start >= session1End - 0.1 }
 guard hasSession2Cue else { fail("resume", "no cue in session 2's time range") }
 print("PASS resume: session 2 produced a cue past \(String(format: "%.2f", session1End)) s")
-print("INFO speakers detected: \(speakers.sorted()) · gap notes: \(gaps)")
+
+// The 7 s mid-session pause must be discarded as a NOTE gap (> 6 s rule);
+// its 2 s edge pads live in the uploads and never show in the VTT.
+guard gaps >= 1 else { fail("gap", "expected a NOTE gap for the 7 s pause, got none") }
+print("PASS gap: \(gaps) NOTE gap(s) for the 7 s pause")
+print("INFO speakers detected: \(speakers.sorted())")
 
 let probe = try OpusWebMDecoder(fileURL: noteFolder.appending(path: "audio.webm"))
 let expectedMs = (session1.count + session2.count) / 16

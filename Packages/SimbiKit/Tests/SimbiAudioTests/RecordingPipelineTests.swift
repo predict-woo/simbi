@@ -104,19 +104,20 @@ struct RecordingPipelineTests {
         defer { try? FileManager.default.removeItem(at: noteFolder) }
         let vttURL = noteFolder.appending(path: "transcript.vtt")
 
-        // Session shape: A speaks f0–37, silence f38–74, A speaks f75–99.
+        // Session shape: A speaks f0–37, silence f38–117 (6.4 s → gap),
+        // A speaks f118–149.
         let diarizer = FakeDiarizer { frame in
             switch frame {
             case 0..<38: return .speech(slot: 0)
-            case 38..<75: return .silence
+            case 38..<118: return .silence
             default: return .speech(slot: 0)
             }
         }
         let pipeline = RecordingPipeline(noteFolderURL: noteFolder, diarizer: diarizer)
 
         try await pipeline.start()
-        // 100 frames = 8.00 s, ingested in 10-frame batches.
-        let samples = tone(frames: 100)
+        // 150 frames = 12.00 s, ingested in 10-frame batches.
+        let samples = tone(frames: 150)
         for batch in stride(from: 0, to: samples.count, by: 12800) {
             try await pipeline.ingest(samples: Array(samples[batch..<(batch + 12800)]))
         }
@@ -134,28 +135,28 @@ struct RecordingPipelineTests {
             Issue.record("expected cue 1 [0, 3.04], got \(document.entries[1])")
             return
         }
-        guard case .gap(3.04, 6.0) = document.entries[2] else {
-            Issue.record("expected gap [3.04, 6.0], got \(document.entries[2])")
+        guard case .gap(3.04, 9.44) = document.entries[2] else {
+            Issue.record("expected gap [3.04, 9.44], got \(document.entries[2])")
             return
         }
-        guard case .cue(2, 6.0, 8.0, "Speaker 1", _, false) = document.entries[3] else {
-            Issue.record("expected cue 2 [6.0, 8.0], got \(document.entries[3])")
+        guard case .cue(2, 9.44, 12.0, "Speaker 1", _, false) = document.entries[3] else {
+            Issue.record("expected cue 2 [9.44, 12.0], got \(document.entries[3])")
             return
         }
-        guard case .sessionEnd(1, _, 8.0) = document.entries[4] else {
-            Issue.record("expected session 1 end at 8.0, got \(document.entries[4])")
+        guard case .sessionEnd(1, _, 12.0) = document.entries[4] else {
+            Issue.record("expected session 1 end at 12.0, got \(document.entries[4])")
             return
         }
 
         // State and audio bookkeeping.
         let state = try NoteRecordingState.load(noteFolder: noteFolder)
-        #expect(state.totalSamples == 128_000)
+        #expect(state.totalSamples == 192_000)
         #expect(state.sessionCount == 1)
         #expect(state.nextCueIndex == 3)
         #expect(state.activeSession == nil)
 
         let probe = try OpusWebMDecoder(fileURL: noteFolder.appending(path: "audio.webm"))
-        #expect(probe.endMilliseconds == 8000)
+        #expect(probe.endMilliseconds == 12_000)
 
         // Pending files were consumed by the (stub) transcriber.
         let pending = try FileManager.default.contentsOfDirectory(
@@ -170,26 +171,26 @@ struct RecordingPipelineTests {
         // + session 2 start, cue 3, session 2 end
         let document2 = try await waitForTranscript(vttURL, entryCount: 8)
         guard document2.entries.count == 8 else { return }
-        guard case .sessionStart(2, _, 8.0) = document2.entries[5] else {
-            Issue.record("expected session 2 start at 8.0, got \(document2.entries[5])")
+        guard case .sessionStart(2, _, 12.0) = document2.entries[5] else {
+            Issue.record("expected session 2 start at 12.0, got \(document2.entries[5])")
             return
         }
-        guard case .cue(3, 8.0, 10.0, "Speaker 1", _, false) = document2.entries[6] else {
-            Issue.record("expected cue 3 [8.0, 10.0], got \(document2.entries[6])")
+        guard case .cue(3, 12.0, 14.0, "Speaker 1", _, false) = document2.entries[6] else {
+            Issue.record("expected cue 3 [12.0, 14.0], got \(document2.entries[6])")
             return
         }
-        guard case .sessionEnd(2, _, 10.0) = document2.entries[7] else {
-            Issue.record("expected session 2 end at 10.0, got \(document2.entries[7])")
+        guard case .sessionEnd(2, _, 14.0) = document2.entries[7] else {
+            Issue.record("expected session 2 end at 14.0, got \(document2.entries[7])")
             return
         }
 
         let state2 = try NoteRecordingState.load(noteFolder: noteFolder)
-        #expect(state2.totalSamples == 160_000)
+        #expect(state2.totalSamples == 224_000)
         #expect(state2.sessionCount == 2)
 
         // The appended audio.webm spans both sessions.
         let probe2 = try OpusWebMDecoder(fileURL: noteFolder.appending(path: "audio.webm"))
-        #expect(probe2.endMilliseconds == 10_000)
+        #expect(probe2.endMilliseconds == 14_000)
     }
 
     @Test("crash recovery closes the unfinished session (§10.3)")

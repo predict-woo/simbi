@@ -1,4 +1,4 @@
-# Simbi — Spec v0.4
+# Simbi — Spec v0.5
 
 An open-source macOS notetaking app that lives symbiotically with the Codex
 (ChatGPT desktop) app. Simbi records and diarizes audio locally, transcribes it
@@ -6,6 +6,11 @@ through the ChatGPT backend, and delegates all "intelligence" (transcript
 fixing, file conversion, chat) to Codex threads over the bundled
 `codex app-server`.
 
+Changes from v0.4: silence handling reworked — silences up to 6 s glue into
+the upload (was: discard at 2 s); silences over 6 s keep 2 s of audio at
+each edge in the uploads (trailing pad on the segment before, leading pad on
+the segment after — fixes resumed speech being clipped by diarizer onset
+lag) and discard only the middle as a `NOTE gap`.
 Changes from v0.3 (review fixes): `NOTE gap` blocks use `key=value` form —
 WebVTT forbids the substring `-->` inside comment blocks; crash recovery
 recomputes `state.json` from the cluster scan and clamps the next session
@@ -162,7 +167,7 @@ single-speaker speech** or **pure silence**.
 Buffering & flush (per note, one active upload buffer):
 - **Closed speech segments** append to the upload buffer. The buffer is
   single-speaker by construction (a speaker switch flushes it first).
-- **Closed silence segments < 2.0 s** (a closed silence segment is always
+- **Closed silence segments ≤ 6.0 s** (a closed silence segment is always
   followed by speech) glue into the buffer **only when the following speech
   is the same speaker as the buffer** — keeping the audio natural for the
   ASR. A silence run commits only once its successor run is stable, so the
@@ -170,11 +175,16 @@ Buffering & flush (per note, one active upload buffer):
   successor is a different speaker, the buffer flushes at the switch and the
   silence is not uploaded. Glued silences never trigger a flush and are
   never uploaded alone.
-- **An open silence run crossing 2.0 s** flushes the buffer immediately (the
-  speaker has genuinely paused) and the silence itself is **discarded** —
-  never buffered, never uploaded. Its extent is tracked: timestamps stay
-  note-timeline time, `audio.webm` contains the silence, and the gap gets a
-  `NOTE gap start=<start> end=<end>` block in the VTT.
+- **An open silence run crossing 6.0 s** flushes the buffer immediately (the
+  speaker has genuinely paused) and the silence's **middle is discarded** —
+  but 2.0 s at each edge stays in the uploads: the flushed segment carries
+  the first 2 s of the silence as a trailing pad, and the next segment's
+  upload starts 2 s before its detected speech (the diarizer's onset
+  probability ramps up over ~0.5–1 s after a long pause; the leading pad
+  keeps late-detected speech from being clipped out of the transcript).
+  The pads are upload-only: cue timestamps stay on the speech extents,
+  `audio.webm` contains the whole silence, and the full silence extent gets
+  a `NOTE gap start=<start> end=<end>` block in the VTT.
 - The buffer is flushed to transcription when any of these fires:
   a) **speaker switch**;
   b) **buffered duration ≥ 10 s** — prefer cutting at the most recent
@@ -182,12 +192,12 @@ Buffering & flush (per note, one active upload buffer):
      last 3 s of the buffer, else hard-cut at the newest finalized frame and
      mark the next segment as a *continuation* (same speaker) in cue
      metadata;
-  c) **an open silence run crossing 2.0 s**;
+  c) **an open silence run crossing 6.0 s**;
   d) **recording stop** (final flush after `finalizeSession()`).
 - Each flushed buffer becomes one upload and one cue: cue start = first
-  buffered sample, cue end = last buffered **speech** sample (a trailing
-  sub-2 s silence segment at flush time is trimmed from the upload, not from
-  the timeline).
+  buffered sample, cue end = last buffered **speech** sample (trailing
+  silence at flush time is trimmed from the cue; the upload keeps up to the
+  2 s pad on a long-silence flush, and none otherwise).
 - Speech shorter than 0.25 s between cuts is dropped (below
   `minDurationOn`) — sub-quarter-second blips aren't worth an upload.
 
