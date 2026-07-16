@@ -56,6 +56,21 @@ public enum NoteOperations {
         return false
     }
 
+    /// "report.pdf", "report 2.pdf", … — first file name not taken in
+    /// `directory`. Imports never overwrite (SPEC.md §5.3: originals are
+    /// copied, untouched).
+    public static func availableFileName(_ proposed: String, in directory: URL) -> String {
+        let stem = (proposed as NSString).deletingPathExtension
+        let ext = (proposed as NSString).pathExtension
+        var candidate = proposed
+        var counter = 2
+        while FileManager.default.fileExists(atPath: directory.appending(path: candidate).path) {
+            candidate = ext.isEmpty ? "\(stem) \(counter)" : "\(stem) \(counter).\(ext)"
+            counter += 1
+        }
+        return candidate
+    }
+
     /// "2026-07-15 Note", "2026-07-15 Note 2", … — first name not taken in `parent`.
     public static func availableNoteName(in parent: URL, date: Date = .now) -> String {
         let formatter = DateFormatter()

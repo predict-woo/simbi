@@ -1,0 +1,26 @@
+files/report.docx: 3741 bytes
+converting via real app-server (up to 15 min)…
+converter thread: 019f6a81-9269-7d41-9c42-1d36451c5e62
+
+--- context/report.docx.md ---
+# Q2 Review — Simbi
+
+Revenue for Q2 was 1,234,567.89 USD, up 17.3 percent quarter over quarter.
+
+The beta shipped to 4,096 users; median session length was 42.195 minutes.
+
+Prepared by Jae-won Seo (Head of Product) on 2026-07-14.
+
+Targets by region:
+
+| Region | Target | Actual |
+| --- | ---: | ---: |
+| APAC | 500000 | 512345 |
+| EMEA | 400000 | 398765 |
+| AMER | 300000 | 323457 |
+
+------------------------------
+PASS fidelity: all 9 exact values present
+PASS original: files/report.docx byte-identical
+PASS state: conversion record persisted with thread id
+OVERALL: PASS

@@ -43,11 +43,13 @@ struct NoteView: View {
     @State private var document: NoteDocument
     @State private var recorder: RecordingController
     @State private var transcript: TranscriptModel
+    @State private var files: FilesModel
 
     init(noteFolderURL: URL) {
         self._document = State(initialValue: NoteDocument(noteFolderURL: noteFolderURL))
         self._recorder = State(initialValue: RecordingController.shared(noteFolderURL: noteFolderURL))
         self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
+        self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
     }
 
     var body: some View {
@@ -69,7 +71,11 @@ struct NoteView: View {
     }
 
     private var editorPane: some View {
-        MarkdownEditor(text: $document.text)
+        VStack(spacing: 0) {
+            MarkdownEditor(text: $document.text)
+            Divider()
+            FilesSection(model: files)
+        }
     }
 
     private var transcriptPane: some View {

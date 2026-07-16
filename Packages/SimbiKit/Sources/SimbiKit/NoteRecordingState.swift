@@ -20,6 +20,25 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         }
     }
 
+    /// One file-import conversion job (SPEC.md §5.3), keyed by the file's
+    /// name inside `files/`.
+    public struct FileConversion: Codable, Equatable, Sendable {
+        public enum Status: String, Codable, Sendable {
+            case converting
+            case done
+            case failed
+        }
+
+        public var status: Status
+        /// The converter Codex thread (archived when the job ends).
+        public var threadId: String?
+
+        public init(status: Status, threadId: String? = nil) {
+            self.status = status
+            self.threadId = threadId
+        }
+    }
+
     /// Next cue index to assign (monotonic across sessions, starts at 1).
     public var nextCueIndex: Int
     /// Number of completed sessions.
@@ -31,11 +50,13 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     /// The note's transcript-fixer Codex thread (SPEC.md §5.2), reused
     /// across sessions and app restarts.
     public var fixerThreadId: String?
+    /// File-import conversion jobs by `files/` file name (SPEC.md §5.3).
+    public var conversions: [String: FileConversion]
 
     public init(
         nextCueIndex: Int = 1, sessionCount: Int = 0, totalSamples: Int = 0,
         lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil,
-        fixerThreadId: String? = nil
+        fixerThreadId: String? = nil, conversions: [String: FileConversion] = [:]
     ) {
         self.nextCueIndex = nextCueIndex
         self.sessionCount = sessionCount
@@ -43,6 +64,7 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         self.lastSessionEnd = lastSessionEnd
         self.activeSession = activeSession
         self.fixerThreadId = fixerThreadId
+        self.conversions = conversions
     }
 
     // Forward-compatible decoding, same pattern as SimbiSettings.
@@ -54,6 +76,9 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         lastSessionEnd = try container.decodeIfPresent(Date.self, forKey: .lastSessionEnd)
         activeSession = try container.decodeIfPresent(ActiveSession.self, forKey: .activeSession)
         fixerThreadId = try container.decodeIfPresent(String.self, forKey: .fixerThreadId)
+        conversions =
+            try container.decodeIfPresent([String: FileConversion].self, forKey: .conversions)
+            ?? [:]
     }
 
     public static func fileURL(noteFolder: URL) -> URL {
@@ -78,5 +103,37 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         try encoder.encode(self).write(to: url, options: .atomic)
+    }
+
+    // Two writers share state.json: the recording pipeline (which holds its
+    // copy in memory for a whole session) and the file-import path (which
+    // owns only `conversions`). Both go through this lock so neither
+    // clobbers the other's fields.
+    private static let ioLock = NSLock()
+
+    /// Locked load → mutate → save, for writers that own only part of the
+    /// state (the file-import path's `conversions`, SPEC.md §5.3).
+    public static func update(
+        noteFolder: URL, _ mutate: (inout NoteRecordingState) -> Void
+    )
+        throws
+    {
+        ioLock.lock()
+        defer { ioLock.unlock() }
+        var state = (try? load(noteFolder: noteFolder)) ?? NoteRecordingState()
+        mutate(&state)
+        try state.save(noteFolder: noteFolder)
+    }
+
+    /// Saves the recording pipeline's bookkeeping, adopting whatever
+    /// conversion records are on disk — the file-import path may have
+    /// written since this copy was loaded.
+    public mutating func saveRecording(noteFolder: URL) throws {
+        Self.ioLock.lock()
+        defer { Self.ioLock.unlock() }
+        if let disk = try? Self.load(noteFolder: noteFolder) {
+            conversions = disk.conversions
+        }
+        try save(noteFolder: noteFolder)
     }
 }
