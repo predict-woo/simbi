@@ -26,10 +26,43 @@ let package = Package(
     ],
     targets: [
         .target(name: "SimbiKit"),
+        // Vendored xiph/opus 1.5.2 (float, portable C — no arch-specific
+        // intrinsics, no dnn/). See SPEC.md §3.3 [decided: vendored].
+        .target(
+            name: "CLibOpus",
+            exclude: ["opus/COPYING"],
+            publicHeadersPath: "opus/include",
+            cSettings: [
+                .headerSearchPath("opus/include"),
+                .headerSearchPath("opus/src"),
+                .headerSearchPath("opus/celt"),
+                .headerSearchPath("opus/silk"),
+                .headerSearchPath("opus/silk/float"),
+                .define("OPUS_BUILD"),
+                .define("VAR_ARRAYS", to: "1"),
+                .define("HAVE_LRINT", to: "1"),
+                .define("HAVE_LRINTF", to: "1"),
+            ]
+        ),
+        // Vendored google/libwebm 1.0.0.31 (mkvmuxer + mkvparser) behind a
+        // plain-C shim (webm_shim.h) so Swift needs no C++ interop.
+        .target(
+            name: "CLibWebM",
+            exclude: ["libwebm/LICENSE.TXT", "libwebm/PATENTS.TXT"],
+            cxxSettings: [
+                .headerSearchPath("libwebm"),
+                .headerSearchPath("include"),
+            ],
+            linkerSettings: [
+                .linkedLibrary("c++")
+            ]
+        ),
         .target(
             name: "SimbiAudio",
             dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio")
+                "CLibOpus",
+                "CLibWebM",
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ]
         ),
         .target(name: "CodexKit"),
@@ -41,6 +74,12 @@ let package = Package(
                 .product(name: "STTextView", package: "STTextView"),
                 .product(name: "STTextView-Plugin-Neon", package: "STTextView-Plugin-Neon"),
             ]
+        ),
+        // M1 spike (SPEC.md §8): proves the vendored encoder's output is
+        // accepted by backend-api/transcribe. Not shipped in the app.
+        .executableTarget(
+            name: "simbi-audio-spike",
+            dependencies: ["SimbiAudio", "CodexKit"]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
