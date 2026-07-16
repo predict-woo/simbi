@@ -58,6 +58,19 @@ struct NoteOperationsTests {
         }
     }
 
+    @Test("availableFileName dedupes before the extension")
+    func fileNameDedup() throws {
+        try withTempRoot { root in
+            #expect(NoteOperations.availableFileName("report.pdf", in: root) == "report.pdf")
+            try Data().write(to: root.appending(path: "report.pdf"))
+            #expect(NoteOperations.availableFileName("report.pdf", in: root) == "report 2.pdf")
+            try Data().write(to: root.appending(path: "report 2.pdf"))
+            #expect(NoteOperations.availableFileName("report.pdf", in: root) == "report 3.pdf")
+            try Data().write(to: root.appending(path: "README"))
+            #expect(NoteOperations.availableFileName("README", in: root) == "README 2")
+        }
+    }
+
     @Test("availableNoteName dedupes with a counter")
     func noteNameDedup() throws {
         try withTempRoot { root in

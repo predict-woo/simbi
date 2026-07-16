@@ -151,7 +151,7 @@ public actor RecordingPipeline {
 
         state.activeSession = .init(
             n: sessionNumber, baseSamples: sessionBaseSamples, wallStart: .now)
-        try state.save(noteFolder: noteFolderURL)
+        try state.saveRecording(noteFolder: noteFolderURL)
         try outbox.append(
             .sessionStart(n: sessionNumber, wallClock: .now, offset: sessionBaseSeconds))
         recording = true
@@ -160,7 +160,7 @@ public actor RecordingPipeline {
             try? await fixer.recordingStarted()
             if let threadId = await fixer.threadId, threadId != state.fixerThreadId {
                 state.fixerThreadId = threadId
-                try? state.save(noteFolder: noteFolderURL)
+                try? state.saveRecording(noteFolder: noteFolderURL)
             }
         }
     }
@@ -253,7 +253,7 @@ public actor RecordingPipeline {
         // (a throw above must not leave a gap in the numbering) and expose
         // the cue to the outbox and upload queue.
         state.nextCueIndex += 1
-        try? state.save(noteFolder: noteFolderURL)
+        try? state.saveRecording(noteFolder: noteFolderURL)
         trackedCues.insert(cueIndex)
         outbox.reserveCue(
             index: cueIndex, start: startSec, end: endSec,
@@ -380,7 +380,7 @@ public actor RecordingPipeline {
         state.sessionCount = sessionNumber
         state.lastSessionEnd = .now
         state.activeSession = nil
-        try state.save(noteFolder: noteFolderURL)
+        try state.saveRecording(noteFolder: noteFolderURL)
         liveContinuation?.finish()
         liveContinuation = nil
 
@@ -449,7 +449,7 @@ public actor RecordingPipeline {
         state.sessionCount = active.n
         state.lastSessionEnd = estimatedEnd
         state.activeSession = nil
-        try state.save(noteFolder: noteFolderURL)
+        try state.saveRecording(noteFolder: noteFolderURL)
 
         // 4. Re-enqueue pending uploads in cueIndex order.
         let pendingIndices =

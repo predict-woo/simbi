@@ -94,4 +94,49 @@ struct NoteRecordingStateTests {
         #expect(loaded.totalSamples == 1_440_000)
         #expect(loaded.activeSession?.n == 3)
     }
+
+    @Test("conversion records round-trip; missing key decodes to empty")
+    func conversionsRoundTrip() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "state-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // A pre-M5 state.json (no conversions key) must still decode.
+        let fileURL = NoteRecordingState.fileURL(noteFolder: dir)
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"nextCueIndex": 4}"#.utf8).write(to: fileURL)
+        var state = try NoteRecordingState.load(noteFolder: dir)
+        #expect(state.conversions.isEmpty)
+
+        state.conversions["slides.pdf"] = .init(status: .converting, threadId: "thr_1")
+        try state.save(noteFolder: dir)
+        let loaded = try NoteRecordingState.load(noteFolder: dir)
+        #expect(loaded.conversions["slides.pdf"]?.status == .converting)
+        #expect(loaded.conversions["slides.pdf"]?.threadId == "thr_1")
+    }
+
+    @Test("update() and saveRecording() preserve each other's fields")
+    func twoWriterOwnership() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: "state-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // The pipeline loads its copy at session start…
+        var pipelineCopy = try NoteRecordingState.load(noteFolder: dir)
+        pipelineCopy.nextCueIndex = 9
+
+        // …the file-import path writes a conversion while it's held…
+        try NoteRecordingState.update(noteFolder: dir) {
+            $0.conversions["report.docx"] = .init(status: .done, threadId: "thr_2")
+        }
+
+        // …and the pipeline's save must not clobber it.
+        try pipelineCopy.saveRecording(noteFolder: dir)
+        let final = try NoteRecordingState.load(noteFolder: dir)
+        #expect(final.nextCueIndex == 9)
+        #expect(final.conversions["report.docx"]?.status == .done)
+    }
 }

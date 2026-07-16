@@ -96,6 +96,12 @@ let package = Package(
             name: "simbi-fixer-spike",
             dependencies: ["CodexKit", "SimbiKit"]
         ),
+        // M5 spike: real converter thread turns files/<name> into
+        // context/<name>.md with no information loss.
+        .executableTarget(
+            name: "simbi-converter-spike",
+            dependencies: ["CodexKit", "SimbiKit"]
+        ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
         .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),

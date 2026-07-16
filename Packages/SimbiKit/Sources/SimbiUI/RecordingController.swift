@@ -16,8 +16,6 @@ public final class RecordingController {
     /// would corrupt the timeline. Controllers are kept for the app's
     /// lifetime; they are tiny when idle.
     private static var controllers: [URL: RecordingController] = [:]
-    /// One app-server process for the whole app (SPEC.md §5.1).
-    private static let appServer = AppServerClient()
 
     public static func shared(noteFolderURL: URL) -> RecordingController {
         if let existing = controllers[noteFolderURL] {
@@ -86,7 +84,7 @@ public final class RecordingController {
                 .fixerThreadId
             await pipeline.attachFixer(
                 TranscriptFixer(
-                    noteFolderURL: noteFolderURL, client: Self.appServer,
+                    noteFolderURL: noteFolderURL, client: CodexServices.appServer,
                     savedThreadId: savedThreadId))
             try await pipeline.start()
             let capture = MicCapture()
