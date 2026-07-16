@@ -207,6 +207,20 @@ The division of labor, which the rest of this document elaborates:
   it is qualified to make: splitting a segment that contains a no-pause
   speaker switch (imprecise timing there costs a label smudge, never audio).
 
+**Timing model (normative).** Both models deliver verdicts **late** relative
+to the audio they describe — the VAD by up to one 256 ms chunk (and its
+`speechStart` back-dates a further 0.30 s pre-roll), Sortformer by ~1.04 s
+plus burst granularity. The rule that makes this safe: every decision is
+expressed as a **session-local sample position**, and that position is
+normally in the past. Wall-clock lateness affects only *when* a decision is
+applied, never *where* it lands. Two mechanisms absorb the lateness: the
+ring buffer's eviction floor guarantees late-referenced samples still exist
+(§8), and the labeler's release frontier waits until finalized diarizer
+coverage reaches a segment's `endSample` before labeling it (§6.1). No
+component ever interprets a model output as describing "now"; in
+particular, Sortformer's split points land on audio ~1–2 s behind the write
+head, on PCM that was already sliced out of the ring.
+
 ```mermaid
 flowchart LR
     MIC["Mic tap\n(AVAudioEngine)"] --> MIX
@@ -322,8 +336,8 @@ State — the complete list:
 ```
 open:               {startSample, probHistory}?   # nil = idle
 pendingContinuation Bool                          # set by a forced cut
-lastCoverageEnd     Int                           # end of the last emitted piece
-                                                  # (samples; 0 at session start)
+lastSegmentEnd      Int                           # endSample of the last CLOSED
+                                                  # segment (0 at session start)
 vadState            VadStreamState                # library-owned
 vadPending          [Float]                       # < 4096 samples awaiting a chunk
 ```
@@ -348,7 +362,7 @@ while vadPending.count ≥ 4096:
 
 ```
 on speechStart(s):                    # s already includes the 0.30 s pre-roll
-    open = {startSample: max(s, lastCoverageEnd), probHistory: []}
+    open = {startSample: max(s, lastSegmentEnd), probHistory: []}
 
 on speechEnd(e):                      # e already includes the 0.30 s tail
     close(end: min(e, writeHead), stopCut: false)
@@ -359,8 +373,18 @@ close(end, stopCut):
                forcedCut: false, stopCut: stopCut,
                pcm: ring.slice(open.startSample ..< end)}
     labeler.enqueue(segment)
+    lastSegmentEnd = end
     open = nil
 ```
+
+The overlap clamp deliberately uses the segmenter's own `lastSegmentEnd`,
+**not** the labeler's `lastCoverageEnd` (§6.5): a new segment can open while
+the previous one still sits unreleased in the FIFO, when `lastCoverageEnd`
+is stale by one or more whole segments. The clamp is also belt-and-braces:
+`HANGOVER_SEC (0.75) > 2·SPEECH_PAD_SEC (0.60)`, so the library's state
+machine cannot even emit a back-dated `speechStart` that reaches into the
+previous segment's tail pad — adjacent segments are separated by ≥ 0.15 s
+of unclaimed quiet before clamping.
 
 That is the entire silence rule. There is no glue, no drop, no discard
 threshold, no pad arithmetic: silence simply never opens a segment, and a
@@ -482,6 +506,10 @@ truncated); the blip arm still applies. Discarded audio still exists in
 `audio.webm` and falls inside a `NOTE gap` (§6.5).
 
 ### 6.5 Coverage, gaps, continuation, emission
+
+Labeler state: `lastCoverageEnd` (samples; 0 at session start) — the end of
+the last **emitted** piece. It trails the segmenter's `lastSegmentEnd` by
+however much is pending in the FIFO and is used only for gap accounting.
 
 ```
 for piece in pieces:                       # in order
@@ -706,7 +734,7 @@ labels (`endSec` clamping additionally caps any cue at real audio).
    blocks mark the boundaries it needs.
 4. Fresh VAD stream state (makeStreamState()), fresh segmenter and labeler
    (session-local indices restart at 0; only noteTime() carries the base
-   offset). lastCoverageEnd = 0.
+   offset). lastSegmentEnd = 0, lastCoverageEnd = 0.
 5. outbox: append `NOTE session n start=<wallclock> offset=<baseSeconds>`.
 6. Continue as a normal session. Cue numbering continues monotonically.
 ```
@@ -815,17 +843,18 @@ One speaker, continuous speech 0–14.5 s, stop at 15.0 s. VAD:
 A speaks 0–3.0 s, silence 3.0–10.0 s, A resumes 10.0–12.0 s, stop 12.5 s.
 
 Input events: `speechStart(0)`, `speechEnd(52 800)` (3.30 s),
-`speechStart(155 200)` (10.0 − 0.3 = 9.70 s), `speechEnd/stop` at 12.5 s ⇒
-segment 2 ends `min(12.3 + …, realSamples)` — say `speechEnd(196 800)`
-(12.30 s). Labels: frames 0–37 SPEECH(0); frames ~131–150 SPEECH(0) —
-**note the resumed onset labels may start ~1 s late (frame 131 ≈ 10.5 s)
-because of Sortformer's ramp; it does not matter.**
+`speechStart(155 200)` (10.0 − 0.3 = 9.70 s). The trailing silence
+12.0–12.5 s is **shorter than HANGOVER (0.75 s)**, so no `speechEnd` fires
+before stop — the segment closes via the `stopCut` path (§5.4) at
+`realSamples = 200 000` (12.50 s). Labels: frames 0–37 SPEECH(0); frames
+~131–150 SPEECH(0) — **note the resumed onset labels may start ~1 s late
+(frame 131 ≈ 10.5 s) because of Sortformer's ramp; it does not matter.**
 
 - Segment 1 `[0, 52 800)` → cue 1 `00:00:00.000 → 00:00:03.300`, Speaker 1.
-- Segment 2 `[155 200, 196 800)`: the segment extent came from the VAD, so
-  it contains all of the resumed speech from 9.70 s **regardless of when
-  the diarizer noticed it** — the late labels only vote. Cue 2
-  `00:00:09.700 → 00:00:12.300`, Speaker 1.
+- Segment 2 `[155 200, 200 000)`: the segment extent came from the VAD and
+  the stop rule, so it contains all of the resumed speech from 9.70 s
+  **regardless of when the diarizer noticed it** — the late labels only
+  vote. Cue 2 `00:00:09.700 → 00:00:12.500`, Speaker 1.
 - Coverage hole 3.30 → 9.70 s = 6.4 s ≥ 2.0 ⇒
   `NOTE gap start=00:00:03.300 end=00:00:09.700`.
 - Generation 1 lost the first ~1 s of the resumed speech whenever its
@@ -868,7 +897,11 @@ Labels: frames 0–49 SPEECH(0), frames 50–91 SPEECH(1).
    `[startSample, endSample)` exactly — no overlap, no crack.
 2. **Disjoint ascending coverage**: across all pieces of a session,
    ranges are pairwise disjoint and strictly ascending; every piece's
-   start ≥ the previous piece's end. Cue timestamps inherit this.
+   start ≥ the previous piece's end. Cue timestamps inherit this. At the
+   segment level: every segment's start ≥ the previous segment's end
+   (clamped against the segmenter's `lastSegmentEnd`, which — unlike
+   `lastCoverageEnd` — is never stale; and structurally guaranteed anyway
+   by `HANGOVER > 2·SPEECH_PAD`).
 3. **Cue = upload**: the sample range encoded into `pending/{i}.webm` is
    byte-for-byte the range the cue's timestamps claim (one coordinate
    system; no pad bookkeeping to verify).
