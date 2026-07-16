@@ -62,6 +62,9 @@ public actor RecordingPipeline {
     private static let authRetryDelay: Duration = .seconds(30)
 
     private var liveContinuation: AsyncStream<RecordingLiveUpdate>.Continuation?
+    /// Optional transcript fixer (SPEC.md §5.2); failures never affect
+    /// recording (degraded mode: fixing just doesn't happen).
+    private var fixer: TranscriptFixer?
 
     private var audioFileURL: URL { noteFolderURL.appending(path: "audio.webm") }
     private var pendingDirURL: URL { noteFolderURL.appending(path: ".simbi/pending") }
@@ -90,6 +93,12 @@ public actor RecordingPipeline {
 
     public var isRecording: Bool { recording }
     public var canResume: Bool { state.sessionCount > 0 }
+    public var fixerThreadId: String? { state.fixerThreadId }
+
+    /// Attaches the note's fixer before `start()`.
+    public func attachFixer(_ fixer: TranscriptFixer) {
+        self.fixer = fixer
+    }
 
     // MARK: - Start / resume (§10.2)
 
@@ -146,6 +155,14 @@ public actor RecordingPipeline {
         try outbox.append(
             .sessionStart(n: sessionNumber, wallClock: .now, offset: sessionBaseSeconds))
         recording = true
+
+        if let fixer {
+            try? await fixer.recordingStarted()
+            if let threadId = await fixer.threadId, threadId != state.fixerThreadId {
+                state.fixerThreadId = threadId
+                try? state.save(noteFolder: noteFolderURL)
+            }
+        }
     }
 
     // MARK: - PCM ingestion (§7)
@@ -310,6 +327,9 @@ public actor RecordingPipeline {
         try? outbox.fulfillCue(index: cueIndex, text: text)
         uploadsInFlight -= 1
         kickUploads()
+        if let fixer {
+            Task { await fixer.cueAppended(index: cueIndex) }
+        }
     }
 
     private func pauseUploads(requeuing cueIndex: Int) {
@@ -363,6 +383,10 @@ public actor RecordingPipeline {
         try state.save(noteFolder: noteFolderURL)
         liveContinuation?.finish()
         liveContinuation = nil
+
+        if let fixer {
+            await fixer.recordingStopped()
+        }
     }
 
     /// Reserves + enqueues every segment left in `.simbi/pending/`, in

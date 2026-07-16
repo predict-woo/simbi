@@ -1,0 +1,24 @@
+WEBVTT
+
+NOTE simbi note="Fixer Spike"
+
+NOTE session 1 start=2026-07-16T18:00:00+09:00 offset=00:00:00.000
+
+1
+00:00:00.000 --> 00:00:06.000
+<v Alice Kim>Hi, I'm Alice Kim. Today I want to talk about the Simbi recording pipeline.
+
+2
+00:00:06.500 --> 00:00:12.000
+<v Bob Park>This is Bob Park. The Simbi transcriber worked great in my tests.
+
+NOTE session 1 end=2026-07-16T18:00:20+09:00 offset=00:00:12.500
+
+NOTE session 2 start=2026-07-16T18:05:00+09:00 offset=00:00:12.500
+
+3
+00:00:12.500 --> 00:00:18.000
+<v Alice Kim>Alice again after the break. Simbi still needs a logo.
+
+NOTE session 2 end=2026-07-16T18:06:00+09:00 offset=00:00:18.500
+

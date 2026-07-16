@@ -91,6 +91,11 @@ let package = Package(
             name: "simbi-pipeline-spike",
             dependencies: ["SimbiAudio"]
         ),
+        // M4 spike: real fixer thread repairs a transcript end-to-end.
+        .executableTarget(
+            name: "simbi-fixer-spike",
+            dependencies: ["CodexKit", "SimbiKit"]
+        ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
         .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),
