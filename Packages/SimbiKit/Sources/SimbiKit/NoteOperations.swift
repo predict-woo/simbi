@@ -71,18 +71,24 @@ public enum NoteOperations {
         return candidate
     }
 
+    /// "Name", "Name 2", … — first folder name not taken in `parent`.
+    /// Unlike `availableFileName`, dots are not treated as extensions
+    /// ("Meeting 7.18" counts up to "Meeting 7.18 2").
+    public static func availableName(_ proposed: String, in parent: URL) -> String {
+        var candidate = proposed
+        var counter = 2
+        while FileManager.default.fileExists(atPath: parent.appending(path: candidate).path) {
+            candidate = "\(proposed) \(counter)"
+            counter += 1
+        }
+        return candidate
+    }
+
     /// "2026-07-15 Note", "2026-07-15 Note 2", … — first name not taken in `parent`.
     public static func availableNoteName(in parent: URL, date: Date = .now) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        let base = "\(formatter.string(from: date)) Note"
-        var candidate = base
-        var counter = 2
-        while FileManager.default.fileExists(atPath: parent.appending(path: candidate).path) {
-            candidate = "\(base) \(counter)"
-            counter += 1
-        }
-        return candidate
+        return availableName("\(formatter.string(from: date)) Note", in: parent)
     }
 }

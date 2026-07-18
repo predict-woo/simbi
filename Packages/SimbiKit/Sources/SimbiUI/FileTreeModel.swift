@@ -74,23 +74,42 @@ public final class FileTreeModel {
         }
     }
 
-    public func createNote() {
+    /// "New Note" dialog state (SPEC.md §6): a non-nil parent presents the
+    /// name prompt with `noteNameDraft` prefilled to the dated default.
+    public private(set) var noteCreationParent: URL?
+    public var noteNameDraft = ""
+
+    public func promptForNewNote() {
         let parent = targetFolderForNewItems
-        let name = NoteOperations.availableNoteName(in: parent)
+        noteNameDraft = NoteOperations.availableNoteName(in: parent)
+        noteCreationParent = parent
+    }
+
+    public func confirmNoteCreation() {
+        guard let parent = noteCreationParent else { return }
+        noteCreationParent = nil
+        // "/" would silently nest the note; an emptied field falls back to
+        // the dated default rather than failing.
+        var name = noteNameDraft
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        if name.isEmpty {
+            name = NoteOperations.availableNoteName(in: parent)
+        }
+        name = NoteOperations.availableName(name, in: parent)
         if let url = try? NoteOperations.createNote(named: name, in: parent) {
             refresh()
             selection = url
         }
     }
 
+    public func cancelNoteCreation() {
+        noteCreationParent = nil
+    }
+
     public func createFolder() {
         let parent = targetFolderForNewItems
-        var name = "New Folder"
-        var counter = 2
-        while FileManager.default.fileExists(atPath: parent.appending(path: name).path) {
-            name = "New Folder \(counter)"
-            counter += 1
-        }
+        let name = NoteOperations.availableName("New Folder", in: parent)
         if (try? NoteOperations.createFolder(named: name, in: parent)) != nil {
             refresh()
         }

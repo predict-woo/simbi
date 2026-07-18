@@ -21,6 +21,15 @@ struct NoteOperationsTests {
         }
     }
 
+    @Test("availableName counts up without treating dots as extensions")
+    func availableNameCountsUp() throws {
+        try withTempRoot { root in
+            #expect(NoteOperations.availableName("Meeting 7.18", in: root) == "Meeting 7.18")
+            try NoteOperations.createNote(named: "Meeting 7.18", in: root)
+            #expect(NoteOperations.availableName("Meeting 7.18", in: root) == "Meeting 7.18 2")
+        }
+    }
+
     @Test("note folders cannot nest — directly or transitively")
     func noNestedNotes() throws {
         try withTempRoot { root in
