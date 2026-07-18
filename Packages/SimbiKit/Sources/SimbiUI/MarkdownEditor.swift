@@ -1,81 +1,56 @@
 import AppKit
-import STPluginNeon
-import STTextView
+import MarkdownEngine
+import MarkdownEngineCodeBlocks
+import MarkdownEngineLatex
 import SwiftUI
 
-/// The markdown source editor: STTextView with tree-sitter highlighting via
-/// the Neon plugin (SPEC.md §1, validated in M0).
-///
-/// This is our own `NSViewRepresentable` rather than the stock
-/// `STTextViewSwiftUI.TextView`: the stock wrapper re-applies the bound text
-/// on every keystroke's binding round-trip, which resets the insertion point
-/// and interleaves fast input (observed in M0 verification). Here the view
-/// is the source of truth while editing — `updateNSView` only pushes the
-/// binding into the view when it genuinely diverges (external load/reset),
-/// never in response to the view's own edit events.
-public struct MarkdownEditor: NSViewRepresentable {
+/// The note editor: MarkdownEngine's TextKit 2 view with live styling
+/// (SPEC.md §1). Replaces the M0 STTextView + Neon source editor —
+/// markdown renders in place (headings, lists, tables, task checkboxes)
+/// while staying editable, with highlighted code blocks and LaTeX.
+public struct MarkdownEditor: View {
     @Binding var text: String
+    /// Scopes the undo stack and editor state; pass something stable and
+    /// unique per note so switching notes never mixes histories.
+    let documentId: String
 
-    public init(text: Binding<String>) {
+    public init(text: Binding<String>, documentId: String = "default") {
         self._text = text
+        self.documentId = documentId
     }
 
-    public func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = STTextView.scrollableTextView()
-        let textView = scrollView.documentView as! STTextView
-        textView.text = text
-        textView.isHorizontallyResizable = false  // wrap lines
-        textView.highlightSelectedLine = true
-        textView.allowsUndo = true
-        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize + 1, weight: .regular)
-        textView.textDelegate = context.coordinator
-        textView.addPlugin(NeonPlugin(theme: .default, language: .markdown))
-        context.coordinator.textView = textView
-        return scrollView
-    }
+    /// One engine configuration for the whole app. Built once: the
+    /// highlighter and LaTeX bridges cache rendered output internally,
+    /// so sharing them across notes keeps re-renders cheap.
+    private static let configuration: MarkdownEditorConfiguration = {
+        var config = MarkdownEditorConfiguration()
+        config.services.syntaxHighlighter = HighlighterSwiftBridge()
+        config.services.latex = SwiftMathBridge()
+        config.extensions = [HighlightExtension(), StrikethroughExtension()]
+        config.textInsets = TextInsets(horizontal: 24, vertical: 20)
+        // The engine auto-pairs [ ( { but has no type-through of the closing
+        // char, so typing literal markdown (`- [ ]`, `[text](url)`) leaves a
+        // stray bracket behind. Notes are plain markdown — typed syntax must
+        // land verbatim. (Found in the 2026-07-17 UI verification.)
+        config.lists.autoClosePairsEnabled = false
+        return config
+    }()
 
-    /// Accept whatever size SwiftUI proposes. Without this, SwiftUI derives
-    /// min/max sizes from the scroll view during the AppKit constraint pass,
-    /// which (inside a split view) re-invalidates layout mid-pass and crashes
-    /// with an NSInternalInconsistencyException.
-    public func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSScrollView, context: Context) -> CGSize? {
-        CGSize(
-            width: proposal.width ?? nsView.frame.width,
-            height: proposal.height ?? nsView.frame.height
+    private static let placeholder = NSAttributedString(
+        string: "Write your note…",
+        attributes: [
+            .foregroundColor: NSColor.tertiaryLabelColor,
+            .font: NSFont.systemFont(ofSize: Design.editorFontSize),
+        ]
+    )
+
+    public var body: some View {
+        NativeTextViewWrapper(
+            text: $text,
+            configuration: Self.configuration,
+            fontSize: Design.editorFontSize,
+            documentId: documentId,
+            placeholder: Self.placeholder
         )
-    }
-
-    public func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? STTextView else { return }
-        // Only external changes reach the view; edits made in the view are
-        // already there (coordinator forwarded them to the binding).
-        if !context.coordinator.isForwardingEdit, textView.text != text {
-            textView.text = text
-        }
-    }
-
-    public func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    @MainActor
-    public final class Coordinator: NSObject, @preconcurrency STTextViewDelegate {
-        var parent: MarkdownEditor
-        weak var textView: STTextView?
-        /// True while the binding update we trigger is being processed, so
-        /// `updateNSView` never writes the text back mid-edit.
-        private(set) var isForwardingEdit = false
-
-        init(parent: MarkdownEditor) {
-            self.parent = parent
-        }
-
-        public func textViewDidChangeText(_ notification: Notification) {
-            guard let textView else { return }
-            isForwardingEdit = true
-            parent.text = textView.text ?? ""
-            isForwardingEdit = false
-        }
     }
 }

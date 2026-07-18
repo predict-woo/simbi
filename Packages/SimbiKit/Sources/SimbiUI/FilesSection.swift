@@ -12,29 +12,27 @@ struct FilesSection: View {
     @State private var isDropTargeted = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Files")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                SectionLabel(title: "Files")
                 Spacer()
                 Button {
                     showImporter = true
                 } label: {
                     Label("Add Files…", systemImage: "plus")
-                        .font(.caption)
+                        .font(.meta)
                 }
                 .buttonStyle(.borderless)
             }
             if model.rows.isEmpty {
-                Text("Drop files here — Codex converts them into note context.")
-                    .font(.caption)
+                Text("Drop files here — Codex turns them into note context.")
+                    .font(.meta)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         ForEach(model.rows) { row in
                             FileRow(model: model, row: row)
                         }
@@ -44,21 +42,23 @@ struct FilesSection: View {
             }
             if let error = model.importError {
                 Text(error)
-                    .font(.caption)
+                    .font(.meta)
                     .foregroundStyle(.red)
                     .lineLimit(2)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        // Matches the editor's text inset so the section shares its left edge.
+        .padding(.horizontal, 24)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(
-                    isDropTargeted ? Color.accentColor : .clear,
-                    style: StrokeStyle(lineWidth: 1.5, dash: [5])
-                )
-                .padding(2)
+            Color.accentColor.opacity(isDropTargeted ? 0.08 : 0)
         )
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.accentColor.opacity(isDropTargeted ? 1 : 0))
+                .frame(height: 2)
+        }
+        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.item],
@@ -85,43 +85,60 @@ private struct FileRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "doc")
+            Image(systemName: icon)
+                .font(.system(size: 12))
                 .foregroundStyle(.secondary)
+                .frame(width: 16)
             Text(row.name)
-                .font(.callout)
+                .font(.body)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
             switch row.status {
             case .converting:
                 ProgressView()
-                    .controlSize(.small)
-                Text("converting")
-                    .font(.caption)
+                    .controlSize(.mini)
+                Text("Converting…")
+                    .font(.meta)
                     .foregroundStyle(.secondary)
             case .done:
                 Button {
                     NSWorkspace.shared.open(model.contextURL(for: row.name))
                 } label: {
-                    Label("context", systemImage: "doc.text")
-                        .font(.caption)
+                    Text("Open Context")
+                        .font(.meta)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.link)
                 .help("Open the converted markdown")
             case .failed:
-                Text("failed")
-                    .font(.caption)
+                Text("Failed")
+                    .font(.meta)
                     .foregroundStyle(.red)
                 Button {
                     model.retry(row.name)
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.caption)
+                        .font(.meta)
                 }
                 .buttonStyle(.borderless)
                 .help("Retry conversion")
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 1)
+    }
+
+    /// File-type icon by extension, so the row hints at what was dropped.
+    private var icon: String {
+        switch (row.name as NSString).pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "heic", "webp": "photo"
+        case "pdf": "doc.richtext"
+        case "doc", "docx", "pages": "doc.text"
+        case "xls", "xlsx", "numbers", "csv": "tablecells"
+        case "ppt", "pptx", "key": "rectangle.on.rectangle"
+        case "mp3", "m4a", "wav", "opus": "waveform"
+        case "mp4", "mov": "film"
+        case "zip", "tar", "gz": "archivebox"
+        default: "doc"
+        }
     }
 }

@@ -72,38 +72,35 @@ struct TranscriptView: View {
         var id: String { "\(row):\(name)" }
     }
 
-    static let speakerColors: [Color] = [.blue, .green, .orange, .purple]
-
+    /// Kept as the public color entry point (RecordingHeader uses it);
+    /// routed through the shared design-system palette.
     static func color(forSpeaker name: String) -> Color {
-        // "Speaker N" gets slot N-1's color; renamed speakers hash.
-        if name.hasPrefix("Speaker "), let n = Int(name.dropFirst(8)), (1...4).contains(n) {
-            return speakerColors[n - 1]
-        }
-        return speakerColors[abs(name.hashValue) % speakerColors.count]
+        Design.speakerColor(name)
     }
 
     var body: some View {
         Group {
             if let document = model.document, !document.entries.isEmpty {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        if model.isInvalid {
-                            Label("Transcript temporarily invalid", systemImage: "exclamationmark.triangle")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
+                    LazyVStack(alignment: .leading, spacing: Design.rowGap) {
                         ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
                             entryView(entry, row: index)
                         }
                     }
-                    .padding(12)
+                    .padding(Design.paneInset)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if model.isInvalid {
+                        StatusBanner(
+                            message: "Transcript is being rewritten — showing the last good version.")
+                    }
                 }
             } else {
                 ContentUnavailableView(
                     "No Recording",
                     systemImage: "waveform",
-                    description: Text("Press Record to start; the transcript appears here live.")
+                    description: Text("Press Record to start. The transcript appears here live.")
                 )
             }
         }
@@ -113,15 +110,13 @@ struct TranscriptView: View {
     private func entryView(_ entry: VTTEntry, row: Int) -> some View {
         switch entry {
         case .cue(_, let start, _, let speaker, let text, let continuation):
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: Design.innerGap) {
+                HStack(spacing: 8) {
                     Button {
                         renameText = speaker
                         renameTarget = RenameTarget(name: speaker, row: row)
                     } label: {
-                        Text(speaker)
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Self.color(forSpeaker: speaker))
+                        SpeakerChip(name: speaker)
                     }
                     .buttonStyle(.plain)
                     .disabled(onRenameSpeaker == nil)
@@ -136,51 +131,59 @@ struct TranscriptView: View {
                     Button {
                         onSeek?(start)
                     } label: {
-                        Text(VTT.timestamp(start))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                        Text(Design.time(start))
+                            .font(.meta.monospacedDigit())
+                            .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                     .disabled(onSeek == nil)
                     .help("Play from here")
                     if continuation {
-                        Text("cont.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.turn.down.right")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.quaternary)
+                            .help("Continues across a session break")
                     }
                 }
                 Text(text)
                     .font(.body)
+                    .lineSpacing(2.5)
                     .textSelection(.enabled)
             }
         case .gap(let start, let end):
-            Label(
-                "silence · \(String(format: "%.1f", end - start)) s",
-                systemImage: "zzz"
-            )
-            .font(.caption)
-            .foregroundStyle(.tertiary)
+            Text("\(Int((end - start).rounded())) s of silence")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .center)
         case .sessionStart(let n, let wallClock, _):
-            HStack {
-                VStack { Divider() }
+            HStack(spacing: 10) {
+                hairline
                 Text("Session \(n) · \(wallClock.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption)
+                    .font(.meta)
                     .foregroundStyle(.secondary)
                     .fixedSize()
-                VStack { Divider() }
+                hairline
             }
+            .padding(.vertical, 4)
         case .sessionEnd:
             EmptyView()
         }
     }
 
+    private var hairline: some View {
+        Rectangle()
+            .fill(.quaternary)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
+    }
+
     private func renamePopover(target: RenameTarget) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Rename \(target.name)")
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Rename \(target.name) everywhere")
+                .font(.system(size: 12, weight: .semibold))
             TextField("Name", text: $renameText)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 180)
+                .frame(width: 200)
                 .focused($renameFieldFocused)
                 .onSubmit { submitRename(target: target) }
                 .onAppear { renameFieldFocused = true }

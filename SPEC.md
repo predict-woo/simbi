@@ -40,11 +40,14 @@ dropped.
     segmenting, Opus/WebM encode + decode (vendored libopus + libwebm)
   - `CodexKit` — app-server JSON-RPC client, transcription API client
 - **Markdown editor**: an existing open-source component, not hand-rolled.
-  Primary choice: **STTextView + Neon** (tree-sitter-markdown) — native
-  TextKit-based source editor with syntax highlighting, actively maintained.
-  Fallback if it disappoints: **CodeMirror 6 in a WKWebView** (the
+  Shipped choice: **swift-markdown-engine** (nodes-app) — native TextKit 2
+  live-styled editor (headings, lists, task checkboxes, tables, highlighted
+  code blocks via HighlighterSwift, LaTeX via SwiftMath). Pinned exactly
+  (pre-1.0). Replaced the M0 pick (STTextView + Neon source editor) on
+  2026-07-17; bracket auto-pairing is disabled so typed markdown lands
+  verbatim. Fallback if it disappoints: **CodeMirror 6 in a WKWebView** (the
   Obsidian-proven route). Read-only markdown rendering (context file preview)
-  uses **MarkdownUI**/Textual. Final pick validated in M0.
+  uses **MarkdownUI**/Textual.
 - Distribution: direct download (not App Store). **App Sandbox off** — we must
   spawn the codex binary, read `~/.codex/auth.json`, and write `~/Simbi`.
   Hardened runtime + notarization for release builds.
@@ -405,7 +408,7 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
   (distinct icon). Context menu: new note, new folder, rename, move, reveal in
   Finder, delete (to Trash). All operations are plain FS operations.
 - **Note view** (when a note is selected):
-  - title (folder name) + `note.md` editor (STTextView + Neon, §1);
+  - title (folder name) + `note.md` editor (swift-markdown-engine, §1);
   - **Record / Stop / Resume** button reflecting §3.5, with live elapsed
     time (note-timeline), source toggle (mic / mic+system), and live speaker
     indicator;

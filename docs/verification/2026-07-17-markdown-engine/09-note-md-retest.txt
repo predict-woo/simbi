@@ -1,0 +1,40 @@
+# Markdown Engine Test
+
+This note exercises **bold**, *italic*, ~~strikethrough~~, ==highlight==, `inline code`, and a [link](https://example.com).
+
+## Lists
+
+- First bullet
+- Second bullet
+  - Nested bullet
+
+1. Ordered one
+2. Ordered two
+
+- [ ] Open task
+- [x] Done task
+
+> A blockquote to check the quote styling.
+
+## Table
+
+| Feature | Status |
+| ------- | ------ |
+| Tables  | works  |
+| Code    | works  |
+
+## Code
+
+```swift
+func greet(name: String) -> String {
+    return "Hello, \(name)!"
+}
+```
+
+## Math
+
+$$E = mc^2$$
+
+The end.
+- [ ] typed task item
+- [ ] A [real link](https://apple.com) and (parens) and {braces}.
