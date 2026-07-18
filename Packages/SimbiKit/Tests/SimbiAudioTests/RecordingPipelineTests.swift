@@ -64,6 +64,35 @@ final class FakeDiarizer: DiarizerStream, @unchecked Sendable {
     }
 }
 
+/// Scripted VAD: verdict per completed 4096-sample chunk via `script`
+/// (session-local chunk index), like the real Silero wrapper (§1/§3.1).
+final class FakeVad: VadStream, @unchecked Sendable {
+    let script: @Sendable (Int) -> Bool
+    private var bufferedSamples = 0
+    private var emittedChunks = 0
+
+    init(script: @escaping @Sendable (Int) -> Bool) {
+        self.script = script
+    }
+
+    func prepare() async throws {}
+
+    func resetSession() {
+        bufferedSamples = 0
+        emittedChunks = 0
+    }
+
+    func addAudio(_ samples: [Float]) async throws -> [Bool] {
+        bufferedSamples += samples.count
+        var verdicts: [Bool] = []
+        while (emittedChunks + 1) * 4096 <= bufferedSamples {
+            verdicts.append(script(emittedChunks))
+            emittedChunks += 1
+        }
+        return verdicts
+    }
+}
+
 @Suite("RecordingPipeline", .serialized)
 struct RecordingPipelineTests {
     private func makeNoteFolder() throws -> URL {
@@ -98,14 +127,14 @@ struct RecordingPipelineTests {
         return try VTTParser.parse(text)
     }
 
-    @Test("§12.3-shaped session: cues, gap, session notes, then resume")
+    @Test("full session: silence-cut cues, tiling, session notes, then resume")
     func fullSessionAndResume() async throws {
         let noteFolder = try makeNoteFolder()
         defer { try? FileManager.default.removeItem(at: noteFolder) }
         let vttURL = noteFolder.appending(path: "transcript.vtt")
 
-        // Session shape: A speaks f0–37, silence f38–117 (6.4 s → gap),
-        // A speaks f118–149.
+        // Session shape: A speaks f0–37, silence f38–117 (6.4 s), A speaks
+        // f118–149. Speech samples: [0, 48640) and [151040, 192000).
         let diarizer = FakeDiarizer { frame in
             switch frame {
             case 0..<38: return .speech(slot: 0)
@@ -113,7 +142,18 @@ struct RecordingPipelineTests {
             default: return .speech(slot: 0)
             }
         }
-        let pipeline = RecordingPipeline(noteFolderURL: noteFolder, diarizer: diarizer)
+        // Chunk verdict = majority overlap with the speech sample ranges:
+        // chunks 0–11 speech (c11 is 87 % speech), 12–36 silent, 37+ speech.
+        let vad = FakeVad { chunk in
+            let lo = chunk * 4096
+            let hi = lo + 4096
+            let speech =
+                max(0, min(hi, 48640) - lo)
+                + max(0, min(hi, 192_000) - max(lo, 151_040))
+            return speech * 2 >= 4096
+        }
+        let pipeline = RecordingPipeline(
+            noteFolderURL: noteFolder, diarizer: diarizer, vad: vad)
 
         try await pipeline.start()
         // 150 frames = 12.00 s, ingested in 10-frame batches.
@@ -123,28 +163,31 @@ struct RecordingPipelineTests {
         }
         try await pipeline.stop()
 
-        // session start + cue + gap + cue + session end
-        let document = try await waitForTranscript(vttURL, entryCount: 5)
-        guard document.entries.count == 5 else { return }
+        // Uploads tile the timeline (§5.1): the R1 cut lands at f41 (three
+        // silent records after VAD flips at f38), R3 flushes at 2 s of
+        // silence, and stop uploads the remainder. No gap notes in v2.
+        // session start + cue [0, 3.28) + cue [3.28, 12.0) + session end.
+        let document = try await waitForTranscript(vttURL, entryCount: 4)
+        guard document.entries.count == 4 else { return }
 
         guard case .sessionStart(1, _, 0) = document.entries[0] else {
             Issue.record("expected session 1 start, got \(document.entries[0])")
             return
         }
-        guard case .cue(1, 0, 3.04, "Speaker 1", _, false) = document.entries[1] else {
-            Issue.record("expected cue 1 [0, 3.04], got \(document.entries[1])")
+        guard case .cue(1, 0, let cue1End, "Speaker 1", _, false) = document.entries[1],
+            abs(cue1End - 3.28) < 0.001
+        else {
+            Issue.record("expected cue 1 [0, 3.28], got \(document.entries[1])")
             return
         }
-        guard case .gap(3.04, 9.44) = document.entries[2] else {
-            Issue.record("expected gap [3.04, 9.44], got \(document.entries[2])")
+        guard case .cue(2, let cue2Start, 12.0, "Speaker 1", _, false) = document.entries[2],
+            abs(cue2Start - 3.28) < 0.001
+        else {
+            Issue.record("expected cue 2 [3.28, 12.0], got \(document.entries[2])")
             return
         }
-        guard case .cue(2, 9.44, 12.0, "Speaker 1", _, false) = document.entries[3] else {
-            Issue.record("expected cue 2 [9.44, 12.0], got \(document.entries[3])")
-            return
-        }
-        guard case .sessionEnd(1, _, 12.0) = document.entries[4] else {
-            Issue.record("expected session 1 end at 12.0, got \(document.entries[4])")
+        guard case .sessionEnd(1, _, 12.0) = document.entries[3] else {
+            Issue.record("expected session 1 end at 12.0, got \(document.entries[3])")
             return
         }
 
@@ -164,23 +207,24 @@ struct RecordingPipelineTests {
         #expect(pending.isEmpty)
 
         // --- Resume (§10.2): session 2 appends, numbering continues. ---
+        // (Session-local chunk indices restart; chunks 0–7 read speech.)
         try await pipeline.start()
         try await pipeline.ingest(samples: tone(frames: 25))  // 2 s of A
         try await pipeline.stop()
 
         // + session 2 start, cue 3, session 2 end
-        let document2 = try await waitForTranscript(vttURL, entryCount: 8)
-        guard document2.entries.count == 8 else { return }
-        guard case .sessionStart(2, _, 12.0) = document2.entries[5] else {
-            Issue.record("expected session 2 start at 12.0, got \(document2.entries[5])")
+        let document2 = try await waitForTranscript(vttURL, entryCount: 7)
+        guard document2.entries.count == 7 else { return }
+        guard case .sessionStart(2, _, 12.0) = document2.entries[4] else {
+            Issue.record("expected session 2 start at 12.0, got \(document2.entries[4])")
             return
         }
-        guard case .cue(3, 12.0, 14.0, "Speaker 1", _, false) = document2.entries[6] else {
-            Issue.record("expected cue 3 [12.0, 14.0], got \(document2.entries[6])")
+        guard case .cue(3, 12.0, 14.0, "Speaker 1", _, false) = document2.entries[5] else {
+            Issue.record("expected cue 3 [12.0, 14.0], got \(document2.entries[5])")
             return
         }
-        guard case .sessionEnd(2, _, 14.0) = document2.entries[7] else {
-            Issue.record("expected session 2 end at 14.0, got \(document2.entries[7])")
+        guard case .sessionEnd(2, _, 14.0) = document2.entries[6] else {
+            Issue.record("expected session 2 end at 14.0, got \(document2.entries[6])")
             return
         }
 
@@ -199,7 +243,8 @@ struct RecordingPipelineTests {
         defer { try? FileManager.default.removeItem(at: noteFolder) }
 
         let diarizer = FakeDiarizer { _ in .speech(slot: 0) }
-        let pipeline = RecordingPipeline(noteFolderURL: noteFolder, diarizer: diarizer)
+        let pipeline = RecordingPipeline(
+            noteFolderURL: noteFolder, diarizer: diarizer, vad: FakeVad { _ in true })
         try await pipeline.start()
         try await pipeline.ingest(samples: tone(frames: 30))
         // Simulate a crash: no stop(); state.json still has activeSession.
@@ -208,7 +253,8 @@ struct RecordingPipelineTests {
 
         // A fresh pipeline (relaunch) starts a new session; recovery runs.
         let pipeline2 = RecordingPipeline(
-            noteFolderURL: noteFolder, diarizer: FakeDiarizer { _ in .speech(slot: 0) })
+            noteFolderURL: noteFolder, diarizer: FakeDiarizer { _ in .speech(slot: 0) },
+            vad: FakeVad { _ in true })
         try await pipeline2.start()
         try await pipeline2.ingest(samples: tone(frames: 25))
         try await pipeline2.stop()

@@ -28,14 +28,16 @@ public enum RecordingPipelineError: Error, Equatable {
     case notRecording
 }
 
-/// The single-writer pipeline actor (guide §2, §7, §10): every PCM batch
-/// fans out to the ring buffer, the audio.webm writer and the diarizer, and
-/// the diarizer's finalized frames drive the cut engine, whose actions
-/// become encoded segments, outbox entries and eventually VTT appends.
+/// The single-writer pipeline actor (guide §4/§5): every PCM batch fans out
+/// to the ring buffer, the audio.webm writer, the wrapped VAD and the
+/// wrapped Sortformer; the aligned record stream drives the cut engine,
+/// whose flushes become encoded segments, outbox entries and eventually VTT
+/// appends.
 public actor RecordingPipeline {
     private let noteFolderURL: URL
     private let transcriber: Transcriber
     private let diarizer: DiarizerStream
+    private let vad: VadStream
     private let outbox: TranscriptOutbox
 
     private var state: NoteRecordingState
@@ -46,6 +48,14 @@ public actor RecordingPipeline {
     private var sessionBaseSamples = 0
     private var sessionNumber = 0
     private var recording = false
+
+    /// Wrapped-model result queues (§3): one verdict per completed 256 ms
+    /// VAD chunk, and 4 probabilities per finalized Sortformer frame. The
+    /// release loop (§4.1) joins them on the 80 ms grid.
+    private var vadVerdicts: [Bool] = []
+    private var sortProbabilities: [Float] = []
+    private var sortFrames = 0
+    private var nextRecordFrame = 0
 
     /// Upload queue (guide §9.2): ≤ 2 concurrent, 3 attempts each with
     /// 1 s / 4 s backoff; missing/rejected auth pauses the whole queue
@@ -73,11 +83,13 @@ public actor RecordingPipeline {
     public init(
         noteFolderURL: URL,
         transcriber: Transcriber = StubTranscriber(),
-        diarizer: DiarizerStream
+        diarizer: DiarizerStream,
+        vad: VadStream = SileroVadStream()
     ) {
         self.noteFolderURL = noteFolderURL
         self.transcriber = transcriber
         self.diarizer = diarizer
+        self.vad = vad
         self.outbox = TranscriptOutbox(
             fileURL: noteFolderURL.appending(path: "transcript.vtt"),
             noteName: noteFolderURL.lastPathComponent)
@@ -105,6 +117,7 @@ public actor RecordingPipeline {
     public func start() async throws {
         guard !recording else { throw RecordingPipelineError.alreadyRecording }
         try await diarizer.prepare()
+        try await vad.prepare()
         state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
 
         if state.activeSession != nil {
@@ -129,7 +142,12 @@ public actor RecordingPipeline {
         realSamples = 0
         ring = SampleRingBuffer()
         engine = CutEngine()
+        vadVerdicts = []
+        sortProbabilities = []
+        sortFrames = 0
+        nextRecordFrame = 0
         diarizer.resetSession()
+        vad.resetSession()
 
         if sessionNumber == 1 || !FileManager.default.fileExists(atPath: audioFileURL.path) {
             encoder = try OpusWebMEncoder(fileURL: audioFileURL, mode: .create)
@@ -165,10 +183,11 @@ public actor RecordingPipeline {
         }
     }
 
-    // MARK: - PCM ingestion (§7)
+    // MARK: - PCM ingestion (§4.2)
 
-    /// Delivers one mixed 16 kHz mono batch to the three sinks in order.
-    public func ingest(samples: [Float]) throws {
+    /// Delivers one mixed 16 kHz mono batch to the four sinks in order,
+    /// then advances the release loop.
+    public func ingest(samples: [Float]) async throws {
         guard recording else { return }
         ring.append(samples)
         try encoder?.append(samples: samples)
@@ -176,35 +195,53 @@ public actor RecordingPipeline {
         // audio (§11 promises 1–2 s; stdio flush per ~10 ms batch is cheap).
         try encoder?.flush()
         realSamples += samples.count
+        vadVerdicts.append(contentsOf: try await vad.addAudio(samples))
         diarizer.addAudio(samples)
         while let chunk = try diarizer.process() {
-            try consume(chunk, realFrameEnd: Int.max)
+            absorb(chunk)
         }
+        try releaseRecords(upTo: Int.max)
     }
 
-    private func consume(_ chunk: DiarizerChunkResult, realFrameEnd: Int) throws {
-        for i in 0..<chunk.finalizedFrameCount {
-            let frame = chunk.startFrame + i
-            let label: FrameLabel
-            if frame >= realFrameEnd {
-                label = .silence  // stop-pad region (§10.1)
-            } else {
-                let base = chunk.finalizedPredictions.index(
-                    chunk.finalizedPredictions.startIndex, offsetBy: i * 4)
-                label = labelFrame(
-                    probabilities: chunk.finalizedPredictions[base..<(base + 4)])
-            }
-            for action in engine.push(label: label) {
-                try perform(action)
-            }
-        }
+    /// Queues one Sortformer burst's finalized frames (§3.2 holding queue).
+    private func absorb(_ chunk: DiarizerChunkResult) {
+        assert(chunk.startFrame == sortFrames, "sortformer frames out of order")
+        sortProbabilities.append(
+            contentsOf: chunk.finalizedPredictions.prefix(chunk.finalizedFrameCount * 4))
+        sortFrames += chunk.finalizedFrameCount
         liveContinuation?.yield(
             RecordingLiveUpdate(
                 elapsed: sessionBaseSeconds + TimeInterval(realSamples) / 16000,
                 tentativeSpeaker: chunk.tentativeSpeaker))
     }
 
-    // MARK: - Cut actions
+    /// The release loop (§4.1). Records release when both wrapped models
+    /// have their result — availability-driven, which by §3's bounds is at
+    /// most `pipelineLatencyFrames` behind the audio and immune to any
+    /// off-by-a-few-samples in the models' internal framing. Decisions are
+    /// a pure function of the record sequence, so release timing cannot
+    /// change them.
+    private func releaseRecords(upTo limit: Int) throws {
+        while nextRecordFrame < limit, nextRecordFrame < sortFrames {
+            let f = nextRecordFrame
+            // §3.1 midpoint rule: the frame's VAD verdict is the chunk
+            // containing its midpoint. Always already computed (§3.3) —
+            // except with lag-free test fakes, where we just wait.
+            let chunkIndex = (f * CutConstants.frameSamples + CutConstants.frameSamples / 2)
+                / CutConstants.vadChunkSamples
+            guard chunkIndex < vadVerdicts.count else { break }
+            let base = f * 4
+            let commands = engine.push(
+                vadActive: vadVerdicts[chunkIndex],
+                probabilities: sortProbabilities[base..<(base + 4)])
+            nextRecordFrame += 1
+            for command in commands {
+                try flushSegment(command)
+            }
+        }
+    }
+
+    // MARK: - Flushes (§5)
 
     private var realAudioEndSec: TimeInterval {
         sessionBaseSeconds + TimeInterval(realSamples) / 16000
@@ -214,38 +251,29 @@ public actor RecordingPipeline {
         sessionBaseSeconds + TimeInterval(frame) * DiarizerPreset.frameDuration
     }
 
-    private func perform(_ action: CutAction) throws {
-        switch action {
-        case .gap(let startFrame, let endFrame):
-            try outbox.append(
-                .gap(
-                    start: noteTime(startFrame),
-                    end: min(noteTime(endFrame), realAudioEndSec)))
-        case .flush(let command):
-            try flushSegment(command)
-        }
-    }
-
     private func flushSegment(_ command: FlushCommand) throws {
         let cueIndex = state.nextCueIndex
         let startSec = noteTime(command.startFrame)
         let endSec = min(noteTime(command.endFrame), realAudioEndSec)
 
-        // One contiguous PCM slice (§6.3 step 5) over the UPLOAD extents —
-        // these can carry up to 2 s of silence pad at a discarded gap's
-        // edges; cue timestamps stay on the speech extents. The upper bound
-        // clamps to written audio for the stop-time final frame.
-        let sliceEnd = min(command.uploadEndFrame * 1280, ring.writeHead)
-        let pcm = ring.slice((command.uploadStartFrame * 1280)..<sliceEnd)
+        // One contiguous PCM slice over the staged span — uploads tile the
+        // timeline (§5.1), so the slice is exactly the cue extents. The
+        // upper bound clamps to written audio for the stop-time final
+        // (possibly partial) frame.
+        let sliceEnd = min(command.endFrame * 1280, ring.writeHead)
+        let pcm = ring.slice((command.startFrame * 1280)..<sliceEnd)
 
         let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
         let segmentEncoder = try OpusWebMEncoder(fileURL: webmURL, mode: .create)
         try segmentEncoder.append(samples: pcm)
         try segmentEncoder.finish()
 
+        // Uploads before the first stable speaker have no label (§5.3);
+        // slot 0 is the display fallback.
+        let speakerSlot = command.speaker ?? 0
         let sidecar = PendingSegment(
             cueIndex: cueIndex, startSec: startSec, endSec: endSec,
-            speaker: command.speaker, continuation: command.continuation, attempts: 0)
+            speaker: speakerSlot, continuation: false, attempts: 0)
         let jsonEncoder = JSONEncoder()
         jsonEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try jsonEncoder.encode(sidecar)
@@ -259,12 +287,12 @@ public actor RecordingPipeline {
         trackedCues.insert(cueIndex)
         outbox.reserveCue(
             index: cueIndex, start: startSec, end: endSec,
-            speaker: "Speaker \(command.speaker + 1)",
-            continuation: command.continuation)
+            speaker: "Speaker \(speakerSlot + 1)",
+            continuation: false)
         enqueueUpload(cueIndex)
 
-        // Eviction floor (§8): everything before the flushed range's end is
-        // no longer referenced (buffer restarts at the cut frame).
+        // Eviction floor (§5.1): everything below flushedUpTo is uploaded
+        // and no longer referenced.
         ring.setEvictionFloor(sliceEnd)
     }
 
@@ -350,26 +378,42 @@ public actor RecordingPipeline {
         kickUploads()
     }
 
-    // MARK: - Stop (§10.1)
+    // MARK: - Stop (§5.4)
 
     public func stop() async throws {
         guard recording else { throw RecordingPipelineError.notRecording }
         recording = false
 
         let realFrameEnd = (realSamples + 1279) / 1280
-        engine.beginStop(realFrameEnd: realFrameEnd)
 
-        // Stop-pad: zeros to the diarizer ONLY (§0 fact 7 / §10.1 step 3).
-        diarizer.addAudio([Float](repeating: 0, count: Int(16000 * CutConstants.stopPadSeconds)))
+        // Drain: the wrapped models lag the audio (§3), so feed the stop
+        // pad — zeros, to the models ONLY, never the ring or audio.webm —
+        // until every real frame has both results, then release exactly the
+        // real frames. Pad frames past realFrameEnd never reach the engine.
+        let pad = [Float](repeating: 0, count: Int(16000 * CutConstants.stopPadSeconds))
+        vadVerdicts.append(contentsOf: try await vad.addAudio(pad))
+        diarizer.addAudio(pad)
         while let chunk = try diarizer.process() {
-            try consume(chunk, realFrameEnd: realFrameEnd)
+            absorb(chunk)
         }
         if let chunk = try diarizer.finalizeSession() {
-            try consume(chunk, realFrameEnd: realFrameEnd)
+            absorb(chunk)
         }
+        try releaseRecords(upTo: realFrameEnd)
 
-        for action in engine.stop(realFrameEnd: realFrameEnd) {
-            try perform(action)
+        // Defensive: if a model still fell short of realFrameEnd (it should
+        // not — the pad exceeds both latencies), synthesize silence records
+        // so the final cut covers all real audio.
+        let silence: [Float] = [0, 0, 0, 0]
+        while engine.frontier < realFrameEnd {
+            for command in engine.push(vadActive: false, probabilities: silence[...]) {
+                try flushSegment(command)
+            }
+        }
+        nextRecordFrame = max(nextRecordFrame, engine.frontier)
+
+        for command in engine.stop() {
+            try flushSegment(command)
         }
 
         try outbox.append(

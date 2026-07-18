@@ -1,35 +1,42 @@
 import Foundation
 
-/// The cut-point decision engine: frame labeling (§4), run smoother (§5) and
-/// buffer manager (§6) of docs/recording-algorithm.md, which is normative for
-/// every rule here. Pure and deterministic: frames in, actions out — no IO,
-/// no clocks (invariant §13.6).
+/// The cuts-and-flushes engine of docs/recording-algorithm.md (v2) §5, which
+/// is normative for every rule here. Consumes the aligned record stream —
+/// one `{vadActive, speakerProbs}` record per 80 ms frame (§4) — and decides
+/// uploads. Pure and deterministic: records in, flush commands out — no IO,
+/// no clocks (§4.1 consequence 2).
 ///
-/// All indices are session-local diarizer frames (80 ms, 1280 samples).
+/// All indices are session-local frames (80 ms, 1280 samples).
 
-/// Constants from the algorithm guide §1 (frame counts are normative).
+/// Constants from the algorithm guide §2 / §5.2 (frame counts normative).
 public enum CutConstants {
+    /// A Sortformer slot is active iff p ≥ this (§5.3).
     public static let activeProbability: Float = 0.5
-    public static let minSpeechFrames = 3
-    public static let minSilenceFrames = 2
-    /// Silence ≥ this is discarded (its middle, at least): flush the buffer,
-    /// emit a `NOTE gap`. Shorter silences glue into the buffer.
-    public static let silenceDiscardFrames = 25
-    /// Silence kept in the UPLOAD at each edge of a discarded gap: the flush
-    /// before the gap carries this much trailing silence, and the first
-    /// segment after it starts this much early. Cue extents are unaffected —
-    /// the pads exist so uploads don't cut off abruptly and so the
-    /// diarizer's speech-onset lag after a pause can't clip resumed speech.
-    /// MUST satisfy 2·pad < discard (12+12 = 24 < 25) or adjacent padded
-    /// uploads would overlap inside a minimal gap and duplicate words.
-    public static let silencePadFrames = 12
-    public static let maxBufferFrames = 125
-    public static let flushLookbackFrames = 37
+    /// A VAD chunk is speech iff its Silero probability ≥ this (§6 open
+    /// decision resolved to the library default).
+    public static let vadThreshold: Float = 0.85
+    /// R1: cut after this many consecutive silent records.
+    public static let silenceCutFrames = 3
+    /// R3: flush staging when a silence run reaches this.
+    public static let longSilenceFlushFrames = 25
+    /// R2: flush when staging exceeds this after a cut.
+    public static let stagingFlushFrames = 125
+    /// R4: a new speaker must hold dominance this long to trigger.
+    public static let speakerStableFrames = 3
+    /// R4 branch test: Sortformer reports offsets late by up to this.
+    public static let sortLagToleranceFrames = 3
+    /// §4.1 release clock: records land this far behind live audio.
+    public static let pipelineLatencyFrames = 13
+    public static let frameSamples = 1280
+    public static let vadChunkSamples = 4096
+    /// Zeros fed to the models (only) at stop so every real frame gets a
+    /// record (§5.4 Stop; the wrappers' latency must be drained).
     public static let stopPadSeconds = 2.0
     public static let ringTargetSeconds = 15.0
 }
 
-/// Per-frame label (§4).
+/// Per-frame Sortformer label. Retained for the live-UI tentative indicator
+/// and for scripting fake diarizers in tests.
 public enum FrameLabel: Equatable, Sendable {
     case silence
     case speech(slot: Int)
@@ -45,8 +52,8 @@ public enum FrameLabel: Equatable, Sendable {
     }
 }
 
-/// Labels one finalized frame from its 4 slot probabilities (§4):
-/// SILENCE if no slot ≥ 0.5, else argmax over active slots (tie → lowest).
+/// dominant(f) (§5.3): nil if no slot is active, else argmax over active
+/// slots (tie → lowest slot index). Deliberately VAD-independent.
 public func labelFrame(probabilities p: ArraySlice<Float>) -> FrameLabel {
     var best: (slot: Int, prob: Float)?
     for (i, prob) in p.enumerated() where prob >= CutConstants.activeProbability {
@@ -58,463 +65,156 @@ public func labelFrame(probabilities p: ArraySlice<Float>) -> FrameLabel {
     return .speech(slot: best.slot)
 }
 
-/// A maximal same-label frame run `[start, end)` (§3).
-public struct Run: Equatable, Sendable {
-    public var label: FrameLabel
-    public var start: Int
-    public var end: Int
-
-    public var length: Int { end - start }
-}
-
-/// Actions the engine asks the pipeline to perform. Frame-domain only; the
-/// pipeline maps frames to note time, assigns cue indices, slices the ring
-/// and encodes.
-public enum CutAction: Equatable, Sendable {
-    /// Encode and upload one cue's segment.
-    case flush(FlushCommand)
-    /// Emit a `NOTE gap` block for a discarded ≥ 6 s silence.
-    case gap(startFrame: Int, endFrame: Int)
-}
-
 public enum FlushReason: Equatable, Sendable {
-    case speakerSwitch
+    /// R3 — a silence run reached 2 s.
     case longSilence
-    case maxBuffer
+    /// R2 — staging exceeded 10 s after a cut.
+    case sizeLimit
+    /// R4 — a stable new speaker took over.
+    case speakerChange
+    /// Session stop.
     case stop
 }
 
+/// One upload: the staged span `[startFrame, endFrame)`. Uploads tile the
+/// session timeline — every frame is uploaded exactly once, in order,
+/// silences included (§5.1 tiling invariant).
 public struct FlushCommand: Equatable, Sendable {
-    /// Cue extents: start of the first buffered frame to the end of the
-    /// last SPEECH frame (trailing silence items trimmed, §6.3 step 1).
     public let startFrame: Int
     /// Exclusive.
     public let endFrame: Int
-    /// Upload-slice extents: equal to the cue extents except at a discarded
-    /// gap's edges, where they extend up to `silencePadFrames` into the
-    /// silence (§6.3) — the pads are uploaded, never on the cue timeline.
-    public let uploadStartFrame: Int
-    public let uploadEndFrame: Int
-    public let speaker: Int
+    /// nil only before the first stable speaker of the session (§5.3).
+    public let speaker: Int?
     public let reason: FlushReason
-    /// True when this cue continues the previous same-speaker cue
-    /// mid-sentence (a MAX_BUFFER cut preceded it) — renders
-    /// `NOTE continuation`.
-    public let continuation: Bool
 }
 
-// MARK: - Run smoother (§5)
-
-/// Smoother output event, delivered in order to the buffer manager.
-enum SmootherEvent {
-    /// Immutable committed run. `successor` is the run following it — known
-    /// at commit time (§5 commit rule) and used for the glue decision. nil
-    /// only for the final run committed at stop.
-    case committed(Run, successor: Run?)
-    /// The open run passed or grew beyond its min length (gated, §5).
-    case progress(Run)
-}
-
-/// Converts the per-frame label stream into committed runs plus gated
-/// open-run progress (§5). The only component that may relabel frames.
-struct RunSmoother {
-    private(set) var current: Run?
-    private var pending: [Run] = []
-    private var lastCommittedLabel: FrameLabel?
-
-    private static func minLength(_ label: FrameLabel) -> Int {
-        label.isSpeech ? CutConstants.minSpeechFrames : CutConstants.minSilenceFrames
-    }
-
-    /// Pushes one finalized frame; returns events in emission order.
-    /// Per-frame ordering (§6.4): commits precede the open-run progress.
-    mutating func push(frame f: Int, label: FrameLabel) -> [SmootherEvent] {
-        var events: [SmootherEvent] = []
-
-        guard var open = current else {
-            current = Run(label: label, start: f, end: f + 1)
-            return events
-        }
-
-        if label == open.label {
-            open.end = f + 1
-            current = open
-            events.append(contentsOf: commitReady())
-            if open.length >= Self.minLength(open.label) {
-                events.append(.progress(open))
-            }
-            return events
-        }
-
-        // Label changed: close current, open the new run.
-        pending.append(open)
-        current = Run(label: label, start: f, end: f + 1)
-
-        // Immediate absorption of the just-closed run if too short (§5).
-        if let closed = pending.last, closed.length < Self.minLength(closed.label) {
-            pending.removeLast()
-            var reopened: Run?
-            if var predecessor = pending.popLast() {
-                // Relabel the short run to its predecessor's label; merge.
-                predecessor.end = closed.end
-                if predecessor.label == current?.label {
-                    reopened = predecessor
-                } else {
-                    pending.append(predecessor)
-                }
-            } else {
-                // Virtual SILENCE before frame 0, or the last committed run:
-                // the short run takes that label and stands alone.
-                var relabeled = closed
-                relabeled.label = lastCommittedLabel ?? .silence
-                if relabeled.label == current?.label {
-                    reopened = relabeled
-                } else {
-                    pending.append(relabeled)
-                }
-            }
-            if var reopened {
-                // The merge made the predecessor adjacent to the same-label
-                // open run: it is open again (§5 reopen-merge).
-                reopened.end = current!.end
-                current = reopened
-                events.append(contentsOf: commitReady())
-                if reopened.length >= Self.minLength(reopened.label) {
-                    events.append(.progress(reopened))
-                }
-                return events
-            }
-        }
-
-        events.append(contentsOf: commitReady())
-        return events
-    }
-
-    /// Commit rule (§5): a pending run is immutable once its successor has
-    /// reached its own min length.
-    private mutating func commitReady() -> [SmootherEvent] {
-        var events: [SmootherEvent] = []
-        while let first = pending.first {
-            let successor = pending.count > 1 ? pending[1] : current
-            guard let successor, successor.length >= Self.minLength(successor.label) else {
-                break
-            }
-            pending.removeFirst()
-            lastCommittedLabel = first.label
-            events.append(.committed(first, successor: successor))
-        }
-        return events
-    }
-
-    /// Stop (§10.1 step 5): close the open run, absorb it if short, commit
-    /// everything unconditionally.
-    mutating func stop() -> [SmootherEvent] {
-        if var open = current {
-            current = nil
-            if open.length < Self.minLength(open.label), var predecessor = pending.popLast() {
-                predecessor.end = open.end
-                pending.append(predecessor)
-            } else if open.length < Self.minLength(open.label), pending.isEmpty {
-                open.label = lastCommittedLabel ?? .silence
-                pending.append(open)
-            } else {
-                pending.append(open)
-            }
-        }
-        var events: [SmootherEvent] = []
-        while !pending.isEmpty {
-            let run = pending.removeFirst()
-            lastCommittedLabel = run.label
-            events.append(.committed(run, successor: pending.first))
-        }
-        return events
-    }
-}
-
-// MARK: - Buffer manager (§6)
-
-/// Owns the (single) upload buffer, decides every flush and gap (§6).
-struct BufferManager {
-    private struct Item {
-        var isSpeech: Bool
-        var start: Int
-        var end: Int
-    }
-
-    private var items: [Item] = []
-    private var speaker: Int?
-    private var bufferStart = 0
-    /// Upload-slice start: `bufferStart`, or `silencePadFrames` earlier when
-    /// this buffer opened right after a discarded gap (§6.3 pads).
-    private var bufferUploadStart = 0
-    /// End frame of the last emitted gap — the next buffer starting exactly
-    /// there gets the leading upload pad.
-    private var padStartAfterGapEnd: Int?
-    /// Frames of the open run already shipped by a MAX_BUFFER hard cut.
-    private var openConsumedUpTo = 0
-    /// Speaker of the last MAX_BUFFER flush (§6.2 / §6.3 step 10).
-    private var pendingContinuation: Int?
-    /// Latches (§5: threshold actions fire once per run), keyed by run start.
-    private var longSilenceLatch: Int?
-    private var switchLatch: Int?
-    /// Finite only during stop (§7, §10.1).
-    private var realFrameEnd = Int.max
-
-    private var bufferEndFrame: Int { items.last?.end ?? bufferStart }
-    private var bufferFrameCount: Int { items.reduce(0) { $0 + ($1.end - $1.start) } }
-    private var isEmpty: Bool { items.isEmpty }
-
-    // MARK: Event handlers (§6.1)
-
-    mutating func handle(_ event: SmootherEvent) -> [CutAction] {
-        switch event {
-        case .committed(let run, let successor):
-            return handleCommitted(run, successor: successor)
-        case .progress(let run):
-            return handleProgress(run)
-        }
-    }
-
-    private mutating func handleCommitted(_ run: Run, successor: Run?) -> [CutAction] {
-        var actions: [CutAction] = []
-        switch run.label {
-        case .speech(let s):
-            if !isEmpty, speaker != s {
-                // Safety net for bursts; normally the open-run check flushed.
-                actions.append(contentsOf: flush(.speakerSwitch))
-            }
-            let start = max(run.start, openConsumedUpTo)
-            if start < run.end {
-                if isEmpty {
-                    speaker = s
-                    bufferStart = start
-                    bufferUploadStart = uploadStart(forBufferStart: start)
-                }
-                items.append(Item(isSpeech: true, start: start, end: run.end))
-            }
-            // The successor is stable at commit time; it may already count
-            // toward the buffered total (§6.2).
-            actions.append(contentsOf: checkMaxBuffer(open: successor))
-        case .silence:
-            let effectiveEnd = min(run.end, realFrameEnd)
-            if effectiveEnd - run.start >= CutConstants.silenceDiscardFrames {
-                if !isEmpty {
-                    // Safety net: the run can close before its latched
-                    // progress event fires (§6.1); flushing first keeps
-                    // outbox entries in timestamp order.
-                    actions.append(contentsOf: flush(.longSilence))
-                }
-                actions.append(.gap(startFrame: run.start, endFrame: effectiveEnd))
-                // The next buffer (the successor speech starts at run.end)
-                // gets the leading upload pad into this silence.
-                padStartAfterGapEnd = run.end
-            } else if !isEmpty, let speaker, successor?.label == .speech(slot: speaker) {
-                items.append(Item(isSpeech: false, start: run.start, end: run.end))
-            }
-        // else: drop (leading silence, or silence before a different
-        // speaker — the switch flush's trailing trim makes it moot).
-        }
-        return actions
-    }
-
-    private mutating func handleProgress(_ run: Run) -> [CutAction] {
-        switch run.label {
-        case .speech(let s):
-            if !isEmpty, s != speaker {
-                // Primary speaker-switch cut, latched once per run (§6.1).
-                guard switchLatch != run.start else { return [] }
-                switchLatch = run.start
-                return flush(.speakerSwitch)
-            }
-            return checkMaxBuffer(open: run)
-        case .silence:
-            // Real frames only: pad frames beyond realFrameEnd never trigger
-            // a long-silence flush (§10.1 — the stop path owns the final
-            // flush).
-            let effectiveLength = min(run.end, realFrameEnd) - run.start
-            guard !isEmpty, effectiveLength >= CutConstants.silenceDiscardFrames,
-                longSilenceLatch != run.start
-            else { return [] }
-            longSilenceLatch = run.start
-            return flush(.longSilence)
-        }
-    }
-
-    /// Sets the real-audio bound before stop-time events are processed, so
-    /// committed-run handling clamps gap extents to real audio (§10.1).
-    mutating func beginStop(realFrameEnd: Int) {
-        self.realFrameEnd = realFrameEnd
-    }
-
-    /// Stop (§10.1 step 6): whatever remains buffered flushes now.
-    mutating func stop() -> [CutAction] {
-        flush(.stop)
-    }
-
-    // MARK: checkMaxBuffer (§6.2)
-
-    private mutating func checkMaxBuffer(open: Run?) -> [CutAction] {
-        var openExtent = 0
-        var openStart = 0
-        var openMatches = false
-        if let open, case .speech(let s) = open.label,
-            open.length >= CutConstants.minSpeechFrames,
-            isEmpty || s == speaker
-        {
-            openMatches = true
-            openStart = max(open.start, openConsumedUpTo)
-            openExtent = max(0, open.end - openStart)
-        }
-        let total = bufferFrameCount + openExtent
-        guard total >= CutConstants.maxBufferFrames else { return [] }
-
-        let bufEnd = bufferEndFrame + openExtent
-
-        // Latest item boundary within the lookback window (§6.2): every
-        // silence↔speech transition inside the buffer, plus the boundary
-        // between the buffered items and the open run.
-        var boundaries = items.dropFirst().map(\.start)
-        if bufferEndFrame > bufferStart {
-            boundaries.append(bufferEndFrame)
-        }
-        let candidate =
-            boundaries
-            .filter { bufEnd - $0 <= CutConstants.flushLookbackFrames && $0 > bufferStart }
-            .max()
-
-        if let cut = candidate {
-            return flushPrefix(upTo: cut)
-        }
-
-        // Hard cut through the open run at its newest stable frame.
-        guard let open, openMatches else { return [] }
-        if isEmpty {
-            speaker = open.label.slot!
-            bufferStart = openStart
-            bufferUploadStart = uploadStart(forBufferStart: openStart)
-        }
-        items.append(Item(isSpeech: true, start: openStart, end: open.end))
-        openConsumedUpTo = open.end
-        return flush(.maxBuffer)
-    }
-
-    // MARK: flush (§6.3)
-
-    private mutating func flush(_ reason: FlushReason) -> [CutAction] {
-        // 1. Trim trailing silence items (they stay on the timeline,
-        //    uncovered by the cue).
-        while let last = items.last, !last.isSpeech {
-            items.removeLast()
-        }
-        // 2. No speech → no cue; the broken stream also consumes any
-        //    pending continuation.
-        guard let speaker, items.contains(where: \.isSpeech) else {
-            items.removeAll()
-            self.speaker = nil
-            pendingContinuation = nil
-            return []
-        }
-        let endFrame = min(items.last!.end, realFrameEnd)
-        let command = FlushCommand(
-            startFrame: bufferStart,
-            endFrame: endFrame,
-            uploadStartFrame: bufferUploadStart,
-            // A long-silence flush carries the trailing upload pad into the
-            // silence it is being cut by (§6.3); the silence run extends at
-            // least `silenceDiscardFrames` real frames past `endFrame`.
-            uploadEndFrame: reason == .longSilence
-                ? min(endFrame + CutConstants.silencePadFrames, realFrameEnd)
-                : endFrame,
-            speaker: speaker,
-            reason: reason,
-            continuation: pendingContinuation == speaker)
-        pendingContinuation = (reason == .maxBuffer) ? speaker : nil
-        items.removeAll()
-        self.speaker = nil
-        return [.flush(command)]
-    }
-
-    /// Leading upload pad (§6.3): a buffer opening exactly where a
-    /// discarded gap ended starts its upload `silencePadFrames` early, so
-    /// speech the diarizer detected late is still heard by the ASR.
-    private mutating func uploadStart(forBufferStart start: Int) -> Int {
-        defer { padStartAfterGapEnd = nil }
-        guard padStartAfterGapEnd == start else { return start }
-        return max(0, start - CutConstants.silencePadFrames)
-    }
-
-    /// MAX_BUFFER boundary cut: flush items before `cut`, keep the tail
-    /// buffered from `cut` (§6.2, §6.3 step 11).
-    private mutating func flushPrefix(upTo cut: Int) -> [CutAction] {
-        let kept = items.filter { $0.end > cut }
-        var prefix = items.filter { $0.end <= cut }
-        while let last = prefix.last, !last.isSpeech {
-            prefix.removeLast()
-        }
-
-        var actions: [CutAction] = []
-        if let speaker, prefix.contains(where: \.isSpeech) {
-            let endFrame = min(prefix.last!.end, realFrameEnd)
-            actions.append(
-                .flush(
-                    FlushCommand(
-                        startFrame: bufferStart,
-                        endFrame: endFrame,
-                        uploadStartFrame: bufferUploadStart,
-                        uploadEndFrame: endFrame,
-                        speaker: speaker,
-                        reason: .maxBuffer,
-                        continuation: pendingContinuation == speaker)))
-            pendingContinuation = speaker
-        } else {
-            pendingContinuation = nil
-        }
-        items = kept
-        bufferStart = cut
-        bufferUploadStart = cut  // the kept tail is mid-speech, never padded
-        return actions
-    }
-}
-
-// MARK: - Engine facade
-
-/// Ties smoother and manager together. The smoother emits events in the
-/// fixed per-frame order (§6.4: commits, then switch / longSilence / MAX
-/// via the progress event), and the manager handles them in order.
+/// §5's two-pointer engine: `flushedUpTo ≤ cutUpTo ≤ frontier`. A cut
+/// advances `cutUpTo` (cheap bookkeeping), a flush uploads
+/// `[flushedUpTo, cutUpTo)` and catches the pointer up.
 public struct CutEngine {
-    private var smoother = RunSmoother()
-    private var manager = BufferManager()
-    public private(set) var nextFrameIndex = 0
+    public private(set) var flushedUpTo = 0
+    public private(set) var cutUpTo = 0
+    public private(set) var frontier = 0
+
+    private var silenceRun = 0
+    private var silenceRunStart = 0
+    private var previousDominant: Int?
+    private var dominantRun = 0
+    private var dominantRunStart = 0
+    /// Last frame each slot was dominant — R4's `lastStop` source.
+    private var lastDominantFrame: [Int: Int] = [:]
+    public private(set) var currentSpeaker: Int?
 
     public init() {}
 
-    /// Announces the real-audio bound at the start of the stop sequence
-    /// (§10.1 step 2), BEFORE the stop-pad's forced-silence frames are
-    /// pushed — pad frames must never trigger flushes or count into gaps.
-    public mutating func beginStop(realFrameEnd: Int) {
-        manager.beginStop(realFrameEnd: realFrameEnd)
+    /// Pushes one released record (§5.3/§5.4). Rules run in the fixed order
+    /// R1 → R3 → R4; R2 runs inside every cut. `silenceRun`/`dominantRun`
+    /// advance by exactly one per record, so the edge triggers use `==` —
+    /// a run can never jump past its threshold.
+    public mutating func push(
+        vadActive: Bool, probabilities: ArraySlice<Float>
+    ) -> [FlushCommand] {
+        let f = frontier
+        frontier += 1
+        var commands: [FlushCommand] = []
+
+        if vadActive {
+            silenceRun = 0
+        } else {
+            if silenceRun == 0 { silenceRunStart = f }
+            silenceRun += 1
+        }
+
+        // R1 — silence cut. Guard: only for a run preceded by speech (a run
+        // starting at frame 0 — leading silence — never cuts).
+        if !vadActive, silenceRun == CutConstants.silenceCutFrames, silenceRunStart > 0 {
+            cut(f + 1, into: &commands)
+        }
+
+        // R3 — long-silence flush. The silence itself is not cut; it stays
+        // in processing and rides into the next upload (tiling invariant).
+        if !vadActive, silenceRun == CutConstants.longSilenceFlushFrames {
+            flush(.longSilence, into: &commands)
+        }
+
+        // Dominant-run tracking (§5.3): VAD-independent; an undefined
+        // dominant resets the run.
+        let dominant = labelFrame(probabilities: probabilities).slot
+        if let dominant {
+            if dominant == previousDominant {
+                dominantRun += 1
+            } else {
+                dominantRun = 1
+                dominantRunStart = f
+            }
+            previousDominant = dominant
+        } else {
+            dominantRun = 0
+            previousDominant = nil
+        }
+
+        // R4 — speaker change (+ the no-cut/no-flush initialization path).
+        // The debounce delays only when the rule runs; newStart/lastStop are
+        // original frame numbers, so the decision is identical to an
+        // instant one.
+        if let dominant, dominantRun == CutConstants.speakerStableFrames {
+            if currentSpeaker == nil {
+                currentSpeaker = dominant
+            } else if dominant != currentSpeaker,
+                let lastStop = lastDominantFrame[currentSpeaker!]
+            {
+                let newStart = dominantRunStart
+                if lastStop - CutConstants.sortLagToleranceFrames < cutUpTo {
+                    // The boundary was already cut (an R1 silence cut beat
+                    // Sortformer, which reports offsets late).
+                    flush(.speakerChange, into: &commands)
+                } else {
+                    // Direct switch or overlap: midpoint of the gap,
+                    // degenerating to the boundary when newStart follows
+                    // lastStop immediately.
+                    cut((lastStop + 1 + newStart) / 2, into: &commands)
+                    flush(.speakerChange, into: &commands)
+                }
+                currentSpeaker = dominant
+            }
+        }
+        if let dominant {
+            lastDominantFrame[dominant] = f
+        }
+
+        assert(flushedUpTo <= cutUpTo && cutUpTo <= frontier)
+        return commands
     }
 
-    /// Pushes one finalized frame's label; returns actions in order.
-    public mutating func push(label: FrameLabel) -> [CutAction] {
-        let frame = nextFrameIndex
-        nextFrameIndex += 1
-        var actions: [CutAction] = []
-        for event in smoother.push(frame: frame, label: label) {
-            actions.append(contentsOf: manager.handle(event))
+    /// Stop (§5.4): everything released but not yet uploaded goes out in one
+    /// final upload. The pipeline must drain the wrappers first so that
+    /// every real frame was pushed.
+    public mutating func stop() -> [FlushCommand] {
+        var commands: [FlushCommand] = []
+        if frontier > cutUpTo {
+            cut(frontier, into: &commands)
         }
-        return actions
+        flush(.stop, into: &commands)
+        return commands
     }
 
-    /// Stop (§10.1 steps 5–6). `realFrameEnd` clamps gap/cue extents; frames
-    /// at or beyond it were force-labeled SILENCE by the pipeline (§7).
-    public mutating func stop(realFrameEnd: Int) -> [CutAction] {
-        manager.beginStop(realFrameEnd: realFrameEnd)
-        var actions: [CutAction] = []
-        for event in smoother.stop() {
-            actions.append(contentsOf: manager.handle(event))
+    /// §5.1 cut(c) with R2 folded in: the size check runs immediately after
+    /// every cut, so staging never exceeds the limit *before* a cut.
+    private mutating func cut(_ c: Int, into commands: inout [FlushCommand]) {
+        assert(cutUpTo < c && c <= frontier, "cut(\(c)) outside (\(cutUpTo), \(frontier)]")
+        cutUpTo = c
+        if cutUpTo - flushedUpTo > CutConstants.stagingFlushFrames {
+            flush(.sizeLimit, into: &commands)
         }
-        actions.append(contentsOf: manager.stop())
-        return actions
+    }
+
+    /// §5.1 flush(): no-op when staging is empty.
+    private mutating func flush(_ reason: FlushReason, into commands: inout [FlushCommand]) {
+        guard cutUpTo > flushedUpTo else { return }
+        commands.append(
+            FlushCommand(
+                startFrame: flushedUpTo, endFrame: cutUpTo,
+                speaker: currentSpeaker, reason: reason))
+        flushedUpTo = cutUpTo
     }
 }
