@@ -18,7 +18,7 @@ struct SidebarView: View {
         }
         .contextMenu {
             // Empty-area menu: act on the home root.
-            Button("New Note") { model.createNote() }
+            Button("New Note") { model.promptForNewNote() }
             Button("New Folder") { model.createFolder() }
         }
         .overlay {
@@ -59,7 +59,7 @@ struct SidebarView: View {
                 if node.kind == .folder {
                     Button("New Note") {
                         model.selection = node.url
-                        model.createNote()
+                        model.promptForNewNote()
                     }
                     Button("New Folder") {
                         model.selection = node.url

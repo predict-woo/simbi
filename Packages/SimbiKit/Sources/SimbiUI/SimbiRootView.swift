@@ -22,10 +22,19 @@ public struct SimbiRootView: View {
         .toolbar {
             ToolbarItem {
                 Button("New Note", systemImage: "square.and.pencil") {
-                    model.createNote()
+                    model.promptForNewNote()
                 }
                 .keyboardShortcut("n", modifiers: .command)
             }
+        }
+        // Name prompt for every New Note entry point (toolbar, ⌘N, sidebar
+        // context menus). The field auto-focuses with the dated default
+        // selected, so typing replaces it; Return creates.
+        .alert("New Note", isPresented: noteCreationPresented) {
+            TextField("Name", text: $model.noteNameDraft)
+            Button("Create") { model.confirmNoteCreation() }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) { model.cancelNoteCreation() }
         }
         .task {
             model.start()
@@ -35,6 +44,15 @@ public struct SimbiRootView: View {
                 SpeechModelPool.shared.warmUp()
             }
         }
+    }
+
+    private var noteCreationPresented: Binding<Bool> {
+        Binding(
+            get: { model.noteCreationParent != nil },
+            set: { presented in
+                if !presented { model.cancelNoteCreation() }
+            }
+        )
     }
 
     @ViewBuilder
