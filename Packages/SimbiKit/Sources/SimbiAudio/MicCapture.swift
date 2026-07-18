@@ -8,6 +8,8 @@ import Foundation
 public final class MicCapture: @unchecked Sendable {
     public enum CaptureError: Error {
         case converterUnavailable
+        /// The requested device UID isn't connected (or refused selection).
+        case deviceUnavailable
     }
 
     private let engine = AVAudioEngine()
@@ -16,9 +18,23 @@ public final class MicCapture: @unchecked Sendable {
     public init() {}
 
     /// Starts the tap and returns the 16 kHz mono batch stream. The stream
-    /// finishes when `stop()` is called.
-    public func start() throws -> AsyncStream<[Float]> {
+    /// finishes when `stop()` is called. `deviceUID` selects a specific
+    /// input device; nil follows the system default.
+    public func start(deviceUID: String? = nil) throws -> AsyncStream<[Float]> {
         let input = engine.inputNode
+        if let deviceUID {
+            // Must happen before the first format query — selecting the
+            // device changes the input node's hardware format.
+            guard var deviceID = AudioInputDevices.deviceID(forUID: deviceUID),
+                let audioUnit = input.audioUnit,
+                AudioUnitSetProperty(
+                    audioUnit, kAudioOutputUnitProperty_CurrentDevice,
+                    kAudioUnitScope_Global, 0, &deviceID,
+                    UInt32(MemoryLayout<AudioDeviceID>.size)) == noErr
+            else {
+                throw CaptureError.deviceUnavailable
+            }
+        }
         let inputFormat = input.outputFormat(forBus: 0)
         guard
             let targetFormat = AVAudioFormat(

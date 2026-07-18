@@ -1,5 +1,6 @@
 import AppKit
 import CodexKit
+import SimbiAudio
 import SimbiKit
 import SwiftUI
 
@@ -27,11 +28,22 @@ public struct SettingsView: View {
                 }
             }
             Section("Recording") {
-                Picker("Audio source", selection: $settings.audioSource) {
-                    Text("Mic + system audio").tag(SimbiSettings.AudioSource.micAndSystem)
-                    Text("Mic only").tag(SimbiSettings.AudioSource.mic)
+                Picker("Microphone", selection: micSelection) {
+                    Text("Off").tag(MicChoice.off)
+                    Text("System default").tag(MicChoice.systemDefault)
+                    ForEach(microphones) { mic in
+                        Text(mic.name).tag(MicChoice.device(mic.id))
+                    }
+                    // A saved-but-unplugged mic stays selectable rather
+                    // than silently snapping to another option.
+                    if case .device(let uid) = micSelection.wrappedValue,
+                        !microphones.contains(where: { $0.id == uid }) {
+                        Text("Saved microphone (not connected)").tag(MicChoice.device(uid))
+                    }
                 }
-                .pickerStyle(.radioGroup)
+                Toggle("Capture system audio", isOn: $settings.systemAudioEnabled)
+                    // The last active source can't be turned off.
+                    .disabled(!settings.micEnabled)
             }
             Section("Notes folder") {
                 LabeledContent("Location") {
@@ -66,6 +78,38 @@ public struct SettingsView: View {
     /// `~`-relative home path — friendlier than the absolute `/Users/…`.
     private var abbreviatedHomePath: String {
         (SimbiHome().rootURL.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    private enum MicChoice: Hashable {
+        case off
+        case systemDefault
+        case device(String)
+    }
+
+    /// Re-read per render so a newly plugged-in mic appears without
+    /// reopening Settings.
+    private var microphones: [AudioInputDevice] {
+        AudioInputDevices.list()
+    }
+
+    private var micSelection: Binding<MicChoice> {
+        Binding {
+            guard settings.micEnabled else { return .off }
+            return settings.micDeviceUID.map(MicChoice.device) ?? .systemDefault
+        } set: { choice in
+            switch choice {
+            case .off:
+                settings.micEnabled = false
+                // Something must still record (SPEC.md §3.1).
+                settings.systemAudioEnabled = true
+            case .systemDefault:
+                settings.micEnabled = true
+                settings.micDeviceUID = nil
+            case .device(let uid):
+                settings.micEnabled = true
+                settings.micDeviceUID = uid
+            }
+        }
     }
 
     private func modelPicker(_ title: String, selection: Binding<String?>) -> some View {

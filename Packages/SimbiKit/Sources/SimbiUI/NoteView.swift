@@ -2,6 +2,7 @@ import AppKit
 import CodexKit
 import Foundation
 import Observation
+import SimbiAudio
 import SimbiKit
 import SwiftUI
 
@@ -321,23 +322,91 @@ struct RecordingHeader: View {
                     .lineLimit(2)
             }
 
-            // Source toggle (SPEC.md §3.1: mic / mic+system). Locked while
-            // recording — the mix can't change mid-session. Quiet icon: the
-            // symbol carries the state so it doesn't compete with Record.
-            Button {
-                recorder.systemAudioEnabled.toggle()
-            } label: {
-                Image(systemName: recorder.systemAudioEnabled ? "speaker.wave.2" : "speaker.slash")
-                    .foregroundStyle(
-                        recorder.systemAudioEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-            }
-            .buttonStyle(.borderless)
-            .disabled(recorder.status != .idle)
-            .help(
-                recorder.systemAudioEnabled
-                    ? "System audio is captured too (mic + system)"
-                    : "Mic only — click to also capture system audio")
+            // Source menu (SPEC.md §3.1: mic device and system audio are
+            // chosen independently; either can be off, never both). Locked
+            // while recording — the mix can't change mid-session. Quiet
+            // icons: the symbols carry the state so they don't compete
+            // with Record.
+            sourcesMenu
         }
+    }
+
+    private var sourcesMenu: some View {
+        Menu {
+            Section("Microphone") {
+                micOption("Off", selected: !recorder.micEnabled) {
+                    recorder.micEnabled = false
+                }
+                // Turning the mic off with system audio off would leave
+                // nothing to record.
+                .disabled(!recorder.systemAudioEnabled)
+                micOption(
+                    "System default",
+                    selected: recorder.micEnabled && recorder.micDeviceUID == nil
+                ) {
+                    recorder.micEnabled = true
+                    recorder.micDeviceUID = nil
+                }
+                let mics = recorder.availableMicrophones
+                ForEach(mics) { mic in
+                    micOption(
+                        mic.name,
+                        selected: recorder.micEnabled && recorder.micDeviceUID == mic.id
+                    ) {
+                        recorder.micEnabled = true
+                        recorder.micDeviceUID = mic.id
+                    }
+                }
+                // Keep a saved-but-unplugged mic visible so the selection
+                // isn't silently misrepresented.
+                if recorder.micEnabled, let uid = recorder.micDeviceUID,
+                    !mics.contains(where: { $0.id == uid }) {
+                    micOption("Saved microphone (not connected)", selected: true) {}
+                }
+            }
+            Section("System audio") {
+                Toggle("Capture system audio", isOn: $recorder.systemAudioEnabled)
+                    // Same guard from the other side: last source stays on.
+                    .disabled(!recorder.micEnabled)
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: recorder.micEnabled ? "mic.fill" : "mic.slash")
+                    .foregroundStyle(
+                        recorder.micEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                Image(
+                    systemName: recorder.systemAudioEnabled ? "speaker.wave.2" : "speaker.slash"
+                )
+                .foregroundStyle(
+                    recorder.systemAudioEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(recorder.status != .idle)
+        .help(sourcesSummary)
+    }
+
+    private func micOption(
+        _ title: String, selected: Bool, action: @escaping () -> Void
+    ) -> some View {
+        // Toggle rows get the native menu checkmark on the active option.
+        Toggle(title, isOn: .init(get: { selected }, set: { _ in action() }))
+    }
+
+    /// Tooltip summary, e.g. "Recording: MacBook Pro Microphone + system audio".
+    private var sourcesSummary: String {
+        var parts: [String] = []
+        if recorder.micEnabled {
+            let name =
+                recorder.availableMicrophones
+                .first { $0.id == recorder.micDeviceUID }?.name
+            parts.append(name ?? "default microphone")
+        }
+        if recorder.systemAudioEnabled {
+            parts.append("system audio")
+        }
+        return "Recording: " + parts.joined(separator: " + ")
     }
 
     /// Who the diarizer currently hears, in the same chip language as the
