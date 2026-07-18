@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SimbiKit
@@ -74,37 +75,26 @@ public final class FileTreeModel {
         }
     }
 
-    /// "New Note" dialog state (SPEC.md §6): a non-nil parent presents the
-    /// name prompt with `noteNameDraft` prefilled to the dated default.
-    public private(set) var noteCreationParent: URL?
-    public var noteNameDraft = ""
-
+    /// "New Note" with a name prompt (SPEC.md §6): the dialog opens with
+    /// the dated default prefilled and selected, so typing replaces it;
+    /// Return creates, Esc cancels.
     public func promptForNewNote() {
         let parent = targetFolderForNewItems
-        noteNameDraft = NoteOperations.availableNoteName(in: parent)
-        noteCreationParent = parent
-    }
-
-    public func confirmNoteCreation() {
-        guard let parent = noteCreationParent else { return }
-        noteCreationParent = nil
+        let suggested = NoteOperations.availableNoteName(in: parent)
+        guard let entered = NoteNamePrompt.run(suggestedName: suggested) else { return }
         // "/" would silently nest the note; an emptied field falls back to
         // the dated default rather than failing.
-        var name = noteNameDraft
+        var name = entered
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
         if name.isEmpty {
-            name = NoteOperations.availableNoteName(in: parent)
+            name = suggested
         }
         name = NoteOperations.availableName(name, in: parent)
         if let url = try? NoteOperations.createNote(named: name, in: parent) {
             refresh()
             selection = url
         }
-    }
-
-    public func cancelNoteCreation() {
-        noteCreationParent = nil
     }
 
     public func createFolder() {
@@ -127,5 +117,27 @@ public final class FileTreeModel {
     public func trash(_ url: URL) {
         try? NoteOperations.trash(url)
         refresh()
+    }
+}
+
+/// Native name prompt for New Note. NSAlert (not SwiftUI `.alert`) because
+/// a SwiftUI alert TextField caches its text from the first presentation
+/// and later prompts open empty; NSAlert also guarantees the AppKit
+/// behaviors the dialog relies on — initial first responder selects the
+/// whole prefill, Return fires the default button, Esc cancels.
+@MainActor
+enum NoteNamePrompt {
+    /// Returns the entered name, or nil on cancel.
+    static func run(suggestedName: String) -> String? {
+        let alert = NSAlert()
+        alert.messageText = "New Note"
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(string: suggestedName)
+        field.frame = NSRect(x: 0, y: 0, width: 230, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue
     }
 }
