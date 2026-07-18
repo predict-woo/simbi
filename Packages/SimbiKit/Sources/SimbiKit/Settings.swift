@@ -6,15 +6,15 @@ import Foundation
 /// Decoding is resilient: missing keys fall back to defaults so old settings
 /// files keep working as fields are added.
 public struct SimbiSettings: Codable, Equatable, Sendable {
-    public enum AudioSource: String, Codable, Sendable, CaseIterable {
-        case mic
-        case micAndSystem
-    }
-
     public var fixerModel: String?
     public var converterModel: String?
     public var chatModel: String?
-    public var audioSource: AudioSource
+    /// Default recording sources (SPEC.md §3.1). Mic and system audio are
+    /// independent; at least one is kept enabled on load.
+    public var micEnabled: Bool
+    /// Specific input device UID; nil follows the system default.
+    public var micDeviceUID: String?
+    public var systemAudioEnabled: Bool
 
     public static let `default` = SimbiSettings()
 
@@ -22,12 +22,23 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
         fixerModel: String? = nil,
         converterModel: String? = nil,
         chatModel: String? = nil,
-        audioSource: AudioSource = .micAndSystem
+        micEnabled: Bool = true,
+        micDeviceUID: String? = nil,
+        systemAudioEnabled: Bool = true
     ) {
         self.fixerModel = fixerModel
         self.converterModel = converterModel
         self.chatModel = chatModel
-        self.audioSource = audioSource
+        self.micEnabled = micEnabled
+        self.micDeviceUID = micDeviceUID
+        self.systemAudioEnabled = systemAudioEnabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case fixerModel, converterModel, chatModel
+        case micEnabled, micDeviceUID, systemAudioEnabled
+        /// Pre-mic-picker files stored `"mic"` / `"micAndSystem"` here.
+        case audioSource
     }
 
     public init(from decoder: Decoder) throws {
@@ -35,7 +46,25 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
         fixerModel = try container.decodeIfPresent(String.self, forKey: .fixerModel)
         converterModel = try container.decodeIfPresent(String.self, forKey: .converterModel)
         chatModel = try container.decodeIfPresent(String.self, forKey: .chatModel)
-        audioSource = try container.decodeIfPresent(AudioSource.self, forKey: .audioSource) ?? .micAndSystem
+        micDeviceUID = try container.decodeIfPresent(String.self, forKey: .micDeviceUID)
+        let legacySource = try container.decodeIfPresent(String.self, forKey: .audioSource)
+        micEnabled = try container.decodeIfPresent(Bool.self, forKey: .micEnabled) ?? true
+        systemAudioEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .systemAudioEnabled)
+            ?? (legacySource != "mic")
+        if !micEnabled && !systemAudioEnabled {
+            micEnabled = true
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(fixerModel, forKey: .fixerModel)
+        try container.encodeIfPresent(converterModel, forKey: .converterModel)
+        try container.encodeIfPresent(chatModel, forKey: .chatModel)
+        try container.encode(micEnabled, forKey: .micEnabled)
+        try container.encodeIfPresent(micDeviceUID, forKey: .micDeviceUID)
+        try container.encode(systemAudioEnabled, forKey: .systemAudioEnabled)
     }
 
     public static func load(from url: URL) throws -> SimbiSettings {

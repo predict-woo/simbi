@@ -100,12 +100,15 @@ same files (§3.5). Note folder layout:
 
 ### 3.1 Capture [decided: mic + system audio]
 
-- **Microphone**: `AVAudioEngine` input-node tap.
+- **Microphone**: `AVAudioEngine` input-node tap. The input device is
+  selectable (CoreAudio device UID persisted in settings; nil = system
+  default), and the mic can be turned off entirely.
 - **System audio** (the other side of a call, videos, etc.): CoreAudio
   **process tap** (`CATapDescription` + aggregate device, macOS 14.4+),
   capturing system-wide output. Requires the system-audio-recording TCC
-  permission (prompted on first use). Record UI has a source toggle:
-  *mic* / *mic + system* (default: mic + system).
+  permission (prompted on first use). Record UI has a sources menu: mic
+  (off / default / specific device) and system audio (on / off) chosen
+  independently, at least one always on (default: mic + system).
 - Both sources are resampled to **16 kHz mono Float32** and mixed (simple sum
   with per-source gain, soft-clip limiter) into ONE stream. The mixed stream
   is the sole input to everything downstream — diarizer, continuous file,
@@ -410,8 +413,8 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
 - **Note view** (when a note is selected):
   - title (folder name) + `note.md` editor (swift-markdown-engine, §1);
   - **Record / Stop / Resume** button reflecting §3.5, with live elapsed
-    time (note-timeline), source toggle (mic / mic+system), and live speaker
-    indicator;
+    time (note-timeline), sources menu (mic device picker + system audio
+    toggle, §3.1), and live speaker indicator;
   - transcript pane rendering `transcript.vtt` live, per-speaker colors,
     session-boundary markers, click-to-seek playback of `audio.webm` (via
     the libopus/libwebm playback path, §3.1);

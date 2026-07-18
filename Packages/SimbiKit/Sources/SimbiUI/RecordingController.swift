@@ -44,14 +44,30 @@ public final class RecordingController {
     private(set) var tentativeSpeaker: Int?
     /// True when the note already has a recording (button says Resume).
     private(set) var hasRecording: Bool
-    /// Source toggle (SPEC.md §3.1: mic / mic+system); default from
-    /// settings.json, changes persist back as the new default.
-    var systemAudioEnabled: Bool {
-        didSet { persistAudioSource() }
+    /// Recording sources (SPEC.md §3.1: mic and system audio are chosen
+    /// independently; at least one stays on — the UI disables the last
+    /// active option). Defaults come from settings.json and changes persist
+    /// back as the new default.
+    var micEnabled: Bool {
+        didSet { persistSources() }
     }
-    /// Set when mic+system was requested but the tap couldn't start —
-    /// recording proceeds mic-only with this banner (SPEC.md §7).
+    /// Specific input device UID; nil follows the system default.
+    var micDeviceUID: String? {
+        didSet { persistSources() }
+    }
+    var systemAudioEnabled: Bool {
+        didSet { persistSources() }
+    }
+    /// Set when a requested source degraded at start (system tap couldn't
+    /// start, saved mic not connected) — recording proceeds with what's
+    /// left under this banner (SPEC.md §7).
     private(set) var systemAudioBanner: String?
+
+    /// Input devices for the source menu, re-read on each open so plugging
+    /// in a mic shows up without a restart.
+    var availableMicrophones: [AudioInputDevice] {
+        AudioInputDevices.list()
+    }
 
     private let noteFolderURL: URL
     private let pipeline: RecordingPipeline
@@ -70,13 +86,17 @@ public final class RecordingController {
         self.elapsed = TimeInterval(state.totalSamples) / 16000
         let settings =
             (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
-        self.systemAudioEnabled = settings.audioSource == .micAndSystem
+        self.micEnabled = settings.micEnabled
+        self.micDeviceUID = settings.micDeviceUID
+        self.systemAudioEnabled = settings.systemAudioEnabled
     }
 
-    private func persistAudioSource() {
+    private func persistSources() {
         let home = SimbiHome()
         var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
-        settings.audioSource = systemAudioEnabled ? .micAndSystem : .mic
+        settings.micEnabled = micEnabled
+        settings.micDeviceUID = micDeviceUID
+        settings.systemAudioEnabled = systemAudioEnabled
         try? settings.save(to: home.settingsFileURL)
     }
 
@@ -93,9 +113,11 @@ public final class RecordingController {
 
     private func start() async {
         status = .preparing
-        guard await AVCaptureDevice.requestAccess(for: .audio) else {
-            status = .failed("Microphone access denied — enable it in System Settings.")
-            return
+        if micEnabled {
+            guard await AVCaptureDevice.requestAccess(for: .audio) else {
+                status = .failed("Microphone access denied — enable it in System Settings.")
+                return
+            }
         }
         do {
             // Fixer (SPEC.md §5.2): reuses the note's saved thread if any.
@@ -110,9 +132,20 @@ public final class RecordingController {
             try await pipeline.start()
             let capture = MixedCapture()
             self.capture = capture
+            // A saved mic that's unplugged degrades to the default device
+            // (with a banner) rather than blocking the recording.
+            var deviceUID = micDeviceUID
+            var micBanner: String?
+            if micEnabled, let uid = deviceUID, AudioInputDevices.deviceID(forUID: uid) == nil {
+                deviceUID = nil
+                micBanner = "Selected microphone isn't connected — using the system default."
+            }
             let stream = try capture.start(
-                source: systemAudioEnabled ? .micAndSystem : .mic)
-            systemAudioBanner = capture.systemAudioFailure
+                config: .init(
+                    micEnabled: micEnabled,
+                    micDeviceUID: deviceUID,
+                    systemAudioEnabled: systemAudioEnabled))
+            systemAudioBanner = capture.systemAudioFailure ?? micBanner
             status = .recording
             hasRecording = true
 
@@ -133,7 +166,15 @@ public final class RecordingController {
                 }
             }
         } catch {
-            status = .failed("Could not start recording: \(error)")
+            if !micEnabled {
+                // System-only has no mic to degrade to; the tap failing is
+                // almost always the screen/system-audio TCC permission.
+                status = .failed(
+                    "System audio capture couldn't start (check the System Audio Recording "
+                        + "permission in System Settings, or enable the microphone): \(error)")
+            } else {
+                status = .failed("Could not start recording: \(error)")
+            }
         }
     }
 

@@ -52,7 +52,8 @@ struct SimbiSettingsTests {
 
         var settings = SimbiSettings.default
         settings.chatModel = "gpt-5.4"
-        settings.audioSource = .mic
+        settings.systemAudioEnabled = false
+        settings.micDeviceUID = "BuiltInMicrophoneDevice"
         try settings.save(to: url)
 
         #expect(try SimbiSettings.load(from: url) == settings)
@@ -62,5 +63,24 @@ struct SimbiSettingsTests {
     func missingKeysDefault() throws {
         let decoded = try JSONDecoder().decode(SimbiSettings.self, from: Data("{}".utf8))
         #expect(decoded == .default)
+    }
+
+    @Test("legacy audioSource key migrates to the split source fields")
+    func legacyAudioSource() throws {
+        let micOnly = try JSONDecoder().decode(
+            SimbiSettings.self, from: Data(#"{"audioSource":"mic"}"#.utf8))
+        #expect(micOnly.micEnabled && !micOnly.systemAudioEnabled)
+
+        let both = try JSONDecoder().decode(
+            SimbiSettings.self, from: Data(#"{"audioSource":"micAndSystem"}"#.utf8))
+        #expect(both.micEnabled && both.systemAudioEnabled)
+    }
+
+    @Test("both sources disabled on disk re-enables the mic")
+    func bothDisabledFallsBackToMic() throws {
+        let decoded = try JSONDecoder().decode(
+            SimbiSettings.self,
+            from: Data(#"{"micEnabled":false,"systemAudioEnabled":false}"#.utf8))
+        #expect(decoded.micEnabled)
     }
 }

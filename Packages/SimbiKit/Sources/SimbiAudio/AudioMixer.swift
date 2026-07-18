@@ -57,14 +57,27 @@ public struct AudioMixer: Sendable {
 }
 
 /// Owns the capture sources for one recording and exposes the single mixed
-/// 16 kHz mono stream the pipeline ingests (SPEC.md §3.1). If system-audio
-/// capture can't start (permission denied, pre-14.4 macOS), capture
-/// proceeds mic-only and the failure is surfaced for the UI banner
-/// (SPEC.md §7).
+/// 16 kHz mono stream the pipeline ingests (SPEC.md §3.1). When the mic is
+/// on and system-audio capture can't start (permission denied, pre-14.4
+/// macOS), capture degrades to mic-only and the failure is surfaced for the
+/// UI banner (SPEC.md §7); with no mic to fall back on, the failure throws.
 public final class MixedCapture: @unchecked Sendable {
-    public enum Source: Sendable, Equatable {
-        case mic
-        case micAndSystem
+    /// Which sources feed the recording (SPEC.md §3.1). Each is independent;
+    /// at least one must be enabled.
+    public struct Config: Sendable, Equatable {
+        public var micEnabled: Bool
+        /// Specific input device UID; nil follows the system default.
+        public var micDeviceUID: String?
+        public var systemAudioEnabled: Bool
+
+        public init(
+            micEnabled: Bool = true, micDeviceUID: String? = nil,
+            systemAudioEnabled: Bool = true
+        ) {
+            self.micEnabled = micEnabled
+            self.micDeviceUID = micDeviceUID
+            self.systemAudioEnabled = systemAudioEnabled
+        }
     }
 
     /// Why system audio is off even though `micAndSystem` was requested.
@@ -97,14 +110,28 @@ public final class MixedCapture: @unchecked Sendable {
     public enum MixedCaptureError: Error {
         /// System-audio capture needs macOS 14.4+ (SPEC.md §3.1).
         case systemAudioUnsupported
+        /// Config had every source disabled — nothing to record.
+        case noSourcesEnabled
     }
 
-    /// Starts capture and returns the mixed stream. Mic failure throws;
-    /// system-audio failure degrades to mic-only (check
-    /// `systemAudioFailure`).
-    public func start(source: Source) throws -> AsyncStream<[Float]> {
-        let micStream = try mic.start()
-        guard source == .micAndSystem else { return micStream }
+    /// Starts capture and returns the mixed stream. Failure of the only
+    /// enabled source throws; system-audio failure with the mic on degrades
+    /// to mic-only (check `systemAudioFailure`).
+    public func start(config: Config) throws -> AsyncStream<[Float]> {
+        guard config.micEnabled || config.systemAudioEnabled else {
+            throw MixedCaptureError.noSourcesEnabled
+        }
+        guard config.micEnabled else {
+            // System-only: nothing to degrade to, so failure is the
+            // caller's problem.
+            let capture = try makeSystemCapture()
+            let stream = try capture.start()
+            system = capture
+            systemAudioActive = true
+            return stream
+        }
+        let micStream = try mic.start(deviceUID: config.micDeviceUID)
+        guard config.systemAudioEnabled else { return micStream }
 
         let systemStream: AsyncStream<[Float]>
         do {
