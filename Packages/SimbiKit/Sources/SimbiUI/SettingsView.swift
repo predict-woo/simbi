@@ -33,10 +33,16 @@ public struct SettingsView: View {
                 }
                 .pickerStyle(.radioGroup)
             }
-            Section("Home") {
-                LabeledContent(SimbiHome().rootURL.path) {
-                    Button("Reveal in Finder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([SimbiHome().rootURL])
+            Section("Notes folder") {
+                LabeledContent("Location") {
+                    HStack(spacing: 8) {
+                        Text(abbreviatedHomePath)
+                            .foregroundStyle(.secondary)
+                            .truncationMode(.middle)
+                            .lineLimit(1)
+                        Button("Show in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([SimbiHome().rootURL])
+                        }
                     }
                 }
             }
@@ -55,6 +61,11 @@ public struct SettingsView: View {
                 modelsUnavailable = true
             }
         }
+    }
+
+    /// `~`-relative home path — friendlier than the absolute `/Users/…`.
+    private var abbreviatedHomePath: String {
+        (SimbiHome().rootURL.path as NSString).abbreviatingWithTildeInPath
     }
 
     private func modelPicker(_ title: String, selection: Binding<String?>) -> some View {

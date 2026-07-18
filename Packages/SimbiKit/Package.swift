@@ -15,14 +15,9 @@ let package = Package(
     dependencies: [
         // Fast-moving 0.x — pin exactly; bump deliberately.
         .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5"),
-        .package(url: "https://github.com/krzyzanowskim/STTextView.git", from: "2.3.10"),
-        // M0 spike choice. Revision-pinned (= tag 0.8.1): its Neon dependency is
-        // itself revision-pinned, so SPM refuses to treat the tag as a stable
-        // version. Before shipping, vendor the integration against upstream
-        // ChimeHQ/Neon (see SPEC.md §1).
-        .package(
-            url: "https://github.com/krzyzanowskim/STTextView-Plugin-Neon.git",
-            revision: "482b73cf442b2262525a0aa4355603b6467b6084"),
+        // TextKit 2 live-styled markdown editor (replaces the M0
+        // STTextView + Neon source editor). Pre-1.0 — pin exactly.
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0"),
     ],
     targets: [
         .target(name: "SimbiKit"),
@@ -74,8 +69,9 @@ let package = Package(
                 "SimbiKit",
                 "SimbiAudio",
                 "CodexKit",
-                .product(name: "STTextView", package: "STTextView"),
-                .product(name: "STTextView-Plugin-Neon", package: "STTextView-Plugin-Neon"),
+                .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
+                .product(name: "MarkdownEngineCodeBlocks", package: "swift-markdown-engine"),
+                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine"),
             ]
         ),
         // M1 spike (SPEC.md §8): proves the vendored encoder's output is

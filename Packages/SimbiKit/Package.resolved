@@ -1,15 +1,6 @@
 {
-  "originHash" : "9a7519587aa33647e7eda7159b06f6f6eefb5c60747f93e39ed965a6374fbcd9",
+  "originHash" : "afa53e30d7eca1ab753fb4ca006b0c99ad0e2962448599953ac00147effa7e49",
   "pins" : [
-    {
-      "identity" : "coretextswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/CoreTextSwift",
-      "state" : {
-        "revision" : "833177201d6421e6322296f39fce6ff6ae52618a",
-        "version" : "0.2.0"
-      }
-    },
     {
       "identity" : "fluidaudio",
       "kind" : "remoteSourceControl",
@@ -20,66 +11,30 @@
       }
     },
     {
-      "identity" : "neon",
+      "identity" : "highlighterswift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/kylemacomber/Neon",
+      "location" : "https://github.com/smittytone/HighlighterSwift",
       "state" : {
-        "branch" : "ce8d252",
-        "revision" : "ce8d252c8fd53ea0b6960e02c423315eef11f141"
+        "revision" : "fe7aae9c9b31d3b296fd3d2dd575e1a207bb29e0",
+        "version" : "3.1.0"
       }
     },
     {
-      "identity" : "rearrange",
+      "identity" : "swift-markdown-engine",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/Rearrange",
+      "location" : "https://github.com/nodes-app/swift-markdown-engine",
       "state" : {
-        "revision" : "5ff7f3363f7a08f77e0d761e38e6add31c2136e1",
-        "version" : "1.8.1"
+        "revision" : "665f7c46aa4933fdf714f558ef975067f7932421",
+        "version" : "0.10.0"
       }
     },
     {
-      "identity" : "sttextkitplus",
+      "identity" : "swiftmath",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/STTextKitPlus",
+      "location" : "https://github.com/mgriebling/SwiftMath",
       "state" : {
-        "revision" : "2ee74906f4d753458eeaa9a2f6d4538aacb86a1d",
-        "version" : "0.3.0"
-      }
-    },
-    {
-      "identity" : "sttextview",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/STTextView",
-      "state" : {
-        "revision" : "8569251785daf1f0310eaa9235d1254264f0d249",
-        "version" : "2.3.10"
-      }
-    },
-    {
-      "identity" : "sttextview-plugin-neon",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/krzyzanowskim/STTextView-Plugin-Neon.git",
-      "state" : {
-        "branch" : "482b73cf442b2262525a0aa4355603b6467b6084",
-        "revision" : "5a30db4ce7908a5414e7b499e2379bdc49991cd1"
-      }
-    },
-    {
-      "identity" : "swifttreesitter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ChimeHQ/SwiftTreeSitter",
-      "state" : {
-        "revision" : "08ef81eb8620617b55b08868126707ad72bf754f",
-        "version" : "0.25.0"
-      }
-    },
-    {
-      "identity" : "tree-sitter",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/tree-sitter/tree-sitter",
-      "state" : {
-        "revision" : "da6fe9beb4f7f67beb75914ca8e0d48ae48d6406",
-        "version" : "0.25.10"
+        "revision" : "fa8244ed032f4a1ade4cb0571bf87d2f1a9fd2d7",
+        "version" : "1.7.3"
       }
     }
   ],

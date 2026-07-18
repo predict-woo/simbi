@@ -91,7 +91,7 @@ struct NoteView: View {
 
     private var editorPane: some View {
         VStack(spacing: 0) {
-            MarkdownEditor(text: $document.text)
+            MarkdownEditor(text: $document.text, documentId: document.fileURL.path)
             Divider()
             FilesSection(model: files)
         }
@@ -136,6 +136,9 @@ struct NoteView: View {
     /// §6 degraded states: recording works without Codex, but transcription
     /// and agent features need the ChatGPT app + a signed-in auth.json.
     private var degradedBanner: String? {
+        if Design.uiPreview {
+            return "ChatGPT app not found — transcription and Codex features are disabled."
+        }
         if !CodexInstallation.standard.isBinaryInstalled {
             return "ChatGPT app not found — transcription and Codex features are disabled."
         }
@@ -148,18 +151,12 @@ struct NoteView: View {
     private var transcriptPane: some View {
         VStack(spacing: 0) {
             if let degraded = degradedBanner {
-                Label(degraded, systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.orange.opacity(0.12))
+                StatusBanner(message: degraded)
                 Divider()
             }
             RecordingHeader(recorder: recorder)
             Divider()
-            if playback.isPlaying {
+            if playback.isPlaying || Design.uiPreview {
                 PlaybackBar(playback: playback)
                 Divider()
             }
@@ -185,7 +182,7 @@ struct PlaybackBar: View {
     let playback: PlaybackController
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Button {
                 playback.stop()
             } label: {
@@ -193,116 +190,158 @@ struct PlaybackBar: View {
             }
             .buttonStyle(.borderless)
             .help("Stop playback")
-            Text(VTT.timestamp(playback.position))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
             Image(systemName: "speaker.wave.2.fill")
-                .font(.caption)
+                .font(.meta)
                 .foregroundStyle(.tint)
+            Text(Design.time(playback.position))
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.horizontal, Design.paneInset)
+        .padding(.vertical, 8)
     }
 }
 
 /// Record/Stop button with live elapsed time and the tentative speaker
-/// indicator.
+/// indicator. Reads like a recorder: red affordance, pulsing dot while
+/// live, monospaced timer.
 struct RecordingHeader: View {
     @Bindable var recorder: RecordingController
 
+    private var isRecording: Bool { recorder.status == .recording || Design.uiPreview }
+
+    /// Live-speaker slot; the preview flag pins one so the chip is visible.
+    private var tentativeSpeaker: Int? {
+        Design.uiPreview ? 1 : recorder.tentativeSpeaker
+    }
+
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 0) {
             controls
-            if let banner = recorder.systemAudioBanner {
-                systemAudioBanner(banner)
+                .padding(.horizontal, Design.paneInset)
+                .padding(.vertical, 10)
+            let banner =
+                Design.uiPreview
+                ? "System audio capture was denied — recording the mic only." : recorder.systemAudioBanner
+            if let banner {
+                StatusBanner(
+                    message: banner,
+                    icon: "speaker.slash.fill",
+                    actionTitle: "Open System Settings"
+                ) {
+                    if let url = URL(
+                        string:
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
+                    ) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private var controls: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
+            // Idle: neutral button, red dot icon (ready). Recording: filled
+            // red Stop — red means "live", not "will be live".
             Button(action: { recorder.toggle() }) {
-                switch recorder.status {
-                case .idle, .failed:
-                    Label(
-                        recorder.hasRecording ? "Resume" : "Record",
-                        systemImage: "record.circle")
-                case .preparing:
-                    Label("Preparing…", systemImage: "hourglass")
-                case .recording:
-                    Label("Stop", systemImage: "stop.circle.fill")
-                case .stopping:
-                    Label("Stopping…", systemImage: "hourglass")
+                if isRecording {
+                    Label("Stop", systemImage: "stop.fill")
+                } else {
+                    switch recorder.status {
+                    case .idle, .failed:
+                        Label {
+                            Text(recorder.hasRecording ? "Resume" : "Record")
+                        } icon: {
+                            Image(systemName: "record.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                    case .preparing:
+                        Label("Preparing…", systemImage: "record.circle")
+                    case .recording, .stopping:
+                        Label("Stopping…", systemImage: "stop.circle")
+                    }
                 }
             }
-            .tint(recorder.status == .recording ? .red : nil)
+            .buttonStyle(.bordered)
+            .tint(isRecording ? .red : nil)
             .disabled(recorder.status == .preparing || recorder.status == .stopping)
 
-            Text(elapsedText)
-                .font(.body.monospacedDigit())
-                .foregroundStyle(recorder.status == .recording ? .primary : .secondary)
+            HStack(spacing: 6) {
+                if isRecording {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 7, height: 7)
+                        .modifier(PulseEffect())
+                }
+                Text(Design.time(recorder.elapsed))
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(isRecording ? .primary : .secondary)
+            }
+
+            Spacer()
+
+            if isRecording {
+                liveIndicator
+            }
+            if case .failed(let message) = recorder.status {
+                Text(message)
+                    .font(.meta)
+                    .foregroundStyle(.red)
+                    .lineLimit(2)
+            }
 
             // Source toggle (SPEC.md §3.1: mic / mic+system). Locked while
-            // recording — the mix can't change mid-session.
-            Toggle(isOn: $recorder.systemAudioEnabled) {
-                Image(systemName: "speaker.wave.2")
+            // recording — the mix can't change mid-session. Quiet icon: the
+            // symbol carries the state so it doesn't compete with Record.
+            Button {
+                recorder.systemAudioEnabled.toggle()
+            } label: {
+                Image(systemName: recorder.systemAudioEnabled ? "speaker.wave.2" : "speaker.slash")
+                    .foregroundStyle(
+                        recorder.systemAudioEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
             }
-            .toggleStyle(.button)
-            .controlSize(.small)
+            .buttonStyle(.borderless)
             .disabled(recorder.status != .idle)
             .help(
                 recorder.systemAudioEnabled
                     ? "System audio is captured too (mic + system)"
                     : "Mic only — click to also capture system audio")
-
-            Spacer()
-
-            if recorder.status == .recording {
-                if let slot = recorder.tentativeSpeaker {
-                    Label("Speaker \(slot + 1) speaking…", systemImage: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(TranscriptView.speakerColors[slot % 4])
-                } else {
-                    Label("silence", systemImage: "waveform")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            if case .failed(let message) = recorder.status {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
-            }
         }
     }
 
-    /// Mic-only degraded-state banner with the System Settings deep link
-    /// (SPEC.md §7).
-    private func systemAudioBanner(_ message: String) -> some View {
-        HStack(spacing: 8) {
-            Label(message, systemImage: "speaker.slash")
-                .font(.caption)
-                .foregroundStyle(.orange)
-            Spacer()
-            Button("Open System Settings") {
-                if let url = URL(
-                    string:
-                        "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
-                ) {
-                    NSWorkspace.shared.open(url)
-                }
+    /// Who the diarizer currently hears, in the same chip language as the
+    /// transcript rows — header and transcript read as one system.
+    @ViewBuilder
+    private var liveIndicator: some View {
+        if let slot = tentativeSpeaker {
+            let name = "Speaker \(slot + 1)"
+            HStack(spacing: 5) {
+                Image(systemName: "waveform")
+                    .font(.meta)
+                SpeakerChip(name: name)
             }
-            .buttonStyle(.link)
-            .font(.caption)
+            .foregroundStyle(Design.speakerColor(name))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(Design.speakerColor(name).opacity(0.12), in: Capsule())
+        } else {
+            Text("Listening…")
+                .font(.meta)
+                .foregroundStyle(.tertiary)
         }
     }
+}
 
-    private var elapsedText: String {
-        let total = Int(recorder.elapsed)
-        return String(format: "%02d:%02d", total / 60, total % 60)
+/// Slow opacity pulse for the live recording dot.
+private struct PulseEffect: ViewModifier {
+    @State private var dimmed = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dimmed ? 0.3 : 1)
+            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dimmed)
+            .onAppear { dimmed = true }
     }
 }

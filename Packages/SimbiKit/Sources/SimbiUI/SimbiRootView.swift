@@ -54,14 +54,18 @@ private struct CodexStatusFooter: View {
 
     var body: some View {
         let available = installation.isBinaryInstalled && installation.loadAuth() != nil
-        Label(
-            available ? "Codex connected" : "Codex unavailable — transcription disabled",
-            systemImage: available ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-        )
-        .font(.caption)
-        .foregroundStyle(available ? .secondary : Color.orange)
+        HStack(spacing: 6) {
+            Circle()
+                .fill(available ? Color.green : Color.orange)
+                .frame(width: 7, height: 7)
+            Text(available ? "Codex connected" : "Codex unavailable — transcription off")
+                .font(.meta)
+                .foregroundStyle(available ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                .lineLimit(1)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(.bar)
     }
 }
