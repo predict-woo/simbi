@@ -24,7 +24,7 @@ public enum CodexChat {
             method: "thread/name/set",
             params: [
                 "threadId": threadId,
-                "name": "\(noteFolderURL.lastPathComponent) — chat",
+                "name": "\(noteFolderURL.lastPathComponent) — chat"
             ])
 
         let relativePath = notePath(noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
@@ -36,7 +36,7 @@ public enum CodexChat {
         var params: [String: any Sendable] = [
             "threadId": threadId,
             "input": [["type": "text", "text": prompt, "text_elements": [String]()]]
-                as [[String: any Sendable]],
+                as [[String: any Sendable]]
         ]
         if let model {
             params["model"] = model
@@ -70,8 +70,7 @@ public enum CodexModels {
         let object = try? JSONSerialization.jsonObject(with: data)
         let array: [Any]
         if let dict = object as? [String: Any],
-            let models = (dict["models"] ?? dict["items"] ?? dict["data"]) as? [Any]
-        {
+            let models = (dict["models"] ?? dict["items"] ?? dict["data"]) as? [Any] {
             array = models
         } else if let bare = object as? [Any] {
             array = bare

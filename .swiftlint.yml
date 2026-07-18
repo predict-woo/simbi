@@ -1,0 +1,40 @@
+# SwiftLint configuration for Simbi
+# Lints app + package sources; vendored code and throwaway spikes are excluded.
+
+excluded:
+  - references            # vendored FluidAudio reference checkout
+  - docs
+  - Packages/SimbiKit/.build
+  - Spikes                # one-off experiments
+  - Packages/SimbiKit/Sources/simbi-audio-spike
+  - Packages/SimbiKit/Sources/simbi-chat-spike
+  - Packages/SimbiKit/Sources/simbi-converter-spike
+  - Packages/SimbiKit/Sources/simbi-fixer-spike
+  - Packages/SimbiKit/Sources/simbi-pipeline-spike
+  - Packages/SimbiKit/Sources/simbi-tap-spike
+
+nesting:
+  type_level: 2           # allow Codable helper structs nested two deep
+
+identifier_name:
+  min_length: 2
+  excluded:               # idiomatic short names
+    - i
+    - j
+    - k
+    - n
+    - x
+    - y
+    - z
+    - id
+
+# Length/complexity thresholds relaxed to just above the current codebase's
+# high-water marks so new regressions still warn.
+function_body_length:
+  warning: 85
+type_body_length:
+  warning: 400
+file_length:
+  warning: 600
+cyclomatic_complexity:
+  warning: 15

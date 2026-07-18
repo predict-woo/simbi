@@ -98,9 +98,9 @@ public final class SystemAudioCapture: @unchecked Sendable {
                 kAudioAggregateDeviceTapListKey: [
                     [
                         kAudioSubTapUIDKey: description.uuid.uuidString,
-                        kAudioSubTapDriftCompensationKey: true,
+                        kAudioSubTapDriftCompensationKey: true
                     ]
-                ],
+                ]
             ]
             var aggregate = AudioObjectID(kAudioObjectUnknown)
             let aggregateStatus = AudioHardwareCreateAggregateDevice(
@@ -114,8 +114,9 @@ public final class SystemAudioCapture: @unchecked Sendable {
             self.continuation = continuation
 
             var ioProc: AudioDeviceIOProcID?
-            let ioStatus = AudioDeviceCreateIOProcIDWithBlock(&ioProc, aggregateID, queue) {
-                [weak self] _, inputData, _, _, _ in
+            let ioStatus = AudioDeviceCreateIOProcIDWithBlock(
+                &ioProc, aggregateID, queue
+            ) { [weak self] _, inputData, _, _, _ in
                 self?.deliver(
                     inputData, tapFormat: tapFormat, converter: converter,
                     targetFormat: targetFormat)

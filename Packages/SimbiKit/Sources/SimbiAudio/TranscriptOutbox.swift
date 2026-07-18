@@ -84,8 +84,7 @@ public final class TranscriptOutbox {
     public func fulfillCue(index: Int, text: String) throws {
         for (i, slot) in queue.enumerated() {
             if case .pendingCue(index, let start, let end, let speaker, let continuation, nil) =
-                slot
-            {
+                slot {
                 queue[i] = .pendingCue(
                     index: index, start: start, end: end, speaker: speaker,
                     continuation: continuation, text: text)
@@ -103,8 +102,8 @@ public final class TranscriptOutbox {
             queue.removeFirst()
             let entry: VTTEntry
             switch head {
-            case .ready(let e):
-                entry = e
+            case .ready(let readyEntry):
+                entry = readyEntry
             case .pendingCue(let index, let start, let end, let speaker, let continuation, let text):
                 entry = .cue(
                     index: index, start: start, end: end, speaker: speaker,

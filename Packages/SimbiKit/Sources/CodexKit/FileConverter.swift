@@ -75,7 +75,7 @@ public actor FileConverter {
             params: [
                 "cwd": noteFolderURL.path,
                 "approvalPolicy": "never",
-                "sandbox": "workspace-write",
+                "sandbox": "workspace-write"
             ])
         let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
         guard let thread = result?["thread"] as? [String: Any],
@@ -107,13 +107,13 @@ public actor FileConverter {
             "writableRoots": [noteFolderURL.path],
             "networkAccess": false,
             "excludeTmpdirEnvVar": false,
-            "excludeSlashTmp": false,
+            "excludeSlashTmp": false
         ]
         var turnParams: [String: any Sendable] = [
             "threadId": threadId,
             "input": input,
             "approvalPolicy": "never",
-            "sandboxPolicy": sandboxPolicy,
+            "sandboxPolicy": sandboxPolicy
         ]
         if let model {
             turnParams["model"] = model
@@ -129,8 +129,7 @@ public actor FileConverter {
 
     private func awaitTurnCompletion(threadId: String) async throws {
         if completedTurns.remove(threadId) != nil { return }
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, any Error>) in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
             waiting[threadId] = continuation
             Task {  // inherits actor isolation
                 try? await Task.sleep(for: turnTimeout)

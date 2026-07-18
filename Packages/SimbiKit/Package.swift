@@ -10,14 +10,14 @@ let package = Package(
         .library(name: "SimbiKit", targets: ["SimbiKit"]),
         .library(name: "SimbiAudio", targets: ["SimbiAudio"]),
         .library(name: "CodexKit", targets: ["CodexKit"]),
-        .library(name: "SimbiUI", targets: ["SimbiUI"]),
+        .library(name: "SimbiUI", targets: ["SimbiUI"])
     ],
     dependencies: [
         // Fast-moving 0.x — pin exactly; bump deliberately.
         .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5"),
         // TextKit 2 live-styled markdown editor (replaces the M0
         // STTextView + Neon source editor). Pre-1.0 — pin exactly.
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0"),
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0")
     ],
     targets: [
         .target(name: "SimbiKit"),
@@ -36,7 +36,7 @@ let package = Package(
                 .define("OPUS_BUILD"),
                 .define("VAR_ARRAYS", to: "1"),
                 .define("HAVE_LRINT", to: "1"),
-                .define("HAVE_LRINTF", to: "1"),
+                .define("HAVE_LRINTF", to: "1")
             ]
         ),
         // Vendored google/libwebm 1.0.0.31 (mkvmuxer + mkvparser) behind a
@@ -46,7 +46,7 @@ let package = Package(
             exclude: ["libwebm/LICENSE.TXT", "libwebm/PATENTS.TXT"],
             cxxSettings: [
                 .headerSearchPath("libwebm"),
-                .headerSearchPath("include"),
+                .headerSearchPath("include")
             ],
             linkerSettings: [
                 .linkedLibrary("c++")
@@ -59,7 +59,7 @@ let package = Package(
                 "CodexKit",
                 "CLibOpus",
                 "CLibWebM",
-                .product(name: "FluidAudio", package: "FluidAudio"),
+                .product(name: "FluidAudio", package: "FluidAudio")
             ]
         ),
         .target(name: "CodexKit"),
@@ -71,7 +71,7 @@ let package = Package(
                 "CodexKit",
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineCodeBlocks", package: "swift-markdown-engine"),
-                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine"),
+                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
             ]
         ),
         // M1 spike (SPEC.md §8): proves the vendored encoder's output is
@@ -111,6 +111,6 @@ let package = Package(
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
-        .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),
+        .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"])
     ]
 )

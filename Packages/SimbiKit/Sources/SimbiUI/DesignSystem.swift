@@ -41,9 +41,9 @@ enum Design {
 
     /// Deterministic string hash (djb2). `String.hashValue` is seeded per
     /// process, which made renamed speakers change color on every launch.
-    private static func stableHash(_ s: String) -> Int {
+    private static func stableHash(_ string: String) -> Int {
         var hash = 5381
-        for byte in s.utf8 {
+        for byte in string.utf8 {
             hash = ((hash << 5) &+ hash) &+ Int(byte)
         }
         return abs(hash)
@@ -53,12 +53,12 @@ enum Design {
     /// (`VTT.timestamp` is the wire format — never show it in UI.)
     static func time(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        return h > 0
-            ? String(format: "%d:%02d:%02d", h, m, s)
-            : String(format: "%d:%02d", m, s)
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        let secs = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, mins, secs)
+            : String(format: "%d:%02d", mins, secs)
     }
 }
 
