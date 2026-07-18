@@ -33,8 +33,9 @@ public final class MicCapture: @unchecked Sendable {
         let (stream, continuation) = AsyncStream.makeStream(of: [Float].self)
         self.continuation = continuation
 
-        input.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) {
-            [weak self] buffer, _ in
+        input.installTap(
+            onBus: 0, bufferSize: 1024, format: inputFormat
+        ) { [weak self] buffer, _ in
             guard let self else { return }
             let ratio = targetFormat.sampleRate / inputFormat.sampleRate
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16

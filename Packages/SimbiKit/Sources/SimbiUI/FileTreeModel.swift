@@ -57,8 +57,7 @@ public final class FileTreeModel {
         // pipeline writing into the note folder) must not tear down the
         // selected note view mid-recording.
         if let selection, FileTreeNode.find(selection, in: nodes) == nil,
-            !FileManager.default.fileExists(atPath: selection.path)
-        {
+            !FileManager.default.fileExists(atPath: selection.path) {
             self.selection = nil
         }
     }

@@ -168,8 +168,7 @@ public final class OpusWebMEncoder {
         guard written > 0 else { throw OpusWebMError.encodeFailed(written) }
 
         if let start = currentClusterStartMs,
-            timecodeMs - start < OpusWebMFormat.clusterMilliseconds
-        {
+            timecodeMs - start < OpusWebMFormat.clusterMilliseconds {
             // stay in the current cluster
         } else {
             guard swebm_writer_begin_cluster(writer, timecodeMs) == 0 else {
@@ -269,8 +268,7 @@ public final class OpusWebMDecoder {
         fileprivate init(
             owner: OpusWebMDecoder, reader: OpaquePointer, startTime: TimeInterval
         )
-            throws
-        {
+            throws {
             var err: Int32 = 0
             guard
                 let decoder = opus_decoder_create(

@@ -57,15 +57,17 @@ public struct CodexAuth: Sendable, Equatable {
     public static func load(from url: URL) throws -> CodexAuth {
         struct AuthFile: Decodable {
             struct Tokens: Decodable {
-                var access_token: String?
-                var account_id: String?
+                var accessToken: String?
+                var accountId: String?
             }
-            var auth_mode: String?
+            var authMode: String?
             var tokens: Tokens?
         }
-        let file = try JSONDecoder().decode(AuthFile.self, from: Data(contentsOf: url))
-        guard file.auth_mode == "chatgpt" else { throw LoadError.notChatGPTLogin }
-        guard let token = file.tokens?.access_token, let account = file.tokens?.account_id else {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let file = try decoder.decode(AuthFile.self, from: Data(contentsOf: url))
+        guard file.authMode == "chatgpt" else { throw LoadError.notChatGPTLogin }
+        guard let token = file.tokens?.accessToken, let account = file.tokens?.accountId else {
             throw LoadError.missingCredentials
         }
         return CodexAuth(accessToken: token, accountId: account)

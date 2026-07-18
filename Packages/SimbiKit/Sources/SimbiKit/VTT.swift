@@ -21,20 +21,20 @@ public enum VTT {
     public static func timestamp(_ seconds: TimeInterval) -> String {
         let totalMs = Int((seconds * 1000).rounded())
         let ms = totalMs % 1000
-        let s = (totalMs / 1000) % 60
-        let m = (totalMs / 60000) % 60
-        let h = totalMs / 3_600_000
-        return String(format: "%02d:%02d:%02d.%03d", h, m, s, ms)
+        let secs = (totalMs / 1000) % 60
+        let mins = (totalMs / 60000) % 60
+        let hours = totalMs / 3_600_000
+        return String(format: "%02d:%02d:%02d.%03d", hours, mins, secs, ms)
     }
 
     static func parseTimestamp(_ text: String) -> TimeInterval? {
         let parts = text.split(separator: ":")
-        guard parts.count == 3, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+        guard parts.count == 3, let hours = Int(parts[0]), let mins = Int(parts[1]) else { return nil }
         let secParts = parts[2].split(separator: ".")
-        guard secParts.count == 2, let s = Int(secParts[0]), let ms = Int(secParts[1]),
+        guard secParts.count == 2, let secs = Int(secParts[0]), let ms = Int(secParts[1]),
             secParts[1].count == 3
         else { return nil }
-        return TimeInterval(h * 3600 + m * 60 + s) + TimeInterval(ms) / 1000
+        return TimeInterval(hours * 3600 + mins * 60 + secs) + TimeInterval(ms) / 1000
     }
 
     /// Wall clocks render with the local UTC offset (SPEC.md §3.4:
@@ -146,8 +146,7 @@ public enum VTTParser {
         let head = lines[0]
         if head.hasPrefix("NOTE simbi") {
             if let range = head.range(of: "note=\""), let end = head.lastIndex(of: "\""),
-                range.upperBound < end
-            {
+                range.upperBound < end {
                 document.noteName = String(head[range.upperBound..<end])
             }
             return nil

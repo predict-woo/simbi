@@ -13,5 +13,8 @@ xcuserdata/
 ## macOS
 .DS_Store
 
+## Python
+__pycache__/
+
 ## Reference checkouts (external repos, fetched on demand — see references/README.md)
 references/FluidAudio/
