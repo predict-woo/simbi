@@ -46,7 +46,9 @@ public final class SortformerStream: DiarizerStream, @unchecked Sendable {
 
     public func prepare() async throws {
         guard !prepared else { return }
-        let models = try await SortformerModels.loadFromHuggingFace(config: .fastV2_1)
+        // Checked out from the warm pool — instant once the app-launch
+        // warm-up has finished (first ever run still downloads here).
+        let models = try await SpeechModelPool.shared.takeSortformerModels()
         diarizer.initialize(models: models)
         prepared = true
     }

@@ -28,8 +28,9 @@ public final class RecordingController {
 
     public enum Status: Equatable {
         case idle
-        /// Requesting mic permission / loading diarizer models (first run
-        /// downloads them).
+        /// Requesting mic permission. Models come preloaded from
+        /// `SpeechModelPool` (warmed at app launch); only the very first
+        /// run may still download here.
         case preparing
         case recording
         case stopping

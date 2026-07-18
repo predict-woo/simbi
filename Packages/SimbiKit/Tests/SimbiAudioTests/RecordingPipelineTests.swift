@@ -116,8 +116,7 @@ struct RecordingPipelineTests {
         while Date() < deadline {
             if let text = try? String(contentsOf: url, encoding: .utf8),
                 let document = try? VTTParser.parse(text),
-                document.entries.count >= entryCount
-            {
+                document.entries.count >= entryCount {
                 return document
             }
             try await Task.sleep(for: .milliseconds(50))
@@ -163,10 +162,13 @@ struct RecordingPipelineTests {
         }
         try await pipeline.stop()
 
-        // Uploads tile the timeline (§5.1): the R1 cut lands at f41 (three
-        // silent records after VAD flips at f38), R3 flushes at 2 s of
-        // silence, and stop uploads the remainder. No gap notes in v2.
-        // session start + cue [0, 3.28) + cue [3.28, 12.0) + session end.
+        // Uploads + discards tile the timeline (§5.1): the R1 cut lands at
+        // f41 (three silent records after VAD flips at f38), R3 flushes at
+        // 2 s of silence, R6 trims the rest of the pause to the 12-frame
+        // pre-roll (last silent record f117 -> discard up to f106), and stop
+        // uploads the remainder. The discarded span [3.28, 8.48) appears
+        // only as a timestamp gap between the cues — no gap notes in v2.
+        // session start + cue [0, 3.28) + cue [8.48, 12.0) + session end.
         let document = try await waitForTranscript(vttURL, entryCount: 4)
         guard document.entries.count == 4 else { return }
 
@@ -181,9 +183,9 @@ struct RecordingPipelineTests {
             return
         }
         guard case .cue(2, let cue2Start, 12.0, "Speaker 1", _, false) = document.entries[2],
-            abs(cue2Start - 3.28) < 0.001
+            abs(cue2Start - 8.48) < 0.001
         else {
-            Issue.record("expected cue 2 [3.28, 12.0], got \(document.entries[2])")
+            Issue.record("expected cue 2 [8.48, 12.0], got \(document.entries[2])")
             return
         }
         guard case .sessionEnd(1, _, 12.0) = document.entries[3] else {

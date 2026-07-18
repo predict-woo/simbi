@@ -80,6 +80,12 @@ struct NoteView: View {
         .onChange(of: document.text) {
             document.scheduleAutosave()
         }
+        // Starting a recording silences playback (speakers → mic feedback).
+        .onChange(of: recorder.status) { _, status in
+            if status != .idle {
+                playback.pause()
+            }
+        }
         // Recording deliberately continues if the view goes away (the
         // controller is shared per note); only the Stop button ends it.
         // Playback is view-local and does stop.
@@ -156,14 +162,18 @@ struct NoteView: View {
             }
             RecordingHeader(recorder: recorder)
             Divider()
-            if playback.isPlaying || Design.uiPreview {
+            // The player bar lives above the transcript whenever the note
+            // has audio to play (hidden while recording — playing the note
+            // back then would feed the speakers into the mic).
+            if (recorder.status == .idle && playback.hasAudio) || Design.uiPreview {
                 PlaybackBar(playback: playback)
                 Divider()
             }
             TranscriptView(
                 model: transcript,
-                // Playing the note back while recording would feed the
-                // speakers into the mic — seek only when idle.
+                playbackPosition: playback.isPlaying ? playback.position : nil,
+                // Click a cue to play from it — same recording guard as
+                // the player bar.
                 onSeek: recorder.status == .idle && playback.hasAudio
                     ? { playback.play(from: $0) } : nil,
                 onRenameSpeaker: { from, to in
@@ -177,29 +187,46 @@ struct NoteView: View {
     }
 }
 
-/// Position readout + stop control, shown only while playing (SPEC.md §6).
+/// Player bar: play/pause, scrubber, position/duration readout. Shown
+/// whenever the note has audio and isn't recording (SPEC.md §6).
 struct PlaybackBar: View {
     let playback: PlaybackController
+    /// Non-nil while the user drags the scrubber; committed on release.
+    @State private var scrubPosition: TimeInterval?
 
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                playback.stop()
+                playback.togglePlayPause()
             } label: {
-                Image(systemName: "stop.fill")
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                    .frame(width: 14)
             }
             .buttonStyle(.borderless)
-            .help("Stop playback")
-            Image(systemName: "speaker.wave.2.fill")
-                .font(.meta)
-                .foregroundStyle(.tint)
-            Text(Design.time(playback.position))
-                .font(.body.monospacedDigit())
+            .help(playback.isPlaying ? "Pause" : "Play")
+            Text(Design.time(scrubPosition ?? playback.position))
+                .font(.meta.monospacedDigit())
                 .foregroundStyle(.secondary)
-            Spacer()
+            Slider(
+                value: Binding(
+                    get: { scrubPosition ?? min(playback.position, playback.duration) },
+                    set: { scrubPosition = $0 }
+                ),
+                in: 0...max(playback.duration, 0.01)
+            ) { editing in
+                if !editing, let target = scrubPosition {
+                    playback.seek(to: target)
+                    scrubPosition = nil
+                }
+            }
+            .controlSize(.small)
+            Text(Design.time(playback.duration))
+                .font(.meta.monospacedDigit())
+                .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, 8)
+        .onAppear { playback.refreshDuration() }
     }
 }
 
@@ -245,7 +272,9 @@ struct RecordingHeader: View {
         HStack(spacing: 12) {
             // Idle: neutral button, red dot icon (ready). Recording: filled
             // red Stop — red means "live", not "will be live".
-            Button(action: { recorder.toggle() }) {
+            Button {
+                recorder.toggle()
+            } label: {
                 if isRecording {
                     Label("Stop", systemImage: "stop.fill")
                 } else {
