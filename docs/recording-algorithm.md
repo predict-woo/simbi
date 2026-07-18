@@ -2,11 +2,14 @@
 
 Redesign of the live cut-point pipeline. The previous design derived both
 silence cuts and speaker cuts from Sortformer alone, which forced a run
-smoother, glue silences, gap discarding, and edge pads. This design drops
-silence removal entirely (transcription is server-side; uploading silence is
-free) and splits responsibilities:
+smoother, glue silences, gap discarding, and edge pads. This design never
+removes anything from the recording — `audio.webm` and every timestamp
+keep the full real timeline — but long dead air is *not uploaded* (rule
+R6): the transcription API hallucinates text ("Yeah") when given pure
+silence. Responsibilities are split:
 
-- **Silero VAD** decides where audio is *cut* on silence (rule R1).
+- **Silero VAD** decides where audio is *cut* on silence (rule R1) and
+  which spans count as silence at all (rule R6).
 - **Sortformer** provides *speaker labels* and detects *speaker changes*
   (rule R4).
 - **Raw PCM ring** holds the audio; it is sliced only when a *flush*
@@ -21,7 +24,8 @@ model:
    that consume and emit **80 ms frames** with a known frame latency.
 4. The aligned pipeline (§4) — three frame-latency boxes joined by one
    release clock into a single synchronized record stream.
-5. Cuts and flushes (§5) — buffer and upload rules over that stream.
+5. Cuts, flushes and discards (§5) — buffer and upload rules over that
+   stream.
 
 All arithmetic is in **samples** (16 kHz mono) and **frames** (80 ms = 1280
 samples) unless a rule is explicitly in seconds.
@@ -206,7 +210,7 @@ Deliberate consequences:
    back. Records land exactly 1.04 s behind live audio; the cut/flush
    decisions of §5 add a few frames on top. (Ring retention is *not*
    bounded by this latency — it is governed by §5.1's eviction floor,
-   `flushedUpTo`; see §5.6 for its growth behavior.) Nothing user-visible
+   `flushedUpTo`, which R5 and R6 keep within ~30 s of live; see §5.5.) Nothing user-visible
    cares — cues appear when transcription returns anyway.
 2. **Full determinism.** The cut engine is a pure function of the record
    stream: same samples ⇒ byte-identical cuts. Tests can synthesize
@@ -234,7 +238,7 @@ order. There are no cross-thread races by construction.
 
 ---
 
-## 5. Cuts and flushes
+## 5. Cuts, flushes and discards
 
 The record stream (§4) drives two buffers between the aligned frontier and
 the transcription API:
@@ -248,6 +252,9 @@ frame records ──► [ processing buffer ] ──cut──► [ staging buffe
   Cheap bookkeeping; happens freely.
 - **Flush** — ship the staging buffer as **one upload**. The semantic
   operation; every flush boundary is a transcript segment boundary.
+- **Discard** — skip a silence-only span: advance past it without
+  uploading. Affects the transcription API only — the audio stays in
+  `audio.webm`, and every timestamp stays a real-recording position.
 
 ### 5.1 Data model
 
@@ -263,12 +270,18 @@ frames:  0 ──────── flushedUpTo ──────────�
 - `cut(c)`: `cutUpTo = c` (requires `cutUpTo < c ≤ frontier`).
 - `flush()`: upload PCM `[flushedUpTo·1280, cutUpTo·1280)`;
   `flushedUpTo = cutUpTo`. No-op if staging is empty.
+- `discard(c)`: `flushedUpTo = cutUpTo = c` with **no upload**. Requires
+  staging empty (`flushedUpTo = cutUpTo < c ≤ frontier`) and every
+  skipped record VAD-silent. Only R6 and Stop issue discards.
 - Invariant: `flushedUpTo ≤ cutUpTo ≤ frontier`.
 - Ring eviction floor = `flushedUpTo · 1280`.
 
-**Tiling invariant:** uploads partition `[0, flushedUpTo)` — every sample
-is uploaded exactly once, in order, silences included. Nothing is ever
-discarded.
+**Tiling invariant:** uploads and discards together partition
+`[0, flushedUpTo)`, in order — every sample is uploaded exactly once,
+except silence-only spans skipped by a discard, which are uploaded zero
+times. A discard never touches `audio.webm` or the frame numbering: cue
+timestamps stay aligned to the real recording, and a discarded span
+shows up only as a timestamp gap between consecutive cues.
 
 ### 5.2 Constants
 
@@ -278,8 +291,10 @@ discarded.
 | `SILENCE_CUT_FRAMES` | 3 | 0.24 | R1 silence cut |
 | `LONG_SILENCE_FLUSH_FRAMES` | 25 | 2.00 | R3 long-silence flush |
 | `STAGING_FLUSH_FRAMES` | 125 | 10.00 | R2 size flush |
-| `SPEAKER_STABLE_FRAMES` | 3 | 0.24 | R4 trigger debounce |
+| `SPEAKER_STABLE_FRAMES` | 6 | 0.48 | R4 trigger debounce |
 | `SORT_LAG_TOLERANCE_FRAMES` | 3 | 0.24 | R4 branch test |
+| `MAX_UNFLUSHED_FRAMES` | 375 | 30.00 | R5 max-latency cut |
+| `PRE_ROLL_FRAMES` | 12 | 0.96 | R6 retained silence tail |
 
 ### 5.3 Per-record state
 
@@ -295,32 +310,42 @@ Processed once per released record, in frame order:
 - `domRun` — length of the current run of consecutive records with the
   same *defined* dominant speaker; a record with undefined dominant
   resets it to 0.
+- `unflushedVad` — the VAD verdicts of the not-yet-flushed records
+  `[flushedUpTo, frontier)`, trimmed whenever `flushedUpTo` advances and
+  bounded at `MAX_UNFLUSHED_FRAMES` by R5. Supports the one query the
+  speech guards need — *does `[a, b)` contain a VAD-active record?* —
+  used by R1's seal guard, R4's cut-branch guard, and Stop.
 - `currentSpeaker` — the speaker of the audio currently accumulating
   (staging + processing). Initially unset; the first time a defined
   dominant holds for `SPEAKER_STABLE_FRAMES` records it is set to that
   speaker **with no cut and no flush** (initialization path — R4 handles
   only later changes). Afterwards updated only by R4.
 
-Rules are evaluated per record in the fixed order R1 → R3 → R4; R2 runs
-inside every cut. R1/R3 trigger on VAD-silence records and R4 on records
-with a defined dominant — and since Sortformer can hear a speaker where
-VAD hears silence, R1 and R4 *can* fire on the same record. The fixed
-order makes that deterministic: R4's branch test runs after the R1 cut is
-applied, which is exactly the state it expects to see.
+Rules are evaluated per record in the fixed order R1 → R3 → R6 → R4 →
+R5; R2 runs inside every cut. R6 sits right after R3 because it needs
+the staging that R3's flush just emptied; R5 runs last so the natural
+rules get first claim on the record. R1/R3/R6 trigger on VAD-silence
+records and R4 on records with a defined dominant — and since Sortformer
+can hear a speaker where VAD hears silence, R1 and R4 *can* fire on the
+same record. The fixed order makes that deterministic: R4's branch test
+runs after the R1 cut is applied, which is exactly the state it expects
+to see.
 
 ### 5.4 Rules (normative)
 
-**R1 — silence cut.** Edge-triggered, once per silence run, and only for
-a run **preceded by a speech record** — the rule is "speech → 0.24 s of
-silence", so a run starting at frame 0 (leading silence) never cuts.
-(A maximal silence run is otherwise always preceded by speech; the guard
-only excludes session start, and with it a silence-only upload before
-anyone has spoken is impossible.) When `silenceRun` reaches
-`SILENCE_CUT_FRAMES` (i.e. at the 3rd consecutive silent record `f`):
-`cut(f + 1)`. The staged audio keeps its 0.24 s
-trailing silence. Because the underlying VAD verdict has 256 ms
-resolution, the real silence elapsed when the cut fires is ~0.24–0.5 s
-depending on where speech ended inside a chunk — accepted.
+**R1 — silence cut.** Edge-triggered, once per silence run: when
+`silenceRun` reaches `SILENCE_CUT_FRAMES` (i.e. at the 3rd consecutive
+silent record `f`) **and** `[flushedUpTo, f + 1)` contains a VAD-active
+record: `cut(f + 1)`. The staged audio keeps its 0.24 s trailing
+silence. The guard is the *something-to-seal* test — the rule is
+"speech → 0.24 s of silence", and when everything unflushed is still
+silence there is no speech tail to seal and the cut would only set up a
+pure-silence upload. That covers session-leading silence (nothing
+spoken yet) and the subtler case of a flush boundary landing at or
+inside a silence run (an R5 forced cut can do that). Because the
+underlying VAD verdict has 256 ms resolution, the real silence elapsed
+when the cut fires is ~0.24–0.5 s depending on where speech ended inside
+a chunk — accepted.
 
 **R2 — size flush.** Immediately after any cut: if
 `cutUpTo − flushedUpTo > STAGING_FLUSH_FRAMES`, `flush()`. The check runs
@@ -328,18 +353,18 @@ depending on where speech ended inside a chunk — accepted.
 of the final cut.
 
 **R3 — long-silence flush.** Edge-triggered, once per silence run: when
-`silenceRun` reaches `LONG_SILENCE_FLUSH_FRAMES`: `flush()`. The silence
-itself is **not** cut — it stays in the processing buffer and is swept
-into the next upload (tiling invariant). The flush exists so the staged
-speech reaches the transcript promptly during the pause, not to remove
-silence.
+`silenceRun` reaches `LONG_SILENCE_FLUSH_FRAMES`: `flush()`. The flush
+exists so the staged speech reaches the transcript promptly during the
+pause. The silence itself is **not** cut — it stays in processing, where
+R6 takes over: all but the trailing ~1 s pre-roll is discarded as the
+pause continues.
 
 **R4 — speaker change.** *Trigger:* a record whose dominant is defined
 and `≠ currentSpeaker` (which must already be set), and whose `domRun`
 reaches `SPEAKER_STABLE_FRAMES` — i.e. the new speaker has held
-Sortformer dominance for 3 consecutive records, regardless of what VAD
-says. A shorter excursion (Sortformer flicker) never triggers and is
-simply absorbed into the current turn's audio.
+Sortformer dominance for 6 consecutive records (0.48 s), regardless of
+what VAD says. A shorter excursion (Sortformer flicker) never triggers
+and is simply absorbed into the current turn's audio.
 
 The debounce delays only *when* the rule runs, never the frames it
 computes with — all quantities below are original frame numbers, so the
@@ -348,16 +373,22 @@ result is identical to an instant decision:
 ```
 newStart = first record of the stable new-speaker run
 lastStop = last record where dominant == currentSpeaker  (lastStop < newStart)
+mid      = floor((lastStop + 1 + newStart) / 2)
 
-if lastStop − SORT_LAG_TOLERANCE_FRAMES < cutUpTo:
-    # the boundary was already cut (an R1 silence cut beat Sortformer,
-    # which reports offsets slightly late — hence the 3-frame tolerance)
+if lastStop − SORT_LAG_TOLERANCE_FRAMES < cutUpTo
+   or [flushedUpTo, mid) contains no VAD-active record:
+    # Either the boundary was already cut (an R1 silence cut beat
+    # Sortformer, which reports offsets slightly late — hence the
+    # 3-frame tolerance), or the would-be upload [flushedUpTo, mid)
+    # contains no VAD speech at all — a stale lastStop inside an
+    # R6-trimmed pause (Sortformer flicker during silence) must not
+    # produce a pure-silence upload. Nothing of the old speaker is
+    # worth shipping either way.
     flush()
 else:
     # direct switch or overlap: no VAD silence separated the speakers
-    cut( floor((lastStop + 1 + newStart) / 2) )  # midpoint of the gap;
-    flush()                                      # degenerates to the boundary
-                                                 # when newStart = lastStop+1
+    cut(mid)     # midpoint of the gap; degenerates to the boundary
+    flush()      # when newStart = lastStop+1
 currentSpeaker = dominant
 ```
 
@@ -367,41 +398,93 @@ inter-speaker pause was ≥ 3 frames, the R1 cut fired at or before
 `newStart`, so the branch test lands on `flush()`; anything cut during
 the debounce window is likewise seen by the test at decision time.
 
-**Stop.** On session stop: `cut(realFrameEnd)` then `flush()` (details
-belong to the future stop/resume section).
+**R5 — max-latency cut.** Evaluated last on every record: when
+`frontier − flushedUpTo` reaches `MAX_UNFLUSHED_FRAMES`, `cut(frontier)`.
+No explicit flush is needed — the staged span now necessarily exceeds
+`STAGING_FLUSH_FRAMES`, so the R2 check inside the cut ships it. This is
+the hard bound on transcript latency (and unflushed memory): R2 keeps
+uploads ~10 s whenever natural cut points exist, so R5 fires only when a
+speaker produces no 0.24 s pause for a full 30 s. Its forced boundary
+can land mid-word — accepted (any usable pause in the window would have
+produced an R1 cut and an R2 flush instead). The unflushed span grows by
+exactly one frame per record and `flushedUpTo` is monotone, so the edge
+trigger cannot be jumped over.
+
+**R6 — silence trim.** Level-triggered on every silent record `f` once
+the run has outlived R3 (`silenceRun ≥ LONG_SILENCE_FLUSH_FRAMES`) and
+staging is empty: `discard(f + 1 − PRE_ROLL_FRAMES)` when that target
+exceeds `cutUpTo`. The discard pointer then slides one frame per record,
+always keeping exactly the trailing `PRE_ROLL_FRAMES` (~1 s) of the
+silence unflushed — the PCM ring is the retention buffer. When speech
+resumes, processing already begins with that ≤ 1 s pre-roll, which rides
+into the next upload as acoustic context; silence further than that from
+any speech never reaches the API. Soundness needs no new state: a run
+that reaches the R3 threshold either started at frame 0 or had its R1
+cut, and R3 just emptied staging, so `[cutUpTo, target)` provably lies
+inside the current silence run. Leading session silence satisfies the
+same preconditions (both pointers at 0), so dead air before the first
+speech is trimmed for free instead of front-loading the first upload.
+The staging-empty precondition also makes R6 self-pausing: if anything
+re-fills staging mid-silence, discarding stops and resumes after the
+next flush.
+
+**Stop.** On session stop, after the drain: if `[flushedUpTo,
+realFrameEnd)` contains no VAD-active record, `discard(realFrameEnd)` —
+uploading it would be exactly the pure-silence hallucination case.
+Otherwise `cut(realFrameEnd)` then `flush()`. (Details belong to the
+future stop/resume section.)
 
 ### 5.5 Properties
 
-1. **Uploads tile the timeline.** Every sample reaches the API exactly
-   once, in order — pauses, gaps and all. Timestamps can never drift and
-   no coverage bookkeeping exists.
-2. **Each upload is single-speaker** (modulo sub-3-frame flicker): R4
-   flushes before `currentSpeaker` ever changes, and R2/R3 flushes happen
-   within a turn. The upload's speaker label is `currentSpeaker` at flush
-   time.
+1. **Uploads tile the spoken timeline.** Uploads and discards partition
+   the session exactly, in order; the only frames never uploaded are
+   VAD-silent frames more than `PRE_ROLL_FRAMES` from the next speech.
+   Frame numbers are absolute real-recording positions, so timestamps
+   can never drift and no coverage bookkeeping exists — a discarded span
+   is just a timestamp gap between consecutive cues.
+2. **Each upload is single-speaker** (modulo sub-6-frame flicker, and
+   modulo VAD-silent phantom runs — when Sortformer reports a stable
+   speaker but VAD hears only silence, R4's speech-before-mid guard may
+   absorb the run rather than slice out a pure-silence upload; with no
+   VAD speech there is no acoustic content to mislabel). R4 flushes
+   before `currentSpeaker` ever changes, and R2/R3 flushes happen within
+   a turn. The upload's speaker label is `currentSpeaker` at flush time.
 3. **VAD flicker is harmless.** A spurious silence detection only inserts
    a cut — a boundary inside staging — never a spurious upload. No VAD
    debouncing machinery is needed.
-4. **Determinism.** Cuts and flushes are a pure function of the record
-   stream; tests can synthesize `{vadActive, speaker}` streams and assert
-   byte-identical decisions with no models loaded.
+4. **No pure-silence upload.** Structural: staging is only ever created
+   by a speech-guarded cut (R1's seal guard; R4's cut-branch guard; an
+   R5 span always contains speech, because R6 caps silence-only spans
+   far below `MAX_UNFLUSHED_FRAMES`), a silent stop tail is discarded,
+   and R6 trims long pauses to the pre-roll — so every upload contains
+   VAD speech, and no VAD-silent run inside an upload exceeds
+   `LONG_SILENCE_FLUSH_FRAMES` (2 s).
+5. **Bounded latency and memory.** `frontier − flushedUpTo` never
+   exceeds `MAX_UNFLUSHED_FRAMES` (R5), so unflushed audio — and with it
+   the ring above the eviction floor — is capped at ~30 s (≈ 1.9 MB of
+   Float32 mono 16 kHz).
+6. **Determinism.** Cuts, flushes and discards are a pure function of
+   the record stream; tests can synthesize `{vadActive, speaker}`
+   streams and assert byte-identical decisions with no models loaded.
 
 Decision latency: an R1 cut is decided at the release of the 3rd silent
 record — silence-start `+ 2 + 13` frames, i.e. **15 frames (1.20 s)**
-after speech ends. An R4 flush is likewise decided 15 frames after
-`newStart` (2 debounce frames + release latency). Accepted.
+after speech ends. An R4 flush is likewise decided 18 frames (1.44 s)
+after `newStart` (5 debounce frames + release latency). Accepted.
 
 ### 5.6 Accepted behaviors (deliberate, not bugs)
 
-- **Unbroken monologue uploads late.** A speaker who never pauses ≥ 0.24 s
-  produces no cuts, so nothing uploads until their first pause — however
-  long that takes. Memory grows with unflushed audio (Float32 mono 16 kHz
-  ≈ 3.8 MB/min); accepted.
-- **Long silence rides along.** After an R3 flush, continuing silence
-  accumulates in processing and is swept into the next upload — even
-  minutes of it. The transcription API handles silent audio fine;
-  accepted. Consequently there are no `NOTE gap` entries in this design —
-  the timeline has no uncovered spans.
+- **A forced R5 boundary can split a word.** It only happens after 30 s
+  with no 0.24 s pause anywhere — rare in real speech — and the fixer
+  smooths the seam in the transcript.
+- **Sub-R3 pauses ride along untrimmed.** A pause shorter than 2 s stays
+  inside an upload — it carries surrounding speech, so the API handles
+  it fine. Only silence that outlives R3 is trimmed, and even then the
+  last ~1 s survives as pre-roll.
+- **Discarded silence exists everywhere except at the API.** It stays in
+  `audio.webm`, in playback, in seek targets and in cue timestamps; the
+  transcript just shows a gap between cue times. There are still no
+  `NOTE gap` entries — the timestamps carry the gap.
 
 ---
 

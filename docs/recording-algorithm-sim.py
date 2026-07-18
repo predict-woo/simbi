@@ -21,18 +21,31 @@ Test tiers:
   3. Adversarial fuzzing: arbitrary record streams straight into the engine
      (default 200 seeds) — structural invariants must survive ANY input.
 
-Hard invariants checked (H1..H9):
+Hard invariants checked (H1..H14):
   H1 pointers: flushedUpTo <= cutUpTo <= frontier at every step (§5.1)
-  H2 cut precondition: cutUpTo < c <= frontier for every cut (§5.1)
-  H3 tiling: uploads exactly partition [0, realFrameEnd), in order (§5.1/§5.5)
+  H2 cut/discard preconditions: cutUpTo < c <= frontier for every cut;
+     staging empty and silence-only span for every discard (§5.1)
+  H3 coverage: uploads and discards exactly partition [0, realFrameEnd),
+     in order (§5.1/§5.5)
   H4 wrapper availability: VAD chunk + Sortformer block ready at release (§3)
-  H5 R1 fires once per silence run, only when preceded by speech (§5.4)
+  H5 R1 fires once per silence run, only when unflushed speech precedes
+     the cut point (§5.4)
   H6 staging never exceeds STAGING_FLUSH_FRAMES before a cut (R2 works) (§5.4)
-  H7 batch-size invariance: identical uploads for any batching of same audio
-  H8 determinism: identical uploads on re-run
+  H7 batch-size invariance: identical uploads+discards for any batching
+  H8 determinism: identical uploads+discards on re-run
   H9 speaker purity: no stable (>= SPEAKER_STABLE_FRAMES) foreign dominant run
-     buried in an upload's interior (ends >= 3 frames before the upload ends);
-     boundary-crossing runs are the documented smear allowance (§5.5)
+     buried in an upload's interior (ends >= SPEAKER_STABLE_FRAMES frames
+     before the upload ends); boundary-crossing runs and VAD-silent phantom
+     runs (no acoustic speech to mislabel — §5.5) are the smear allowance
+  H10 discards are silence-only: every discarded frame is VAD-silent (§5.1)
+  H11 pre-roll retention: every discarded frame is > PRE_ROLL_FRAMES before
+      the next VAD-active frame — the last ~1 s before speech survives (R6)
+  H12 latency bound: frontier - flushedUpTo < MAX_UNFLUSHED_FRAMES after
+      every record (R5)
+  H13 no pure-silence upload: every upload contains a VAD-active frame —
+      structural (all tiers) thanks to the R4 speech-before-mid guard
+  H14 no VAD-silent run inside an upload exceeds LONG_SILENCE_FLUSH_FRAMES
+      (realistic tiers only)
 
 Run:  python3 docs/recording-algorithm-sim.py [--fuzz N] [--adversarial N]
 Exit code 0 = all invariants hold.
@@ -52,8 +65,10 @@ ACTIVE_PROB = 0.5
 SILENCE_CUT_FRAMES = 3
 LONG_SILENCE_FLUSH_FRAMES = 25
 STAGING_FLUSH_FRAMES = 125
-SPEAKER_STABLE_FRAMES = 3
+SPEAKER_STABLE_FRAMES = 6
 SORT_LAG_TOLERANCE_FRAMES = 3
+MAX_UNFLUSHED_FRAMES = 375        # R5: hard 30 s bound on unflushed audio
+PRE_ROLL_FRAMES = 12              # R6: ~1 s silence tail kept before speech
 NUM_SPK = 4
 ALIGN = 20480                     # lcm(FRAME, CHUNK): pad sessions to this
 
@@ -82,8 +97,10 @@ class Engine:
         self.dom_run = 0
         self.dom_run_start = None
         self.last_dom_frame = {}    # slot -> last frame it was dominant
+        self.unflushed_vad = []     # VAD of records [flushed, frontier)
         self.current_speaker = None
         self.uploads = []
+        self.discards = []          # (start, end) spans skipped by discard
         self.r1_fires = []          # (run_start, fire_frame) for H5
 
     # §5.1 cut(c). H2 + H6 checked here.
@@ -98,8 +115,9 @@ class Engine:
                 f"{self.cut_up_to - self.flushed}")
         self.cut_up_to = c
         # R2 — size flush, checked immediately after every cut (§5.4).
+        # An R5 cut trips it by construction (§5.4 R5); label those R5.
         if self.cut_up_to - self.flushed > STAGING_FLUSH_FRAMES:
-            self.flush("R2")
+            self.flush("R5" if reason == "R5" else "R2")
 
     # §5.1 flush(). No-op when staging is empty.
     def flush(self, reason):
@@ -107,14 +125,38 @@ class Engine:
             return
         self.uploads.append(
             Upload(self.flushed, self.cut_up_to, self.current_speaker, reason))
+        del self.unflushed_vad[:self.cut_up_to - self.flushed]
         self.flushed = self.cut_up_to
+
+    # §5.1 discard(c): advance past a silence-only span with no upload.
+    def discard(self, c):
+        if self.cut_up_to != self.flushed:
+            raise InvariantError(
+                f"H2 discard with staging non-empty: "
+                f"flushed={self.flushed} cutUpTo={self.cut_up_to}")
+        if not (self.flushed < c <= self.frontier):
+            raise InvariantError(
+                f"H2 discard precondition: flushed={self.flushed} c={c} "
+                f"frontier={self.frontier}")
+        if self.discards and self.discards[-1][1] == self.flushed:
+            self.discards[-1] = (self.discards[-1][0], c)   # merge adjacent
+        else:
+            self.discards.append((self.flushed, c))
+        del self.unflushed_vad[:c - self.flushed]
+        self.flushed = self.cut_up_to = c
 
     # §5.3/§5.4: one released record. silence_run/dom_run advance by exactly
     # one per record, so the edge triggers below use `==` (a run can never
     # jump past its threshold — unlike the old burst-driven design).
+    # §5.3 unflushedVad: does [lo, hi) contain a VAD-active record?
+    def has_speech(self, lo, hi):
+        return any(self.unflushed_vad[max(lo, self.flushed) - self.flushed:
+                                      hi - self.flushed])
+
     def push(self, f, vad_active, probs):
         assert f == self.frontier, "records must be released in order"
         self.frontier = f + 1
+        self.unflushed_vad.append(vad_active)
 
         # dominant(f): active slots, argmax, tie -> lowest slot (§5.3)
         active = [s for s in range(NUM_SPK) if probs[s] >= ACTIVE_PROB]
@@ -131,15 +173,27 @@ class Engine:
         else:
             self.silence_run = 0
 
-        # R1 — silence cut (guard: run preceded by speech, i.e. start > 0)
+        # R1 — silence cut. Guard: something to seal — unflushed speech
+        # must precede the cut point (§5.4; covers leading silence AND a
+        # flush boundary landing at/inside the run, e.g. after R5).
         if (not vad_active and self.silence_run == SILENCE_CUT_FRAMES
-                and self.silence_run_start > 0):
+                and self.has_speech(self.flushed, f + 1)):
             self.r1_fires.append((self.silence_run_start, f))
             self.cut(f + 1, "R1")
 
         # R3 — long-silence flush
         if not vad_active and self.silence_run == LONG_SILENCE_FLUSH_FRAMES:
             self.flush("R3")
+
+        # R6 — silence trim: past the R3 point, keep only the trailing
+        # PRE_ROLL of the silence unflushed; older silence is discarded,
+        # never uploaded (§5.4). Level-triggered; the staging-empty
+        # precondition makes it self-pausing.
+        if (not vad_active and self.silence_run >= LONG_SILENCE_FLUSH_FRAMES
+                and self.cut_up_to == self.flushed):
+            target = f + 1 - PRE_ROLL_FRAMES
+            if target > self.cut_up_to:
+                self.discard(target)
 
         # dominant run tracking (VAD-independent, §5.3)
         if dominant is not None:
@@ -161,28 +215,49 @@ class Engine:
                 new_start = self.dom_run_start
                 last_stop = self.last_dom_frame.get(self.current_speaker)
                 assert last_stop is not None and last_stop < new_start
-                if last_stop - SORT_LAG_TOLERANCE_FRAMES < self.cut_up_to:
+                mid = (last_stop + 1 + new_start) // 2
+                # Cut branch needs VAD speech in [flushed, mid): a stale
+                # lastStop inside an R6-trimmed pause must not slice out
+                # a pure-silence upload (§5.4 R4 guard).
+                if (last_stop - SORT_LAG_TOLERANCE_FRAMES < self.cut_up_to
+                        or not self.has_speech(self.flushed, mid)):
                     self.flush("R4-flush")
                 else:
-                    self.cut((last_stop + 1 + new_start) // 2, "R4-cut")
+                    self.cut(mid, "R4-cut")
                     self.flush("R4-cut")
                 self.current_speaker = dominant
 
         if dominant is not None:
             self.last_dom_frame[dominant] = f
 
+        # R5 — max-latency cut: hard bound on unflushed audio. The cut
+        # makes staging > STAGING_FLUSH_FRAMES, so R2 inside cut() ships
+        # it (§5.4 R5).
+        if self.frontier - self.flushed >= MAX_UNFLUSHED_FRAMES:
+            self.cut(self.frontier, "R5")
+
         # H1
         if not (self.flushed <= self.cut_up_to <= self.frontier):
             raise InvariantError(
                 f"H1 pointers: {self.flushed} <= {self.cut_up_to} "
                 f"<= {self.frontier} violated at f={f}")
+        # H12
+        if self.frontier - self.flushed >= MAX_UNFLUSHED_FRAMES:
+            raise InvariantError(
+                f"H12 unflushed span {self.frontier - self.flushed} at f={f}")
 
     # §5.4 Stop. Harness must have drained all records first.
     def stop(self, real_frame_end):
         assert self.frontier == real_frame_end, "drain before stop"
-        if real_frame_end > self.cut_up_to:
-            self.cut(real_frame_end, "stop")
-        self.flush("stop")
+        span = self.frontier - self.flushed
+        if span > 0 and not self.has_speech(self.flushed, self.frontier):
+            # The entire unflushed span is VAD-silent: uploading it would
+            # be the pure-silence hallucination case — discard (§5.4).
+            self.discard(self.frontier)
+        else:
+            if real_frame_end > self.cut_up_to:
+                self.cut(real_frame_end, "stop")
+            self.flush("stop")
 
 
 # --- Ground truth and model synthesis --------------------------------------
@@ -323,16 +398,58 @@ def dominant_of(probs):
     return min(s for s in active if probs[s] == best)
 
 
-def validate(eng, sort_probs, frames, name):
-    # H3 tiling
+def frame_vads(vad_chunks, frames):
+    """Per-frame VAD via the §3.1 midpoint rule (same mapping the engine
+    consumed, so validation and decisions can never disagree)."""
+    return [vad_chunks[(f * FRAME + FRAME // 2) // CHUNK] for f in range(frames)]
+
+
+def check_coverage(eng, frames, name):
+    # H3: uploads and discards exactly partition [0, frames), in order.
+    spans = ([(u.start, u.end, u.reason) for u in eng.uploads]
+             + [(a, b, "discard") for (a, b) in eng.discards])
+    spans.sort(key=lambda s: s[0])
     pos = 0
-    for u in eng.uploads:
-        if u.start != pos or u.end <= u.start:
+    for a, b, kind in spans:
+        if a != pos or b <= a:
             raise InvariantError(
-                f"H3 tiling broken in {name}: upload {u} at pos {pos}")
-        pos = u.end
+                f"H3 coverage broken in {name}: {kind} [{a},{b}) at pos {pos}")
+        pos = b
     if pos != frames:
-        raise InvariantError(f"H3 tiling incomplete in {name}: {pos} != {frames}")
+        raise InvariantError(
+            f"H3 coverage incomplete in {name}: {pos} != {frames}")
+
+
+def check_discards(eng, fvad, name):
+    for (a, b) in eng.discards:
+        # H10: silence-only
+        for d in range(a, b):
+            if fvad[d]:
+                raise InvariantError(
+                    f"H10 discarded VAD-active frame {d} in {name}")
+        # H11: the last PRE_ROLL before the next speech must survive
+        nxt = next((s for s in range(b, len(fvad)) if fvad[s]), None)
+        if nxt is not None and nxt - (b - 1) <= PRE_ROLL_FRAMES:
+            raise InvariantError(
+                f"H11 pre-roll violated in {name}: discard ends at {b}, "
+                f"next speech at {nxt}")
+
+
+def validate(eng, sort_probs, fvad, frames, name):
+    check_coverage(eng, frames, name)       # H3
+    check_discards(eng, fvad, name)         # H10 + H11
+
+    # H13 no pure-silence upload; H14 bounded silence inside an upload
+    for u in eng.uploads:
+        if not any(fvad[f] for f in range(u.start, u.end)):
+            raise InvariantError(f"H13 pure-silence upload {u} in {name}")
+        run = 0
+        for f in range(u.start, u.end):
+            run = 0 if fvad[f] else run + 1
+            if run > LONG_SILENCE_FLUSH_FRAMES:
+                raise InvariantError(
+                    f"H14 silent run > {LONG_SILENCE_FLUSH_FRAMES} inside "
+                    f"upload {u} in {name}")
 
     # H5 R1 semantics: one fire per run start, run start > 0
     starts = [s for s, _ in eng.r1_fires]
@@ -358,7 +475,10 @@ def validate(eng, sort_probs, frames, name):
             run_len = g - f
             if (run_len >= SPEAKER_STABLE_FRAMES
                     and g + SPEAKER_STABLE_FRAMES <= u.end
-                    and f > u.start):
+                    and f > u.start
+                    # VAD-silent phantom run: the R4 guard absorbs it
+                    # rather than emit a pure-silence upload (§5.5).
+                    and any(fvad[x] for x in range(f, g))):
                 raise InvariantError(
                     f"H9 purity: stable run of spk {d} frames [{f},{g}) "
                     f"buried in upload {u} in {name}")
@@ -366,7 +486,22 @@ def validate(eng, sort_probs, frames, name):
 
 
 def uploads_key(eng):
-    return tuple((u.start, u.end, u.speaker) for u in eng.uploads)
+    return (tuple((u.start, u.end, u.speaker) for u in eng.uploads),
+            tuple(eng.discards))
+
+
+def scenario_expectations(eng, sc):
+    """Feature-level assertions for the scenarios that exist to prove a
+    specific rule fires (the invariants alone would pass vacuously)."""
+    reasons = {u.reason for u in eng.uploads}
+    if sc.name == "all-silence" and eng.uploads:
+        raise InvariantError("all-silence must upload nothing")
+    if sc.name in ("monologue", "nonstop-70s") and "R5" not in reasons:
+        raise InvariantError(
+            f"{sc.name}: expected an R5 forced flush, got {reasons}")
+    if sc.name in ("long-silence", "preroll-resume", "all-silence",
+                   "leading-silence") and not eng.discards:
+        raise InvariantError(f"{sc.name}: expected R6 discards, got none")
 
 
 # --- Scenarios --------------------------------------------------------------
@@ -382,10 +517,14 @@ def named_scenarios():
         # Pause lengths straddling every threshold
         S("pause-sweep", [(0.5, 2.0, 0), (2.15, 3.5, 0), (3.9, 5.0, 0),
                           (7.4, 8.4, 0), (11.5, 12.5, 0)], 15),
-        # Monologue with sub-cut breathing pauses only: no upload until stop
+        # Monologue with sub-cut breathing pauses only: R5 forces uploads
         S("monologue", [(0.5, 15.0, 0), (15.15, 30.0, 0), (30.15, 45.0, 0)], 46),
-        # Long dead air mid-session (R3, then silence rides along)
+        # Zero usable pauses for 70 s: two R5 forced cuts
+        S("nonstop-70s", [(0.5, 70.0, 0)], 71),
+        # Long dead air mid-session (R3 flush, then R6 trims to the pre-roll)
         S("long-silence", [(0.5, 3.0, 0), (63.0, 66.0, 0)], 68),
+        # Same speaker resumes after 12 s dead air: 1 s pre-roll lead-in
+        S("preroll-resume", [(0.5, 3.0, 0), (15.0, 18.0, 0)], 20),
         # Leading silence, then speech; and a silence-only session
         S("leading-silence", [(6.0, 9.0, 0)], 12),
         S("all-silence", [], 8),
@@ -442,12 +581,13 @@ def random_scenario(seed):
 
 def adversarial_run(seed):
     """Arbitrary record stream straight into the engine: structural
-    invariants (H1/H2/H3/H5/H6) must survive ANY input."""
+    invariants (H1/H2/H3/H5/H6/H10/H11/H12) must survive ANY input."""
     rng = random.Random(seed)
     frames = rng.randint(1, 1200)
     eng = Engine()
     style = rng.randrange(4)
     vad_p = rng.uniform(0.1, 0.9)
+    vads = []
     for f in range(frames):
         if style == 0:      # iid noise
             vad = rng.random() < vad_p
@@ -466,16 +606,16 @@ def adversarial_run(seed):
             probs = [0.0] * NUM_SPK
             if vad or rng.random() < 0.2:
                 probs[rng.randrange(NUM_SPK)] = 0.9
+        vads.append(vad)
         eng.push(f, vad, probs)
     eng.stop(frames)
-    # structural checks only (purity is meaningless for noise)
-    pos = 0
+    # structural checks only (purity/H14 are meaningless for noise)
+    check_coverage(eng, frames, f"adversarial-{seed}")
+    check_discards(eng, vads, f"adversarial-{seed}")
     for u in eng.uploads:
-        if u.start != pos or u.end <= u.start:
-            raise InvariantError(f"H3 tiling broken in adversarial-{seed}")
-        pos = u.end
-    if pos != frames:
-        raise InvariantError(f"H3 tiling incomplete in adversarial-{seed}")
+        if not any(vads[f] for f in range(u.start, u.end)):
+            raise InvariantError(
+                f"H13 pure-silence upload {u} in adversarial-{seed}")
     starts = [s for s, _ in eng.r1_fires]
     if len(starts) != len(set(starts)) or any(s == 0 for s in starts):
         raise InvariantError(f"H5 broken in adversarial-{seed}")
@@ -495,7 +635,8 @@ def main():
     for sc in named_scenarios():
         try:
             eng, probs, vad, frames = run_pipeline(sc)
-            validate(eng, probs, frames, sc.name)
+            validate(eng, probs, frame_vads(vad, frames), frames, sc.name)
+            scenario_expectations(eng, sc)
             # H8 determinism
             eng2, _, _, _ = run_pipeline(sc)
             if uploads_key(eng) != uploads_key(eng2):
@@ -511,11 +652,15 @@ def main():
             reasons = {}
             for u in eng.uploads:
                 reasons[u.reason] = reasons.get(u.reason, 0) + 1
-            print(f"  ok  {sc.name:22s} uploads={len(eng.uploads):3d}  {reasons}")
+            skipped = sum(b - a for a, b in eng.discards)
+            print(f"  ok  {sc.name:22s} uploads={len(eng.uploads):3d}  "
+                  f"discarded={skipped*0.08:7.2f}s  {reasons}")
             if args.verbose:
                 for u in eng.uploads:
                     print(f"        [{u.start*0.08:8.2f}s {u.end*0.08:8.2f}s) "
                           f"spk={u.speaker} {u.reason}")
+                for a, b in eng.discards:
+                    print(f"        [{a*0.08:8.2f}s {b*0.08:8.2f}s) discarded")
         except InvariantError as e:
             failures += 1
             print(f"  FAIL {sc.name}: {e}")
@@ -525,7 +670,7 @@ def main():
         sc = random_scenario(seed)
         try:
             eng, probs, vad, frames = run_pipeline(sc)
-            validate(eng, probs, frames, sc.name)
+            validate(eng, probs, frame_vads(vad, frames), frames, sc.name)
             eng3, _, _, _ = run_pipeline(sc, "random", seed + 1)
             if uploads_key(eng) != uploads_key(eng3):
                 raise InvariantError(f"H7 batching changed uploads in {sc.name}")

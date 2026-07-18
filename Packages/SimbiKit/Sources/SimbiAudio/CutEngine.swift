@@ -1,10 +1,12 @@
 import Foundation
 
-/// The cuts-and-flushes engine of docs/recording-algorithm.md (v2) §5, which
-/// is normative for every rule here. Consumes the aligned record stream —
-/// one `{vadActive, speakerProbs}` record per 80 ms frame (§4) — and decides
-/// uploads. Pure and deterministic: records in, flush commands out — no IO,
-/// no clocks (§4.1 consequence 2).
+/// The cuts, flushes and discards engine of docs/recording-algorithm.md (v2)
+/// §5, which is normative for every rule here. Consumes the aligned record
+/// stream — one `{vadActive, speakerProbs}` record per 80 ms frame (§4) —
+/// and decides uploads. Pure and deterministic: records in, flush commands
+/// out — no IO, no clocks (§4.1 consequence 2). Discards (§5.1) emit no
+/// command; they only advance `flushedUpTo`, which the pipeline mirrors into
+/// the ring's eviction floor.
 ///
 /// All indices are session-local frames (80 ms, 1280 samples).
 
@@ -22,9 +24,14 @@ public enum CutConstants {
     /// R2: flush when staging exceeds this after a cut.
     public static let stagingFlushFrames = 125
     /// R4: a new speaker must hold dominance this long to trigger.
-    public static let speakerStableFrames = 3
+    public static let speakerStableFrames = 6
     /// R4 branch test: Sortformer reports offsets late by up to this.
     public static let sortLagToleranceFrames = 3
+    /// R5: hard bound on the unflushed span — a forced cut fires when
+    /// `frontier − flushedUpTo` reaches this (30 s).
+    public static let maxUnflushedFrames = 375
+    /// R6: trailing silence kept unflushed as pre-roll for resumed speech.
+    public static let preRollFrames = 12
     /// §4.1 release clock: records land this far behind live audio.
     public static let pipelineLatencyFrames = 13
     public static let frameSamples = 1280
@@ -47,16 +54,16 @@ public enum FrameLabel: Equatable, Sendable {
     }
 
     var slot: Int? {
-        if case .speech(let s) = self { return s }
+        if case .speech(let slot) = self { return slot }
         return nil
     }
 }
 
 /// dominant(f) (§5.3): nil if no slot is active, else argmax over active
 /// slots (tie → lowest slot index). Deliberately VAD-independent.
-public func labelFrame(probabilities p: ArraySlice<Float>) -> FrameLabel {
+public func labelFrame(probabilities: ArraySlice<Float>) -> FrameLabel {
     var best: (slot: Int, prob: Float)?
-    for (i, prob) in p.enumerated() where prob >= CutConstants.activeProbability {
+    for (i, prob) in probabilities.enumerated() where prob >= CutConstants.activeProbability {
         if prob > (best?.prob ?? -1) {
             best = (i, prob)
         }
@@ -72,13 +79,17 @@ public enum FlushReason: Equatable, Sendable {
     case sizeLimit
     /// R4 — a stable new speaker took over.
     case speakerChange
+    /// R5 — 30 s passed without a flushable pause; the boundary is forced.
+    case maxLatency
     /// Session stop.
     case stop
 }
 
-/// One upload: the staged span `[startFrame, endFrame)`. Uploads tile the
-/// session timeline — every frame is uploaded exactly once, in order,
-/// silences included (§5.1 tiling invariant).
+/// One upload: the staged span `[startFrame, endFrame)`. Uploads and
+/// discards together partition the session timeline, in order — every frame
+/// is uploaded exactly once, except silence-only spans skipped by a discard,
+/// which are uploaded zero times (§5.1 tiling invariant). Discarded audio
+/// stays in `audio.webm`; frame numbers are always real-recording positions.
 public struct FlushCommand: Equatable, Sendable {
     public let startFrame: Int
     /// Exclusive.
@@ -90,51 +101,80 @@ public struct FlushCommand: Equatable, Sendable {
 
 /// §5's two-pointer engine: `flushedUpTo ≤ cutUpTo ≤ frontier`. A cut
 /// advances `cutUpTo` (cheap bookkeeping), a flush uploads
-/// `[flushedUpTo, cutUpTo)` and catches the pointer up.
+/// `[flushedUpTo, cutUpTo)` and catches the pointer up, and a discard
+/// advances both pointers past a silence-only span with no upload.
 public struct CutEngine {
     public private(set) var flushedUpTo = 0
     public private(set) var cutUpTo = 0
     public private(set) var frontier = 0
 
     private var silenceRun = 0
-    private var silenceRunStart = 0
     private var previousDominant: Int?
     private var dominantRun = 0
     private var dominantRunStart = 0
     /// Last frame each slot was dominant — R4's `lastStop` source.
     private var lastDominantFrame: [Int: Int] = [:]
+    /// §5.3 unflushedVad: the VAD verdicts of records
+    /// `[flushedUpTo, frontier)`, trimmed as `flushedUpTo` advances and
+    /// bounded at `maxUnflushedFrames` by R5. Backs the speech guards of
+    /// R1, R4 and stop.
+    private var unflushedVad: [Bool] = []
     public private(set) var currentSpeaker: Int?
 
     public init() {}
 
+    /// §5.3 unflushedVad query: does `[lo, hi)` contain a VAD-active record?
+    private func hasSpeech(_ lo: Int, _ hi: Int) -> Bool {
+        let start = max(lo, flushedUpTo) - flushedUpTo
+        let end = hi - flushedUpTo
+        guard start < end else { return false }
+        return unflushedVad[start..<end].contains(true)
+    }
+
     /// Pushes one released record (§5.3/§5.4). Rules run in the fixed order
-    /// R1 → R3 → R4; R2 runs inside every cut. `silenceRun`/`dominantRun`
-    /// advance by exactly one per record, so the edge triggers use `==` —
-    /// a run can never jump past its threshold.
+    /// R1 → R3 → R6 → R4 → R5; R2 runs inside every cut. `silenceRun`/
+    /// `dominantRun` advance by exactly one per record, so the edge triggers
+    /// use `==` — a run can never jump past its threshold.
     public mutating func push(
         vadActive: Bool, probabilities: ArraySlice<Float>
     ) -> [FlushCommand] {
-        let f = frontier
+        let frame = frontier
         frontier += 1
+        unflushedVad.append(vadActive)
         var commands: [FlushCommand] = []
 
         if vadActive {
             silenceRun = 0
         } else {
-            if silenceRun == 0 { silenceRunStart = f }
             silenceRun += 1
         }
 
-        // R1 — silence cut. Guard: only for a run preceded by speech (a run
-        // starting at frame 0 — leading silence — never cuts).
-        if !vadActive, silenceRun == CutConstants.silenceCutFrames, silenceRunStart > 0 {
-            cut(f + 1, into: &commands)
+        // R1 — silence cut. Guard: something to seal — unflushed speech
+        // must precede the cut point. Covers session-leading silence AND a
+        // flush boundary landing at/inside the run (an R5 cut can do that);
+        // without it the cut would set up a pure-silence upload.
+        if !vadActive, silenceRun == CutConstants.silenceCutFrames,
+            hasSpeech(flushedUpTo, frame + 1) {
+            cut(frame + 1, into: &commands)
         }
 
-        // R3 — long-silence flush. The silence itself is not cut; it stays
-        // in processing and rides into the next upload (tiling invariant).
+        // R3 — long-silence flush: the staged speech reaches the transcript
+        // promptly during the pause. The silence itself is not cut — R6
+        // takes over from here.
         if !vadActive, silenceRun == CutConstants.longSilenceFlushFrames {
             flush(.longSilence, into: &commands)
+        }
+
+        // R6 — silence trim: past the R3 point, keep only the trailing
+        // pre-roll of the silence unflushed; older silence is discarded,
+        // never uploaded. Level-triggered; the staging-empty precondition
+        // makes it self-pausing.
+        if !vadActive, silenceRun >= CutConstants.longSilenceFlushFrames,
+            cutUpTo == flushedUpTo {
+            let target = frame + 1 - CutConstants.preRollFrames
+            if target > cutUpTo {
+                discard(target)
+            }
         }
 
         // Dominant-run tracking (§5.3): VAD-independent; an undefined
@@ -145,7 +185,7 @@ public struct CutEngine {
                 dominantRun += 1
             } else {
                 dominantRun = 1
-                dominantRunStart = f
+                dominantRunStart = frame
             }
             previousDominant = dominant
         } else {
@@ -161,50 +201,72 @@ public struct CutEngine {
             if currentSpeaker == nil {
                 currentSpeaker = dominant
             } else if dominant != currentSpeaker,
-                let lastStop = lastDominantFrame[currentSpeaker!]
-            {
+                let lastStop = lastDominantFrame[currentSpeaker!] {
                 let newStart = dominantRunStart
-                if lastStop - CutConstants.sortLagToleranceFrames < cutUpTo {
-                    // The boundary was already cut (an R1 silence cut beat
-                    // Sortformer, which reports offsets late).
+                let mid = (lastStop + 1 + newStart) / 2
+                if lastStop - CutConstants.sortLagToleranceFrames < cutUpTo
+                    || !hasSpeech(flushedUpTo, mid) {
+                    // Either the boundary was already cut (an R1 silence cut
+                    // beat Sortformer, which reports offsets late), or the
+                    // would-be upload [flushedUpTo, mid) contains no VAD
+                    // speech — a stale lastStop inside an R6-trimmed pause
+                    // must not slice out a pure-silence upload.
                     flush(.speakerChange, into: &commands)
                 } else {
                     // Direct switch or overlap: midpoint of the gap,
                     // degenerating to the boundary when newStart follows
                     // lastStop immediately.
-                    cut((lastStop + 1 + newStart) / 2, into: &commands)
+                    cut(mid, into: &commands)
                     flush(.speakerChange, into: &commands)
                 }
                 currentSpeaker = dominant
             }
         }
         if let dominant {
-            lastDominantFrame[dominant] = f
+            lastDominantFrame[dominant] = frame
+        }
+
+        // R5 — max-latency cut: hard 30 s bound on unflushed audio. No
+        // explicit flush — the staged span now necessarily exceeds the R2
+        // limit, so the size check inside the cut ships it.
+        if frontier - flushedUpTo >= CutConstants.maxUnflushedFrames {
+            cut(frontier, into: &commands, sizeReason: .maxLatency)
         }
 
         assert(flushedUpTo <= cutUpTo && cutUpTo <= frontier)
+        assert(unflushedVad.count == frontier - flushedUpTo)
         return commands
     }
 
-    /// Stop (§5.4): everything released but not yet uploaded goes out in one
-    /// final upload. The pipeline must drain the wrappers first so that
-    /// every real frame was pushed.
+    /// Stop (§5.4): a fully silent remainder is discarded (uploading it
+    /// would be the pure-silence hallucination case); otherwise everything
+    /// released but not yet uploaded goes out in one final upload. The
+    /// pipeline must drain the wrappers first so every real frame was
+    /// pushed.
     public mutating func stop() -> [FlushCommand] {
         var commands: [FlushCommand] = []
-        if frontier > cutUpTo {
-            cut(frontier, into: &commands)
+        if frontier > flushedUpTo, !hasSpeech(flushedUpTo, frontier) {
+            discard(frontier)
+        } else {
+            if frontier > cutUpTo {
+                cut(frontier, into: &commands)
+            }
+            flush(.stop, into: &commands)
         }
-        flush(.stop, into: &commands)
         return commands
     }
 
     /// §5.1 cut(c) with R2 folded in: the size check runs immediately after
-    /// every cut, so staging never exceeds the limit *before* a cut.
-    private mutating func cut(_ c: Int, into commands: inout [FlushCommand]) {
-        assert(cutUpTo < c && c <= frontier, "cut(\(c)) outside (\(cutUpTo), \(frontier)]")
-        cutUpTo = c
+    /// every cut, so staging never exceeds the limit *before* a cut. An R5
+    /// cut passes `.maxLatency` so its forced upload is labeled honestly.
+    private mutating func cut(
+        _ point: Int, into commands: inout [FlushCommand],
+        sizeReason: FlushReason = .sizeLimit
+    ) {
+        assert(cutUpTo < point && point <= frontier, "cut(\(point)) outside (\(cutUpTo), \(frontier)]")
+        cutUpTo = point
         if cutUpTo - flushedUpTo > CutConstants.stagingFlushFrames {
-            flush(.sizeLimit, into: &commands)
+            flush(sizeReason, into: &commands)
         }
     }
 
@@ -215,6 +277,20 @@ public struct CutEngine {
             FlushCommand(
                 startFrame: flushedUpTo, endFrame: cutUpTo,
                 speaker: currentSpeaker, reason: reason))
+        unflushedVad.removeFirst(cutUpTo - flushedUpTo)
         flushedUpTo = cutUpTo
+    }
+
+    /// §5.1 discard(c): advance both pointers past a silence-only span with
+    /// no upload. Requires staging empty; only R6 and stop call this, and
+    /// both guarantee the skipped records are VAD-silent.
+    private mutating func discard(_ point: Int) {
+        assert(cutUpTo == flushedUpTo, "discard with staging non-empty")
+        assert(
+            flushedUpTo < point && point <= frontier,
+            "discard(\(point)) outside (\(flushedUpTo), \(frontier)]")
+        unflushedVad.removeFirst(point - flushedUpTo)
+        flushedUpTo = point
+        cutUpTo = point
     }
 }

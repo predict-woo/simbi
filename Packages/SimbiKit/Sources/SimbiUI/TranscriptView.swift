@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import SimbiKit
@@ -53,8 +54,11 @@ final class TranscriptModel {
 /// session markers, click-to-seek playback and speaker rename (SPEC.md §6).
 struct TranscriptView: View {
     let model: TranscriptModel
-    /// Click on a cue timestamp seeks playback there (nil = disabled,
-    /// e.g. while recording).
+    /// Current playback position: the cue containing it is highlighted
+    /// and kept scrolled into view (nil = not playing).
+    var playbackPosition: TimeInterval?
+    /// Click on a cue (timestamp or text) seeks playback there (nil =
+    /// disabled, e.g. while recording).
     var onSeek: ((TimeInterval) -> Void)?
     /// Rename a speaker across the whole file (old name, new name).
     var onRenameSpeaker: ((String, String) -> Void)?
@@ -81,19 +85,31 @@ struct TranscriptView: View {
     var body: some View {
         Group {
             if let document = model.document, !document.entries.isEmpty {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: Design.rowGap) {
-                        ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
-                            entryView(entry, row: index)
+                let activeRow = activeRow(in: document.entries)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: Design.rowGap) {
+                            ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
+                                entryView(entry, row: index, isActive: index == activeRow)
+                                    .id(index)
+                            }
+                        }
+                        .padding(Design.paneInset)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    // Follow playback: keep the highlighted cue in view.
+                    .onChange(of: activeRow) { _, row in
+                        guard let row else { return }
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(row, anchor: .center)
                         }
                     }
-                    .padding(Design.paneInset)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    if model.isInvalid {
-                        StatusBanner(
-                            message: "Transcript is being rewritten — showing the last good version.")
+                    .safeAreaInset(edge: .top, spacing: 0) {
+                        if model.isInvalid {
+                            StatusBanner(
+                                message:
+                                    "Transcript is being rewritten — showing the last good version.")
+                        }
                     }
                 }
             } else {
@@ -106,8 +122,21 @@ struct TranscriptView: View {
         }
     }
 
+    /// The cue containing the playback position, if any (positions inside
+    /// gaps or session markers highlight nothing).
+    private func activeRow(in entries: [VTTEntry]) -> Int? {
+        guard let position = playbackPosition else { return nil }
+        for (index, entry) in entries.enumerated() {
+            if case .cue(_, let start, let end, _, _, _) = entry,
+                position >= start, position < end {
+                return index
+            }
+        }
+        return nil
+    }
+
     @ViewBuilder
-    private func entryView(_ entry: VTTEntry, row: Int) -> some View {
+    private func entryView(_ entry: VTTEntry, row: Int, isActive: Bool) -> some View {
         switch entry {
         case .cue(_, let start, _, let speaker, let text, let continuation):
             VStack(alignment: .leading, spacing: Design.innerGap) {
@@ -145,10 +174,33 @@ struct TranscriptView: View {
                             .help("Continues across a session break")
                     }
                 }
+                // Click a sentence to play from it. Not selectable text:
+                // on macOS the selection view consumes every click, so
+                // tap-to-play and drag-to-select can't coexist — the
+                // context menu keeps the text copyable instead.
                 Text(text)
                     .font(.body)
                     .lineSpacing(2.5)
-                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onSeek?(start) }
+                    .help(onSeek != nil ? "Play from this line" : "")
+                    .contextMenu {
+                        Button("Copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(text, forType: .string)
+                        }
+                    }
+            }
+            // Playing-now highlight in the cue's speaker color, bleeding
+            // slightly past the row bounds without affecting layout.
+            .background {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Design.speakerColor(speaker).opacity(0.12))
+                        .padding(.horizontal, -8)
+                        .padding(.vertical, -4)
+                }
             }
         case .gap(let start, let end):
             Text("\(Int((end - start).rounded())) s of silence")

@@ -32,7 +32,9 @@ public final class SileroVadStream: VadStream, @unchecked Sendable {
 
     public func prepare() async throws {
         guard manager == nil else { return }
-        manager = try await VadManager()
+        // Shared warm instance — VadManager is an actor and the streaming
+        // state lives in this wrapper, so every stream can use one manager.
+        manager = try await SpeechModelPool.shared.vadManager()
     }
 
     public func resetSession() {

@@ -223,14 +223,14 @@ public actor RecordingPipeline {
     /// change them.
     private func releaseRecords(upTo limit: Int) throws {
         while nextRecordFrame < limit, nextRecordFrame < sortFrames {
-            let f = nextRecordFrame
+            let frame = nextRecordFrame
             // §3.1 midpoint rule: the frame's VAD verdict is the chunk
             // containing its midpoint. Always already computed (§3.3) —
             // except with lag-free test fakes, where we just wait.
-            let chunkIndex = (f * CutConstants.frameSamples + CutConstants.frameSamples / 2)
+            let chunkIndex = (frame * CutConstants.frameSamples + CutConstants.frameSamples / 2)
                 / CutConstants.vadChunkSamples
             guard chunkIndex < vadVerdicts.count else { break }
-            let base = f * 4
+            let base = frame * 4
             let commands = engine.push(
                 vadActive: vadVerdicts[chunkIndex],
                 probabilities: sortProbabilities[base..<(base + 4)])
@@ -239,6 +239,11 @@ public actor RecordingPipeline {
                 try flushSegment(command)
             }
         }
+        // Eviction floor (§5.1) = flushedUpTo, which advances on flushes AND
+        // on R6 discards (which emit no command) — during a long silence
+        // this is what keeps ring memory bounded. Set after slicing so a
+        // flush can never evict its own span.
+        ring.setEvictionFloor(engine.flushedUpTo * CutConstants.frameSamples)
     }
 
     // MARK: - Flushes (§5)
@@ -290,10 +295,6 @@ public actor RecordingPipeline {
             speaker: "Speaker \(speakerSlot + 1)",
             continuation: false)
         enqueueUpload(cueIndex)
-
-        // Eviction floor (§5.1): everything below flushedUpTo is uploaded
-        // and no longer referenced.
-        ring.setEvictionFloor(sliceEnd)
     }
 
     // MARK: - Upload workers (§9.2, stub in M2)
@@ -415,6 +416,8 @@ public actor RecordingPipeline {
         for command in engine.stop() {
             try flushSegment(command)
         }
+        // A silent tail is discarded, not flushed — mirror the floor anyway.
+        ring.setEvictionFloor(engine.flushedUpTo * CutConstants.frameSamples)
 
         try outbox.append(
             .sessionEnd(n: sessionNumber, wallClock: .now, offset: realAudioEndSec))
@@ -480,8 +483,7 @@ public actor RecordingPipeline {
         var lastCueEndSec: TimeInterval = 0
         let vttURL = noteFolderURL.appending(path: "transcript.vtt")
         if let text = try? String(contentsOf: vttURL, encoding: .utf8),
-            let document = try? VTTParser.parse(text)
-        {
+            let document = try? VTTParser.parse(text) {
             for case .cue(_, _, let end, _, _, _) in document.entries {
                 lastCueEndSec = max(lastCueEndSec, end)
             }
