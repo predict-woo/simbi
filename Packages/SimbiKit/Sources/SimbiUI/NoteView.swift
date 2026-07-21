@@ -57,13 +57,7 @@ struct NoteView: View {
         self._playback = State(initialValue: PlaybackController(noteFolderURL: noteFolderURL))
     }
 
-    @State private var chatStatus: ChatStatus = .idle
-
-    private enum ChatStatus: Equatable {
-        case idle
-        case starting
-        case failed
-    }
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HSplitView {
@@ -104,40 +98,15 @@ struct NoteView: View {
         }
     }
 
-    /// "Chat in Codex" (SPEC.md §5.4): thread at the home root, context
-    /// turn, then focus the ChatGPT app on it.
+    /// In-app chat (SPEC.md §5.4): one persistent Codex thread per note,
+    /// one window per note; reopening focuses it.
     private var chatButton: some View {
         Button {
-            chatStatus = .starting
-            Task {
-                do {
-                    let settings =
-                        (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
-                    let threadId = try await CodexChat.startChat(
-                        noteFolderURL: document.noteFolderURL,
-                        homeRootURL: SimbiHome().rootURL,
-                        client: CodexServices.appServer,
-                        model: settings.chatModel)
-                    if let url = URL(string: "codex://threads/\(threadId)") {
-                        NSWorkspace.shared.open(url)
-                    }
-                    chatStatus = .idle
-                } catch {
-                    chatStatus = .failed
-                }
-            }
+            openWindow(id: ChatWindow.windowId, value: document.noteFolderURL)
         } label: {
-            if chatStatus == .starting {
-                Label("Starting…", systemImage: "hourglass")
-            } else {
-                Label("Chat in Codex", systemImage: "bubble.left.and.bubble.right")
-            }
+            Label("Chat", systemImage: "bubble.left.and.bubble.right")
         }
-        .disabled(chatStatus == .starting)
-        .help(
-            chatStatus == .failed
-                ? "Could not start the chat thread — is the ChatGPT app installed?"
-                : "Discuss this note in the ChatGPT app")
+        .help("Chat with Codex about this note")
     }
 
     /// §6 degraded states: recording works without Codex, but transcription
@@ -236,6 +205,7 @@ struct PlaybackBar: View {
 /// live, monospaced timer.
 struct RecordingHeader: View {
     @Bindable var recorder: RecordingController
+    @Environment(\.openWindow) private var openWindow
 
     private var isRecording: Bool { recorder.status == .recording || Design.uiPreview }
 
@@ -322,12 +292,43 @@ struct RecordingHeader: View {
                     .lineLimit(2)
             }
 
+            // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
+            // pass runs; the popover shows the coarse one-line feed. Hidden
+            // until a fixer has ever existed for this note.
+            if recorder.fixerActivity.status != .off || Design.uiPreview {
+                fixerButton
+            }
+
             // Source menu (SPEC.md §3.1: mic device and system audio are
             // chosen independently; either can be off, never both). Locked
             // while recording — the mix can't change mid-session. Quiet
             // icons: the symbols carry the state so they don't compete
             // with Record.
             sourcesMenu
+        }
+    }
+
+    private var fixerButton: some View {
+        Button {
+            // One activity window per note; reopening focuses it.
+            openWindow(id: FixerActivityWindow.windowId, value: recorder.noteFolderURL)
+        } label: {
+            Image(systemName: "sparkles")
+                .foregroundStyle(
+                    recorder.fixerActivity.status == .working
+                        ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .modifier(PulseEffect(active: recorder.fixerActivity.status == .working))
+        }
+        .buttonStyle(.borderless)
+        .help(fixerHelp)
+    }
+
+    private var fixerHelp: String {
+        switch recorder.fixerActivity.status {
+        case .off: "Transcript fixer"
+        case .waiting: "Transcript fixer — waiting for new cues"
+        case .working: "Transcript fixer — reviewing"
+        case .done: "Transcript fixer — done"
         }
     }
 
@@ -434,12 +435,90 @@ struct RecordingHeader: View {
 
 /// Slow opacity pulse for the live recording dot.
 private struct PulseEffect: ViewModifier {
+    var active = true
     @State private var dimmed = false
 
     func body(content: Content) -> some View {
         content
             .opacity(dimmed ? 0.3 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: dimmed)
-            .onAppear { dimmed = true }
+            .animation(
+                active ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : .default,
+                value: dimmed
+            )
+            .onAppear { dimmed = active }
+            .onChange(of: active) { _, nowActive in
+                dimmed = nowActive
+            }
+    }
+}
+
+/// The per-note fixer activity window (SPEC.md §5.2): coarse status
+/// headline over the one-line event feed. A glance at what the fixer is
+/// doing, not a log. The app shell declares the matching
+/// `WindowGroup(id: windowId, for: URL.self)` scene.
+public struct FixerActivityWindow: View {
+    public static let windowId = "fixer-activity"
+
+    private let recorder: RecordingController
+    private let noteName: String
+
+    public init(noteFolderURL: URL) {
+        self.recorder = RecordingController.shared(noteFolderURL: noteFolderURL)
+        self.noteName = noteFolderURL.lastPathComponent
+    }
+
+    public var body: some View {
+        let model = recorder.fixerActivity
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(
+                        model.status == .working
+                            ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .modifier(PulseEffect(active: model.status == .working))
+                Text(headline(model.status))
+                    .font(.headline)
+                Spacer()
+            }
+            if model.events.isEmpty {
+                Text("No activity yet — the fixer reviews cues as they arrive.")
+                    .font(.meta)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(model.events) { event in
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Image(systemName: event.icon)
+                                    .font(.meta)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 14)
+                                Text(event.text)
+                                    .font(.meta)
+                                    .lineLimit(2)
+                                Spacer(minLength: 8)
+                                Text(event.date, style: .time)
+                                    .font(.meta)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .padding(.bottom, 4)
+                }
+            }
+        }
+        .padding(12)
+        .frame(minWidth: 320, idealWidth: 380, minHeight: 180, idealHeight: 300)
+        .navigationTitle("Fixer — \(noteName)")
+    }
+
+    private func headline(_ status: FixerActivityModel.Status) -> String {
+        switch status {
+        case .off: "Transcript Fixer"
+        case .waiting: "Waiting for new cues"
+        case .working: "Reviewing…"
+        case .done: "Done — all cues reviewed"
+        }
     }
 }

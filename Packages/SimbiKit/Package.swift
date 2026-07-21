@@ -13,14 +13,26 @@ let package = Package(
         .library(name: "SimbiUI", targets: ["SimbiUI"])
     ],
     dependencies: [
-        // Fast-moving 0.x — pin exactly; bump deliberately.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.15.5"),
+        // Fast-moving 0.x — pin exactly; bump deliberately. Pinned to the
+        // upstream merge of our streaming mel timeline-drift fix (#807);
+        // move to the next tagged release when one is cut.
+        .package(
+            url: "https://github.com/FluidInference/FluidAudio.git",
+            revision: "baa11f65daa3003daf4401308786b1dcdeddd84e"),
         // TextKit 2 live-styled markdown editor (replaces the M0
         // STTextView + Neon source editor). Pre-1.0 — pin exactly.
         .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0")
     ],
     targets: [
         .target(name: "SimbiKit"),
+        // Vendored Sameesunkaria/OutlineView (MIT) — SwiftUI wrapper around
+        // NSOutlineView with drag & drop. See Sources/OutlineViewKit/VENDORED.md.
+        // Pre-concurrency AppKit code, so it stays in Swift 5 language mode.
+        .target(
+            name: "OutlineViewKit",
+            exclude: ["LICENSE.txt", "VENDORED.md"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         // Vendored xiph/opus 1.5.2 (float, portable C — no arch-specific
         // intrinsics, no dnn/). See SPEC.md §3.3 [decided: vendored].
         .target(
@@ -62,11 +74,13 @@ let package = Package(
                 .product(name: "FluidAudio", package: "FluidAudio")
             ]
         ),
-        .target(name: "CodexKit"),
+        // ChatSession persists its thread id in the note's state.json.
+        .target(name: "CodexKit", dependencies: ["SimbiKit"]),
         .target(
             name: "SimbiUI",
             dependencies: [
                 "SimbiKit",
+                "OutlineViewKit",
                 "SimbiAudio",
                 "CodexKit",
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
