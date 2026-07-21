@@ -140,8 +140,24 @@ public actor ChatSession {
         }
     }
 
+    /// The wire echo of the context message (a userMessage carrying the
+    /// sentinel) is model-facing plumbing, not conversation — keep it out
+    /// of the transcript, both live and on hydration.
+    static func isContextEcho(_ item: ChatItem) -> Bool {
+        if case .userMessage(let text) = item.detail {
+            return text.hasPrefix(ChatContextPrompt.sentinel)
+        }
+        return false
+    }
+
     private func forward(threadId: String, event: ChatEvent) {
         guard threadId == self.threadId else { return }
+        switch event {
+        case .itemStarted(let item), .itemCompleted(let item):
+            if Self.isContextEcho(item) { return }
+        default:
+            break
+        }
         if case .turnCompleted = event {
             // A turn that ends with approvals still pending (interrupt,
             // failure) must not leave the server request hanging.
@@ -198,13 +214,10 @@ public actor ChatSession {
             params: ["threadId": id, "name": "\(noteFolderURL.lastPathComponent) — chat"])
         try? NoteRecordingState.update(noteFolder: noteFolderURL) { $0.chatThreadId = id }
 
-        let relativePath = CodexChat.notePath(
+        // The note's files ride along inline so the agent can answer the
+        // user's first message without a read-the-files detour.
+        let prompt = ChatContextPrompt.build(
             noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
-        let prompt = """
-            The user wants to discuss the note at `\(relativePath)`. Read its \
-            `note.md`, `transcript.vtt`, and `context/*.md` (whatever exists), \
-            then answer their next message.
-            """
         var params: [String: any Sendable] = [
             "threadId": id,
             "input": [["type": "text", "text": prompt, "text_elements": [String]()]]
@@ -226,5 +239,6 @@ public actor ChatSession {
         return turns.flatMap { turn in
             (turn["items"] as? [[String: Any]] ?? []).compactMap(ChatEventParser.item(from:))
         }
+        .filter { !isContextEcho($0) }
     }
 }
