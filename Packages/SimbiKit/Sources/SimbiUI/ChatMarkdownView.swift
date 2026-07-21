@@ -8,8 +8,8 @@ struct ChatMarkdownView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(MarkdownSegmenter.segments(markdown).enumerated()), id: \.offset) {
-                _, segment in
+            let segments = Array(MarkdownSegmenter.segments(markdown).enumerated())
+            ForEach(segments, id: \.offset) { _, segment in
                 switch segment {
                 case .text(let text):
                     Text(Self.attributed(text))
