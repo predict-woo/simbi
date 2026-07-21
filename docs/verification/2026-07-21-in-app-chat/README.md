@@ -68,7 +68,24 @@ resolved finding #2 above.
 - **r2-03-reopened-still-hidden.png** — close/reopen hydration still
   hides the context message; only the real exchange remains.
 
+## Round 3 — no auto-sent turn; attachments ride the user's first message
+
+Round 2 still auto-sent a context turn at thread creation. Reworked:
+opening a chat only creates/names the thread; the attachment block
+(files + on-disk paths) is prepended to the USER'S first message at send
+time, and userMessage rows strip the block for display.
+
+- **r3-01-empty-until-user-speaks.png** — fresh thread stays completely
+  empty (placeholder only) for 20+ seconds; no agent turn, no
+  acknowledgement message.
+- **r3-02-clean-user-row-grounded-answer.png** — the user row shows
+  exactly the typed text (attachment block invisible); the answer is
+  grounded in the note's content with zero command rows.
+- **r3-03-reopen-clean.png** — close/reopen hydration shows exactly the
+  one exchange; the stored userMessage's attachment block is stripped.
+
 ## Result
 
-All checks passed across both rounds; the persistence fix (the original
-complaint) and the no-read-detour first reply are confirmed working.
+All checks passed across three rounds: persistent per-note threads (the
+original complaint), file attachments on the user's first message with
+no auto-sent turns, and clean transcript rendering throughout.
