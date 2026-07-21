@@ -50,13 +50,23 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     /// The note's transcript-fixer Codex thread (SPEC.md §5.2), reused
     /// across sessions and app restarts.
     public var fixerThreadId: String?
+    /// The fixer-instructions version the saved thread was created with
+    /// (SPEC.md §5.2). A thread from an older version — including 0, the
+    /// pre-worktree era whose instructions wrote the live file — is
+    /// retired rather than resumed.
+    public var fixerInstructionsVersion: Int
+    /// The note's persistent chat thread (SPEC.md §5.4), resumed by the
+    /// in-app chat window across app restarts. Never archived by Simbi
+    /// except when the user starts a new chat.
+    public var chatThreadId: String?
     /// File-import conversion jobs by `files/` file name (SPEC.md §5.3).
     public var conversions: [String: FileConversion]
 
     public init(
         nextCueIndex: Int = 1, sessionCount: Int = 0, totalSamples: Int = 0,
         lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil,
-        fixerThreadId: String? = nil, conversions: [String: FileConversion] = [:]
+        fixerThreadId: String? = nil, fixerInstructionsVersion: Int = 0,
+        chatThreadId: String? = nil, conversions: [String: FileConversion] = [:]
     ) {
         self.nextCueIndex = nextCueIndex
         self.sessionCount = sessionCount
@@ -64,6 +74,8 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         self.lastSessionEnd = lastSessionEnd
         self.activeSession = activeSession
         self.fixerThreadId = fixerThreadId
+        self.fixerInstructionsVersion = fixerInstructionsVersion
+        self.chatThreadId = chatThreadId
         self.conversions = conversions
     }
 
@@ -76,6 +88,9 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         lastSessionEnd = try container.decodeIfPresent(Date.self, forKey: .lastSessionEnd)
         activeSession = try container.decodeIfPresent(ActiveSession.self, forKey: .activeSession)
         fixerThreadId = try container.decodeIfPresent(String.self, forKey: .fixerThreadId)
+        fixerInstructionsVersion =
+            try container.decodeIfPresent(Int.self, forKey: .fixerInstructionsVersion) ?? 0
+        chatThreadId = try container.decodeIfPresent(String.self, forKey: .chatThreadId)
         conversions =
             try container.decodeIfPresent([String: FileConversion].self, forKey: .conversions)
             ?? [:]
