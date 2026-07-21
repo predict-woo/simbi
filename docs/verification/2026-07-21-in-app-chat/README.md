@@ -48,7 +48,27 @@ recording started, no audio played.
    (it *is* a userMessage item on the wire). Cosmetic; could be filtered
    or restyled as a system row later.
 
+## Round 2 — inline file attachments (context turn rework)
+
+The context turn no longer tells the agent to go read the note's files;
+their contents ride along inline in the context message (size-capped,
+truncation pointers back to disk), with each file's cwd-relative path
+named so edits land in the real files. The sentinel-marked context
+message is hidden from the transcript live and on hydration — this also
+resolved finding #2 above.
+
+- **r2-01-fresh-thread-no-context-row.png** — New Chat thread built with
+  the attachment prompt: no `[simbi note context]` row, no giant "You"
+  row of file contents.
+- **r2-02-answer-without-read-commands.png** — "What is this note about?"
+  answered with ZERO command rows (previously the agent ran
+  `find`/`wc`/reads first); the answer cites the note's actual content
+  (the quarterly-targets PDF summary), proving the inline copies
+  delivered.
+- **r2-03-reopened-still-hidden.png** — close/reopen hydration still
+  hides the context message; only the real exchange remains.
+
 ## Result
 
-All seven checks passed; the persistence fix (the original complaint)
-is confirmed working.
+All checks passed across both rounds; the persistence fix (the original
+complaint) and the no-read-detour first reply are confirmed working.
