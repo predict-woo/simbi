@@ -1,50 +1,9 @@
 import Foundation
 
-/// "Chat in Codex" (SPEC.md §5.4): a normal, user-facing Codex thread at
-/// the HOME root (never the note folder, so the ChatGPT app's history stays
-/// browsable), primed with a context turn that points the agent at the
-/// note. Chat threads are never archived by Simbi.
+/// Shared helpers for the in-app chat (SPEC.md §5.4). The chat thread's
+/// lifecycle — resume-or-create, turns, approvals — lives in `ChatSession`;
+/// this file keeps the path helper and model discovery.
 public enum CodexChat {
-    /// Starts the chat thread and its context turn; returns the thread id
-    /// for the `codex://threads/<id>` deeplink (the composer can't be
-    /// pre-filled — the context turn runs while the user types).
-    public static func startChat(
-        noteFolderURL: URL, homeRootURL: URL, client: AppServerClient, model: String? = nil
-    ) async throws -> String {
-        let resultData = try await client.request(
-            method: "thread/start", params: ["cwd": homeRootURL.path])
-        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
-        guard let thread = result?["thread"] as? [String: Any],
-            let threadId = thread["id"] as? String
-        else { throw AppServerClient.ClientError.malformedResponse }
-
-        // Naming forces rollout persistence (M1 spike gotcha #2) and is the
-        // user's handle on the thread in the ChatGPT app.
-        _ = try await client.request(
-            method: "thread/name/set",
-            params: [
-                "threadId": threadId,
-                "name": "\(noteFolderURL.lastPathComponent) — chat"
-            ])
-
-        let relativePath = notePath(noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
-        let prompt = """
-            The user wants to discuss the note at `\(relativePath)`. Read its \
-            `note.md`, `transcript.vtt`, and `context/*.md` (whatever exists), \
-            then answer their next message.
-            """
-        var params: [String: any Sendable] = [
-            "threadId": threadId,
-            "input": [["type": "text", "text": prompt, "text_elements": [String]()]]
-                as [[String: any Sendable]]
-        ]
-        if let model {
-            params["model"] = model
-        }
-        _ = try await client.request(method: "turn/start", params: params)
-        return threadId
-    }
-
     /// The note's path relative to the home root, as shown to the agent.
     static func notePath(noteFolderURL: URL, homeRootURL: URL) -> String {
         let home = homeRootURL.standardizedFileURL.path

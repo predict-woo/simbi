@@ -1,4 +1,4 @@
-# Simbi — Spec v0.6
+# Simbi — Spec v0.7
 
 An open-source macOS notetaking app that lives symbiotically with the Codex
 (ChatGPT desktop) app. Simbi records and diarizes audio locally, transcribes it
@@ -343,14 +343,29 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
 ### 5.2 Transcript-fixer thread
 
 - **One fixer thread per note**, created on the note's first recording start
-  (`thread/start`, `cwd = <note folder>`), **resumed** (`thread/resume`) on
-  recording resume and after app restarts. Instruction turn explains:
-  - read `transcript.vtt` and all of `context/*.md` (full note context);
+  (`thread/start`, `cwd = <note folder>/.simbi/fixer-worktree`), **resumed**
+  (`thread/resume`) on recording resume and after app restarts.
+- **Snapshot-and-replay** (the live `transcript.vtt` has exactly ONE writer —
+  the pipeline's outbox): the fixer never writes the live file. Before each
+  pass the pipeline copies `transcript.vtt` into the fixer's worktree (its
+  cwd and sole writable sandbox root); the fixer `apply_patch`es that copy;
+  on `turn/completed` the pipeline diffs the copy against the snapshot
+  per cue and replays only changed cue payloads (text / `<v>` speaker) onto
+  the live file, serialized with appends on the pipeline actor. Structural
+  changes — renumbering, timestamp edits, added/deleted cues, NOTE edits —
+  and unparseable copies are discarded by the merge, so the fixer cannot
+  corrupt the transcript or race the recording (a mid-pass append can no
+  longer be clobbered by a whole-file rewrite).
+- Instruction turn explains:
+  - `transcript.vtt` in the working directory is the fixer's working copy;
+    `../../note.md` and `../../context/*.md` are read-only ground truth;
   - on each ping, fix ASR errors in cues appended since the last pass —
     spelling of names/jargon (use context files!), punctuation, obvious
     mis-hearings;
-  - **every edit must leave the file as valid WebVTT** (the app renders it
-    live); never renumber cues, never change timestamps;
+  - edit only cue text and `<v>` tags — the merge takes nothing else;
+  - a cue's `<v>` tag may be reassigned to another speaker when the
+    conversation makes a diarization error pretty certain (e.g. a reply
+    credited to the asker); when in doubt, leave attribution alone;
   - speaker `<v>` tags may be renamed only when the transcript makes the
     identity unambiguous, and then consistently across the file;
   - `NOTE session` blocks mark stop/resume boundaries; Sortformer slot
@@ -380,19 +395,38 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
 - Every worker thread created for this note (fixer, future workers) is
   pointed at `context/*.md`, so accumulated context compounds.
 
-### 5.4 "Chat in Codex"
+### 5.4 In-app chat
 
-- Button on the note view. Flow:
+- **Chat** button on the note view opens a per-note chat window (a
+  `WindowGroup` keyed by note URL, like the fixer activity window). The
+  conversation renders inside Simbi; the old `codex://threads/<id>` deeplink
+  flow is retired (it created a fresh, empty thread on every click).
+- **One persistent thread per note**, stored as `chatThreadId` in
+  `.simbi/state.json`. Opening the window resumes it (`thread/resume`, then
+  `thread/read` with `includeTurns: true` to hydrate the transcript). If the
+  saved thread is gone, or on the first open, `ChatSession` creates one:
   1. `thread/start` with **`cwd = ~/Simbi`** (home root — never the note
-     folder, so the Codex app's thread history stays clean and browsable);
+     folder, so the ChatGPT app's thread history stays clean and browsable);
   2. `thread/name/set` → e.g. `2026-07-15 Standup — chat`;
   3. `turn/start` with a context prompt: "The user wants to discuss the note
      at `Work/ProjectX/2026-07-15 Standup/`. Read its `note.md`,
-     `transcript.vtt`, and `context/*.md`, then answer their next message.";
-  4. `open codex://threads/<id>` — focuses the ChatGPT app on the thread.
-- Note: the composer cannot be pre-filled via deeplink; the context prompt is
-  the first turn instead, and the agent is reading the note while the user
-  types their question.
+     `transcript.vtt`, and `context/*.md`, then answer their next message."
+     — the agent reads the note while the user types their question.
+- **User turns** run with `approvalPolicy: "on-request"` and
+  `sandboxPolicy: workspaceWrite` (writable root = the thread's cwd).
+  Approval requests (`item/commandExecution/requestApproval`,
+  `item/fileChange/requestApproval`) are JSON-RPC server→client *requests*;
+  `AppServerClient` routes them to `ChatSession`, which surfaces an inline
+  card (Allow / Allow for Session / Deny) and answers with
+  `{"decision": ...}`. A turn that ends with a card still pending resolves
+  it as `cancel` so the server never hangs.
+- **Streaming**: `item/agentMessage/delta` appends to the in-flight agent
+  row; `item/completed` text is authoritative. Command executions and file
+  changes render as compact rows; unknown item types render as quiet
+  generic rows.
+- **New Chat** archives the thread, clears `chatThreadId`, and creates a
+  fresh one. Simbi never archives chat threads otherwise, and they remain
+  browsable in the ChatGPT app (same cwd + naming conventions).
 
 ### 5.5 Model selection [decided]
 
@@ -421,7 +455,13 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
   - speaker rename control (updates `<v>` tags across the file);
   - files section: drag-drop target, one row per `files/` entry with
     conversion status and a link to its `context/` markdown;
-  - **Chat in Codex** button (§5.4).
+  - **Chat** button opening the per-note chat window (§5.4).
+- **Chat window** (per note): header (busy spinner, New Chat), transcript
+  (user/agent markdown rows, command + file-change rows, quiet rows for
+  reasoning/unknown items, failure banners, inline approval cards), and a
+  composer (Return sends, Shift+Return newline, stop button while a turn
+  runs). Bottom-pinned auto-scroll disengages when the user scrolls up
+  ("Latest" pill jumps back).
 - **Settings**: model selectors (§5.5), audio source defaults, home-folder
   reveal.
 - **Empty/degraded states**: if ChatGPT.app or `~/.codex/auth.json` is
