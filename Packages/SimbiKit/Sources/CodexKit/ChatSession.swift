@@ -30,6 +30,10 @@ public actor ChatSession {
     private let model: String?
 
     private var threadId: String?
+    /// True until the thread's first user turn: that message carries the
+    /// note's files as an inline attachment block (Simbi never sends a
+    /// turn of its own).
+    private var needsContext = true
     private var bound = false
     private var continuation: AsyncStream<ChatSessionEvent>.Continuation?
     private var pendingApprovals: [UUID: CheckedContinuation<String, Never>] = [:]
@@ -62,7 +66,12 @@ public actor ChatSession {
                 let read = try await client.request(
                     method: "thread/read",
                     params: ["threadId": saved, "includeTurns": true])
-                return Self.history(fromThreadReadResult: read)
+                let history = Self.history(fromThreadReadResult: read)
+                // A resumed thread that already has turns had its files
+                // attached back then; only a never-used thread still needs
+                // the attachment block on its first message.
+                needsContext = history.isEmpty
+                return history
             } catch {
                 // Deleted/corrupt thread: fall through to a fresh one.
             }
@@ -73,8 +82,17 @@ public actor ChatSession {
 
     public func send(_ text: String) async throws {
         guard let threadId else { return }
+        // First message on the thread: the note's files ride along as an
+        // inline attachment block ahead of the user's text, built at send
+        // time so the copies are fresh.
+        var wireText = text
+        if needsContext {
+            let context = ChatContextPrompt.build(
+                noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
+            wireText = context + "\n\n" + text
+        }
         let input: [[String: any Sendable]] = [
-            ["type": "text", "text": text, "text_elements": [String]()]
+            ["type": "text", "text": wireText, "text_elements": [String]()]
         ]
         // Workspace-write rooted at the thread's cwd (the home root), with
         // approvals surfaced to the user — unlike the fixer's silent
@@ -95,6 +113,7 @@ public actor ChatSession {
             params["model"] = model
         }
         _ = try await client.request(method: "turn/start", params: params)
+        needsContext = false
     }
 
     public func interrupt(turnId: String?) async {
@@ -140,21 +159,27 @@ public actor ChatSession {
         }
     }
 
-    /// The wire echo of the context message (a userMessage carrying the
-    /// sentinel) is model-facing plumbing, not conversation — keep it out
-    /// of the transcript, both live and on hydration.
-    static func isContextEcho(_ item: ChatItem) -> Bool {
-        if case .userMessage(let text) = item.detail {
-            return text.hasPrefix(ChatContextPrompt.sentinel)
-        }
-        return false
+    /// The attachment block inside a userMessage is model-facing plumbing,
+    /// not conversation: strip it so the row shows only what the user
+    /// typed. A message that was ONLY context (threads from the pre-rework
+    /// auto-sent turn) strips to empty and is dropped entirely.
+    static func stripContext(_ item: ChatItem) -> ChatItem? {
+        guard case .userMessage(let text) = item.detail else { return item }
+        let visible = ChatContextPrompt.userVisibleText(text)
+        if visible.isEmpty && text.hasPrefix(ChatContextPrompt.sentinel) { return nil }
+        return ChatItem(id: item.id, detail: .userMessage(text: visible))
     }
 
     private func forward(threadId: String, event: ChatEvent) {
         guard threadId == self.threadId else { return }
+        var event = event
         switch event {
-        case .itemStarted(let item), .itemCompleted(let item):
-            if Self.isContextEcho(item) { return }
+        case .itemStarted(let item):
+            guard let stripped = Self.stripContext(item) else { return }
+            event = .itemStarted(stripped)
+        case .itemCompleted(let item):
+            guard let stripped = Self.stripContext(item) else { return }
+            event = .itemCompleted(stripped)
         default:
             break
         }
@@ -213,20 +238,9 @@ public actor ChatSession {
             method: "thread/name/set",
             params: ["threadId": id, "name": "\(noteFolderURL.lastPathComponent) — chat"])
         try? NoteRecordingState.update(noteFolder: noteFolderURL) { $0.chatThreadId = id }
-
-        // The note's files ride along inline so the agent can answer the
-        // user's first message without a read-the-files detour.
-        let prompt = ChatContextPrompt.build(
-            noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
-        var params: [String: any Sendable] = [
-            "threadId": id,
-            "input": [["type": "text", "text": prompt, "text_elements": [String]()]]
-                as [[String: any Sendable]]
-        ]
-        if let model {
-            params["model"] = model
-        }
-        _ = try await client.request(method: "turn/start", params: params)
+        // No turn is sent here: the thread stays empty until the user's
+        // first message, which carries the note's files as attachments.
+        needsContext = true
     }
 
     /// `thread/read` → ordered ChatItems. Defensive: absent turns/items are
@@ -239,6 +253,6 @@ public actor ChatSession {
         return turns.flatMap { turn in
             (turn["items"] as? [[String: Any]] ?? []).compactMap(ChatEventParser.item(from:))
         }
-        .filter { !isContextEcho($0) }
+        .compactMap(stripContext)
     }
 }

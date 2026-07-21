@@ -42,9 +42,22 @@ struct ChatContextPromptTests {
         let first = prompt.range(of: "context/a.md")!.lowerBound
         let second = prompt.range(of: "context/b.md")!.lowerBound
         #expect(first < second)
-        // The agent is told where the real files live for edits.
+        // The agent is told where the real files live for edits, and the
+        // block is delimited so the UI can cut it out of the user's row.
         #expect(prompt.contains("edit those files on disk"))
         #expect(prompt.contains("`Work/Standup`"))
+        #expect(prompt.hasSuffix(ChatContextPrompt.endMarker))
+    }
+
+    @Test("userVisibleText strips the attachment block, keeps the user's text")
+    func stripping() {
+        let wire = "\(ChatContextPrompt.sentinel)\nblah\n===== BEGIN x =====\nstuff\n"
+            + "\(ChatContextPrompt.endMarker)\n\nWhat is this note about?"
+        #expect(ChatContextPrompt.userVisibleText(wire) == "What is this note about?")
+        // Plain messages pass through untouched.
+        #expect(ChatContextPrompt.userVisibleText("hello") == "hello")
+        // A pre-rework auto-sent context turn (no end marker) strips to empty.
+        #expect(ChatContextPrompt.userVisibleText("\(ChatContextPrompt.sentinel)\nold style") == "")
     }
 
     @Test("oversized files are truncated with a pointer to the real file")

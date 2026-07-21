@@ -29,8 +29,11 @@ struct ChatSessionTests {
             ])
     }
 
-    @Test("the context message is hidden from hydrated history")
+    @Test("attachment blocks are stripped from hydrated history")
     func contextEchoFiltered() {
+        // u0: a pre-rework auto-sent context turn (no end marker) — dropped.
+        // u1: a first message with the attachment block — only the user's
+        //     trailing text survives.
         let data = Data(
             #"""
             {"thread": {"id": "thr_1", "turns": [
@@ -38,7 +41,8 @@ struct ChatSessionTests {
                 {"type": "userMessage", "id": "u0", "content":
                   [{"type": "text", "text": "[simbi note context]\nThe user wants to discuss…"}]},
                 {"type": "agentMessage", "id": "a0", "text": "Ready."},
-                {"type": "userMessage", "id": "u1", "content": [{"type": "text", "text": "hi"}]}
+                {"type": "userMessage", "id": "u1", "content":
+                  [{"type": "text", "text": "[simbi note context]\nfiles…\n[end simbi note context]\n\nhi"}]}
               ]}
             ]}}
             """#.utf8)

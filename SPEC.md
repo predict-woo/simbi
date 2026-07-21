@@ -407,16 +407,18 @@ NOTE session 2 start=2026-07-15T15:03:22+09:00 offset=00:12:10.240
   saved thread is gone, or on the first open, `ChatSession` creates one:
   1. `thread/start` with **`cwd = ~/Simbi`** (home root — never the note
      folder, so the ChatGPT app's thread history stays clean and browsable);
-  2. `thread/name/set` → e.g. `2026-07-15 Standup — chat`;
-  3. `turn/start` with a context message that **embeds the note's files
-     inline** (`note.md`, `transcript.vtt`, `context/*.md`; per-file and
-     total size caps with truncation pointers) so the agent can answer the
-     first question immediately instead of spending the turn reading files.
-     The message names each file's cwd-relative path and instructs the
-     agent to edit the on-disk files — not the inline copies — when asked
-     for changes. It starts with a `[simbi note context]` sentinel line;
-     the chat window hides the sentinel-carrying userMessage echo from the
-     transcript (live and on hydration).
+  2. `thread/name/set` → e.g. `2026-07-15 Standup — chat`.
+  Simbi never sends a turn of its own — the thread stays empty until the
+  user speaks.
+- **The user's first message carries the note's files as attachments**: an
+  inline block (`note.md`, `transcript.vtt`, `context/*.md`; per-file and
+  total size caps with truncation pointers) is prepended to the typed text
+  at send time, delimited by `[simbi note context]` … `[end simbi note
+  context]`. The block names each file's cwd-relative path and instructs
+  the agent to edit the on-disk files — not the inline copies — when asked
+  for changes. The transcript strips the block from userMessage rows (live
+  and on hydration), so the user sees only what they typed; pre-rework
+  auto-sent context turns strip to empty and are dropped.
 - **User turns** run with `approvalPolicy: "on-request"` and
   `sandboxPolicy: workspaceWrite` (writable root = the thread's cwd).
   Approval requests (`item/commandExecution/requestApproval`,

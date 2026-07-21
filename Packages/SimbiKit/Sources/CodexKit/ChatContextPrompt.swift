@@ -1,15 +1,29 @@
 import Foundation
 
-/// Builds the chat thread's context message (SPEC.md §5.4): the note's
-/// files embedded inline so the agent can answer immediately — no
-/// read-the-files turn — plus the on-disk paths so edits land in the real
-/// files. The message is model-facing only; the UI hides it via
-/// ``sentinel``.
+/// Builds the attachment block that rides along with the USER'S FIRST
+/// message on a chat thread (SPEC.md §5.4): the note's files embedded
+/// inline so the agent can answer immediately — Simbi never sends a turn
+/// of its own — plus the on-disk paths so edits land in the real files.
+/// The block is model-facing only; the UI strips it via ``userVisibleText``.
 public enum ChatContextPrompt {
-    /// First line of the context message; the transcript filters rows
-    /// carrying this prefix (the wire echoes the message as a userMessage
-    /// item, which would otherwise render as a giant "You" row).
+    /// First line of the attachment block. ``userVisibleText`` strips
+    /// everything from here through ``endMarker`` before a userMessage is
+    /// rendered (the wire echoes the full sent text, which would otherwise
+    /// show as a giant "You" row).
     public static let sentinel = "[simbi note context]"
+    /// Last line of the attachment block; the user's own text follows it.
+    public static let endMarker = "[end simbi note context]"
+
+    /// What the transcript shows for a userMessage: plain messages pass
+    /// through; the attachment block is cut; a message that was ONLY
+    /// context (the pre-rework auto-sent turn) becomes empty — callers
+    /// drop empty user rows.
+    public static func userVisibleText(_ text: String) -> String {
+        guard text.hasPrefix(sentinel) else { return text }
+        guard let marker = text.range(of: endMarker) else { return "" }
+        return String(text[marker.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// Per-file and whole-message caps keep a long transcript from eating
     /// the thread's context window; truncated files point back to disk.
@@ -45,17 +59,17 @@ public enum ChatContextPrompt {
             sections.isEmpty
             ? "The note has no files yet; its folder is `\(notePath)` in your working directory."
             : """
-                The note's files are attached below as inline copies — answer from them \
+                Its files are attached below as inline copies — answer from them \
                 directly, without reading the files first. The real files live in your \
                 working directory at the path shown in each header; when the user asks \
                 for changes, edit those files on disk, not the inline copies.
                 """
         let header = """
             \(sentinel)
-            The user wants to discuss the note at `\(notePath)`. \(inventory) \
-            Reply with one short sentence once you're ready.
+            This conversation is about the note at `\(notePath)`. \(inventory) \
+            The user's message follows the attachments.
             """
-        return ([header] + sections).joined(separator: "\n\n")
+        return ([header] + sections + [endMarker]).joined(separator: "\n\n")
     }
 
     /// note.md, transcript.vtt, then context/*.md sorted by name — the same
