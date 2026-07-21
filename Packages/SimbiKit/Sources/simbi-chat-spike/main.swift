@@ -1,8 +1,9 @@
-// M7 spike: real chat-in-codex round-trip (SPEC.md §5.4) + model list
-// (§5.5) against the real app-server. Starts the chat thread at the HOME
-// root, verifies the name and the context turn, fetches model/list, then
-// archives the thread purely as spike hygiene (the app itself NEVER
-// archives chat threads).
+// M7 spike: real chat round-trip (SPEC.md §5.4) + model list (§5.5)
+// against the real app-server, now through ChatSession (the in-app chat
+// backend). Ensures the thread, verifies the persisted id / name / cwd,
+// fetches model/list, then archives the thread and clears the persisted id
+// purely as spike hygiene (the app itself archives chat threads only on
+// "New Chat").
 
 import CodexKit
 import Foundation
@@ -26,10 +27,14 @@ let models = try await CodexModels.list(client: client)
 guard !models.isEmpty else { fail("models", "model/list returned nothing") }
 print("PASS models: \(models.count) available — \(models.joined(separator: ", "))")
 
-print("starting chat thread (real app-server)…")
-let threadId = try await CodexChat.startChat(
-    noteFolderURL: noteFolder, homeRootURL: home.rootURL, client: client)
-print("chat thread: \(threadId)")
+print("ensuring chat thread (real app-server)…")
+let session = ChatSession(
+    noteFolderURL: noteFolder, homeRootURL: home.rootURL, client: client, model: nil)
+let history = try await session.ensureThread()
+guard let threadId = try NoteRecordingState.load(noteFolder: noteFolder).chatThreadId else {
+    fail("persist", "ensureThread did not persist a chatThreadId")
+}
+print("chat thread: \(threadId) (\(history.count) hydrated item(s))")
 
 // The context turn is running; wait for turn/completed.
 let completed = AsyncStream.makeStream(of: Void.self)
@@ -67,10 +72,14 @@ guard thread?["name"] as? String == "M5 Files Demo — chat" else {
 guard (thread?["cwd"] as? String) == home.rootURL.path else {
     fail("cwd", "thread cwd wrong: \(thread?["cwd"] ?? "nil")")
 }
-let turns = (thread?["turns"] as? [[String: Any]]) ?? []
-print("PASS chat: named \"M5 Files Demo — chat\", cwd = home root, \(turns.count) turn(s)")
-print("deeplink would be: codex://threads/\(threadId)")
 
-// Spike hygiene only — the app never archives chat threads (§5.4).
+// Hydration path: thread/read with turns must parse.
+let readData = try await client.request(
+    method: "thread/read", params: ["threadId": threadId, "includeTurns": true])
+let items = ChatSession.history(fromThreadReadResult: readData)
+print("PASS chat: named \"M5 Files Demo — chat\", cwd = home root, \(items.count) item(s) hydrate")
+
+// Spike hygiene only — the app archives chat threads only on "New Chat".
 _ = try? await client.request(method: "thread/archive", params: ["threadId": threadId])
+try? NoteRecordingState.update(noteFolder: noteFolder) { $0.chatThreadId = nil }
 print("OVERALL: PASS")
