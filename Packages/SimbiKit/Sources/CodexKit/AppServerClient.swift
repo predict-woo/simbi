@@ -24,6 +24,17 @@ public actor AppServerClient {
     /// object) — Data is Sendable; handlers parse what they need.
     private var notificationHandlers: [UUID: @Sendable (String, Data) -> Void] = [:]
 
+    /// Answers server→client requests (approvals). First handler returning
+    /// `.result` wins; if none claims it the client answers with a JSON-RPC
+    /// error so the server never hangs on us.
+    public enum ServerRequestReply: Sendable {
+        case notMine
+        case result([String: any Sendable])
+    }
+
+    private var serverRequestHandlers:
+        [UUID: @Sendable (String, Data) async -> ServerRequestReply] = [:]
+
     public init(installation: CodexInstallation = .standard) {
         self.installation = installation
     }
@@ -34,6 +45,15 @@ public actor AppServerClient {
     ) -> UUID {
         let id = UUID()
         notificationHandlers[id] = handler
+        return id
+    }
+
+    @discardableResult
+    public func addServerRequestHandler(
+        _ handler: @escaping @Sendable (String, Data) async -> ServerRequestReply
+    ) -> UUID {
+        let id = UUID()
+        serverRequestHandlers[id] = handler
         return id
     }
 
@@ -111,31 +131,55 @@ public actor AppServerClient {
         guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
             return
         }
-        if let id = object["id"] as? Int, object["method"] == nil {
+        switch JSONRPCMessage.classify(object) {
+        case .response(let id, let body):
             guard let continuation = pending.removeValue(forKey: id) else { return }
-            if let error = object["error"] as? [String: Any] {
+            if let error = body["error"] as? [String: Any] {
                 continuation.resume(
                     throwing: ClientError.serverError(
                         code: error["code"] as? Int ?? 0,
                         message: error["message"] as? String ?? "unknown"))
             } else {
-                let result = object["result"] ?? [String: Any]()
+                let result = body["result"] ?? [String: Any]()
                 continuation.resume(
                     returning: (try? JSONSerialization.data(
                         withJSONObject: result, options: [.fragmentsAllowed])) ?? Data("{}".utf8))
             }
-            return
-        }
-        if let method = object["method"] as? String {
-            // Server→client requests (approvals) never arrive with
-            // approvalPolicy "never"; notifications fan out.
-            let params =
-                (try? JSONSerialization.data(
-                    withJSONObject: object["params"] ?? [String: Any]())) ?? Data("{}".utf8)
-            for handler in notificationHandlers.values {
-                handler(method, params)
+        case .serverRequest(let id, let method, let params):
+            // Approvals: the server is blocked on our answer, so an
+            // unclaimed request gets an explicit error, never silence.
+            let paramsData =
+                (try? JSONSerialization.data(withJSONObject: params)) ?? Data("{}".utf8)
+            let handlers = Array(serverRequestHandlers.values)
+            Task { [weak self] in
+                for handler in handlers {
+                    if case .result(let result) = await handler(method, paramsData) {
+                        await self?.respond(id: id, result: result)
+                        return
+                    }
+                }
+                await self?.respondMethodNotFound(id: id, method: method)
             }
+        case .notification(let method, let params):
+            let paramsData =
+                (try? JSONSerialization.data(withJSONObject: params)) ?? Data("{}".utf8)
+            for handler in notificationHandlers.values {
+                handler(method, paramsData)
+            }
+        case .invalid:
+            break
         }
+    }
+
+    private func respond(id: RPCID, result: [String: any Sendable]) {
+        try? write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result])
+    }
+
+    private func respondMethodNotFound(id: RPCID, method: String) {
+        try? write([
+            "jsonrpc": "2.0", "id": id.jsonValue,
+            "error": ["code": -32601, "message": "unhandled server request: \(method)"]
+        ])
     }
 
     private func write(_ object: [String: Any]) throws {
