@@ -192,31 +192,3 @@ struct ChatComposer: View {
         .onAppear { focused = true }
     }
 }
-
-// Task 8 replaces these placeholders with the real row and approval views
-// in ChatRows.swift.
-struct ChatRowView: View {
-    let row: ChatTranscript.Row
-
-    var body: some View {
-        switch row {
-        case .user(_, let text):
-            Text(text)
-        case .agent(_, let markdown, _):
-            ChatMarkdownView(markdown: markdown)
-        default:
-            Text(row.id)
-                .font(.meta)
-                .foregroundStyle(.tertiary)
-        }
-    }
-}
-
-struct ChatApprovalCard: View {
-    let approval: ChatApprovalRequest
-    let model: ChatModel
-
-    var body: some View {
-        EmptyView()
-    }
-}
