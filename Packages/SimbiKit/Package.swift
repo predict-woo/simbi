@@ -124,6 +124,11 @@ let package = Package(
             dependencies: ["CodexKit", "SimbiKit"]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
+        .testTarget(
+            name: "OutlineViewKitTests",
+            dependencies: ["OutlineViewKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
         .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"])
     ]

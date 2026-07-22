@@ -46,14 +46,35 @@ where Drop.DataElement == Data.Element {
         item as! OutlineViewItem<Data>
     }
 
+    /// Local edit (see VENDORED.md): resolve the *current* item for a
+    /// wrapper NSOutlineView passes back. NSOutlineView stores the item
+    /// instances it was first handed (matched by id-based equality) and
+    /// never swaps them for fresh ones, so a stored wrapper's `value` —
+    /// and with it a key-path child source's children — goes stale once
+    /// the data changes. Answering tree-shape questions from a stale
+    /// snapshot crashes mid-`endUpdates` when a row was just inserted
+    /// past the snapshot's child count. Items that have left the tree
+    /// fall back to their snapshot, which is what AppKit still holds
+    /// rows for while tearing them down.
+    private func currentItem(_ item: OutlineViewItem<Data>) -> OutlineViewItem<Data> {
+        var stack = items
+        while let candidate = stack.popLast() {
+            if candidate.id == item.id { return candidate }
+            if let children = candidate.children {
+                stack.append(contentsOf: children)
+            }
+        }
+        return item
+    }
+
     // MARK: - Basic Data Source
-    
+
     func outlineView(
         _ outlineView: NSOutlineView,
         numberOfChildrenOfItem item: Any?
     ) -> Int {
         if let item = item.map(typedItem) {
-            return item.children?.count ?? 0
+            return currentItem(item).children?.count ?? 0
         } else {
             return items.count
         }
@@ -63,7 +84,7 @@ where Drop.DataElement == Data.Element {
         _ outlineView: NSOutlineView,
         isItemExpandable item: Any
     ) -> Bool {
-        typedItem(item).children != nil
+        currentItem(typedItem(item)).children != nil
     }
 
     func outlineView(
@@ -73,7 +94,7 @@ where Drop.DataElement == Data.Element {
     ) -> Any {
         if let item = item.map(typedItem) {
             // Should only be called if item has children.
-            return item.children.unsafelyUnwrapped[index]
+            return currentItem(item).children.unsafelyUnwrapped[index]
         } else {
             return items[index]
         }
@@ -144,7 +165,9 @@ private extension OutlineViewDataSource {
               outlineDataSource.isEqual(self)
         else { return }
         
-        let typedObjToExpand = typedItem(objectToExpand)
+        // Local edit (see VENDORED.md): resolve through `currentItem` so
+        // TreeMap records the current children, not a stale snapshot's.
+        let typedObjToExpand = currentItem(typedItem(objectToExpand))
         if let childIDs = typedObjToExpand.children?.map({ ($0.id, $0.children == nil) }) {
             treeMap.expandItem(typedObjToExpand.value.id, children: childIDs)
         }

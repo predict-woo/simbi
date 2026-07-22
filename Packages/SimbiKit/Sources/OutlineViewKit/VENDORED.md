@@ -20,6 +20,15 @@ Local changes, each marked with a `Local edit (see VENDORED.md)` comment:
   `QuietSelectionRowView` can subclass it.
 - TreeMap.swift: removed a `TreeMap.Node: Equatable` extension that newer
   compilers reject as redundant; fixed a `private (set)` whitespace warning.
+- OutlineViewDataSource.swift: stale-snapshot crash fix. NSOutlineView
+  stores the item wrappers it was first handed (matched by id-based
+  equality) and never swaps them for fresh ones, so with a key-path child
+  source over value types a stored wrapper's children go stale; inserting
+  a row into an expanded folder then crashed out-of-range during
+  `endUpdates`. `numberOfChildrenOfItem`/`isItemExpandable`/`child:ofItem:`
+  and the will-expand TreeMap update now resolve the current item from
+  `items` by id (`currentItem(_:)`), falling back to the snapshot only for
+  items no longer in the tree. Covered by `Tests/OutlineViewKitTests`.
 
 The target compiles in Swift 5 language mode (pre-concurrency AppKit code);
 keep upstream files otherwise unmodified so future diffs stay clean.
