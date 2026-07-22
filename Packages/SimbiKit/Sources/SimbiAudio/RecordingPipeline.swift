@@ -33,7 +33,7 @@ public enum RecordingPipelineError: Error, Equatable {
 /// wrapped Sortformer; the aligned record stream drives the cut engine,
 /// whose flushes become encoded segments, outbox entries and eventually VTT
 /// appends.
-public actor RecordingPipeline {
+public actor RecordingPipeline: TranscriptFixerHost {
     private let noteFolderURL: URL
     private let transcriber: Transcriber
     private let diarizer: DiarizerStream
@@ -75,6 +75,10 @@ public actor RecordingPipeline {
     /// Optional transcript fixer (SPEC.md §5.2); failures never affect
     /// recording (degraded mode: fixing just doesn't happen).
     private var fixer: TranscriptFixer?
+    /// The transcript content copied into the fixer's worktree at pass
+    /// start — the "before" side of the merge diff. In-memory only: if the
+    /// app dies mid-pass, that pass's edits are simply dropped.
+    private var fixerSnapshot: String?
 
     private var audioFileURL: URL { noteFolderURL.appending(path: "audio.webm") }
     private var pendingDirURL: URL { noteFolderURL.appending(path: ".simbi/pending") }
@@ -108,8 +112,9 @@ public actor RecordingPipeline {
     public var fixerThreadId: String? { state.fixerThreadId }
 
     /// Attaches the note's fixer before `start()`.
-    public func attachFixer(_ fixer: TranscriptFixer) {
+    public func attachFixer(_ fixer: TranscriptFixer) async {
         self.fixer = fixer
+        await fixer.setHost(self)
     }
 
     // MARK: - Start / resume (§10.2)
@@ -176,8 +181,11 @@ public actor RecordingPipeline {
 
         if let fixer {
             try? await fixer.recordingStarted()
-            if let threadId = await fixer.threadId, threadId != state.fixerThreadId {
+            if let threadId = await fixer.threadId,
+                threadId != state.fixerThreadId
+                    || state.fixerInstructionsVersion != TranscriptFixer.instructionsVersion {
                 state.fixerThreadId = threadId
+                state.fixerInstructionsVersion = TranscriptFixer.instructionsVersion
                 try? state.saveRecording(noteFolder: noteFolderURL)
             }
         }
@@ -464,6 +472,45 @@ public actor RecordingPipeline {
             count += 1
         }
         return count
+    }
+
+    // MARK: - Fixer merge (SPEC.md §5.2 snapshot-and-replay)
+
+    /// Copies the live transcript into the fixer's worktree and remembers
+    /// it as the diff base. The fixer edits the copy (its only writable
+    /// root), so the live file keeps this actor as its single writer.
+    public func fixerWillStartPass() {
+        let worktree = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
+        try? FileManager.default.createDirectory(at: worktree, withIntermediateDirectories: true)
+        let live =
+            (try? String(
+                contentsOf: noteFolderURL.appending(path: "transcript.vtt"), encoding: .utf8))
+            ?? VTT.header(noteName: noteFolderURL.lastPathComponent)
+        fixerSnapshot = live
+        try? live.write(
+            to: worktree.appending(path: "transcript.vtt"), atomically: true, encoding: .utf8)
+    }
+
+    /// Diffs the fixer's edited copy against the snapshot and replays the
+    /// changed cue payloads onto the live file — serialized here between
+    /// appends, so the collision that lost cues under direct fixer writes
+    /// cannot occur. Returns the number of merged cue edits (for the
+    /// activity UI).
+    @discardableResult
+    public func fixerDidCompletePass() -> Int {
+        guard let before = fixerSnapshot else { return 0 }
+        fixerSnapshot = nil
+        let copyURL = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
+            .appending(path: "transcript.vtt")
+        guard let after = try? String(contentsOf: copyURL, encoding: .utf8) else { return 0 }
+        let edits = TranscriptOutbox.fixerEdits(before: before, after: after)
+        guard !edits.isEmpty else { return 0 }
+        do {
+            try outbox.applyEdits(edits)
+            return edits.count
+        } catch {
+            return 0
+        }
     }
 
     // MARK: - Crash recovery (§10.3)
