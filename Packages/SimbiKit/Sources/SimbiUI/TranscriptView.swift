@@ -1,4 +1,5 @@
 import AppKit
+import CodexKit
 import Foundation
 import Observation
 import SimbiKit
@@ -140,11 +141,20 @@ struct TranscriptView: View {
                     }
                 }
             } else {
-                ContentUnavailableView(
-                    "No Recording",
-                    systemImage: "waveform",
-                    description: Text("Press Record to start. The transcript appears here live.")
-                )
+                ContentUnavailableView {
+                    Label("No Recording", systemImage: "waveform")
+                } description: {
+                    VStack(spacing: Design.innerGap) {
+                        Text(
+                            "Press Record to capture the room — Simbi transcribes and labels each speaker as they talk."
+                        )
+                        Text("macOS will ask for microphone access the first time.")
+                        if CodexSetupModel.detectState() != .connected {
+                            Text("Transcription needs the ChatGPT app — see the sidebar footer.")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
             }
         }
     }
@@ -294,4 +304,3 @@ struct TranscriptView: View {
         renameTarget = nil
     }
 }
-
