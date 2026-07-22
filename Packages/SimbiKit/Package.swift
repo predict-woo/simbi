@@ -23,8 +23,14 @@ let package = Package(
         // STTextView + Neon source editor). Pre-1.0 — pin exactly.
         .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0"),
         // Ghostty terminal emulator wrapped as a Swift package (prebuilt
-        // XCFramework, MIT). Tracks a pinned Ghostty commit — pin exactly.
-        .package(url: "https://github.com/Lakr233/libghostty-spm.git", exact: "1.3.2")
+        // XCFramework, MIT). Fork of Lakr233/libghostty-spm 1.3.2 with the
+        // xcframework headers namespaced (Headers/GhosttyKitHeaders/) so the
+        // modulemap doesn't collide with FluidAudio's NemoTextProcessing in
+        // Xcode's include/ copy step ("Multiple commands produce"). Tracks a
+        // pinned Ghostty commit — pin exactly.
+        .package(
+            url: "https://github.com/predict-woo/libghostty-spm.git",
+            exact: "1.3.2-simbi.1")
     ],
     targets: [
         .target(name: "SimbiKit"),
