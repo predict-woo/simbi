@@ -51,7 +51,7 @@ struct SimbiSettingsTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         var settings = SimbiSettings.default
-        settings.chatModel = "gpt-5.4"
+        settings.fixerModel = "gpt-5.4"
         settings.systemAudioEnabled = false
         settings.micDeviceUID = "BuiltInMicrophoneDevice"
         try settings.save(to: url)

@@ -20,7 +20,6 @@ public struct SettingsView: View {
             Section("Codex models") {
                 modelPicker("Transcript fixer", selection: $settings.fixerModel)
                 modelPicker("File converter", selection: $settings.converterModel)
-                modelPicker("Chat threads", selection: $settings.chatModel)
                 if modelsUnavailable {
                     Text("Model list unavailable — is the ChatGPT app installed?")
                         .font(.caption)
