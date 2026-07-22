@@ -65,6 +65,8 @@ public struct SimbiRootView: View {
             // .id() recreates the document state when the open note changes.
             NoteView(noteFolderURL: url)
                 .id(url)
+        } else if !FileTreeNode.containsNote(in: model.nodes) {
+            WelcomeView(createNote: { model.promptForNewNote() })
         } else {
             ContentUnavailableView(
                 "Select a Note",
