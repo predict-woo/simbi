@@ -37,6 +37,18 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
         }
         return nil
     }
+
+    /// True if any note exists anywhere in the tree — the welcome pane
+    /// shows until this is true. Folders and loose files don't count.
+    public static func containsNote(in nodes: [FileTreeNode]) -> Bool {
+        for node in nodes {
+            if node.kind == .note { return true }
+            if let children = node.children, containsNote(in: children) {
+                return true
+            }
+        }
+        return false
+    }
 }
 
 /// Scans a directory into `FileTreeNode`s.
