@@ -299,6 +299,12 @@ struct RecordingHeader: View {
                 fixerButton
             }
 
+            // Pipeline Inspector: live view of the recording pipeline's
+            // internals. Only meaningful mid-session, so recording-only.
+            if isRecording {
+                inspectorButton
+            }
+
             // Source menu (SPEC.md §3.1: mic device and system audio are
             // chosen independently; either can be off, never both). Locked
             // while recording — the mix can't change mid-session. Quiet
@@ -321,6 +327,18 @@ struct RecordingHeader: View {
         }
         .buttonStyle(.borderless)
         .help(fixerHelp)
+    }
+
+    private var inspectorButton: some View {
+        Button {
+            // One inspector window per note; reopening focuses it.
+            openWindow(id: PipelineInspectorWindow.windowId, value: recorder.noteFolderURL)
+        } label: {
+            Image(systemName: "waveform.path.ecg")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.borderless)
+        .help("Pipeline Inspector — watch the recording pipeline work")
     }
 
     private var fixerHelp: String {

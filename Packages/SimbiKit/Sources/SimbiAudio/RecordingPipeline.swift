@@ -3,31 +3,6 @@ import FluidAudio
 import Foundation
 import SimbiKit
 
-/// Sidecar metadata persisted next to each pending segment upload
-/// (`.simbi/pending/{cueIndex}.json`, guide §6.3 step 7).
-public struct PendingSegment: Codable, Equatable, Sendable {
-    public var cueIndex: Int
-    public var startSec: TimeInterval
-    public var endSec: TimeInterval
-    public var speaker: Int
-    public var continuation: Bool
-    public var attempts: Int
-}
-
-/// Live-UI snapshot emitted by the pipeline while recording.
-public struct RecordingLiveUpdate: Equatable, Sendable {
-    /// Note-timeline seconds (base + this session's samples).
-    public let elapsed: TimeInterval
-    /// Tentative "Speaker N speaking…" indicator slot, nil when silent.
-    public let tentativeSpeaker: Int?
-}
-
-public enum RecordingPipelineError: Error, Equatable {
-    case alreadyRecording
-    case audioFileMismatch
-    case notRecording
-}
-
 /// The single-writer pipeline actor (guide §4/§5): every PCM batch fans out
 /// to the ring buffer, the audio.webm writer, the wrapped VAD and the
 /// wrapped Sortformer; the aligned record stream drives the cut engine,
@@ -72,6 +47,9 @@ public actor RecordingPipeline: TranscriptFixerHost {
     private static let authRetryDelay: Duration = .seconds(30)
 
     private var liveContinuation: AsyncStream<RecordingLiveUpdate>.Continuation?
+    /// Inspector tap (spec 2026-07-22): with no subscriber every hook is
+    /// a nil-check and the engine trace stays disabled.
+    private var inspector = InspectorTap()
     /// Optional transcript fixer (SPEC.md §5.2); failures never affect
     /// recording (degraded mode: fixing just doesn't happen).
     private var fixer: TranscriptFixer?
@@ -105,6 +83,29 @@ public actor RecordingPipeline: TranscriptFixerHost {
         AsyncStream { continuation in
             self.liveContinuation = continuation
         }
+    }
+
+    /// Inspector updates (one per PCM batch, plus upload completions).
+    /// Subscribing toggles the engine trace on; the stream deliberately
+    /// outlives `stop()` — cue transcriptions arrive after the session ends.
+    public func inspectorUpdates() -> AsyncStream<InspectorUpdate> {
+        engine.traceEnabled = true
+        return inspector.subscribe { token in
+            Task { await self.inspectorTerminated(token) }
+        }
+    }
+
+    private func inspectorTerminated(_ token: UUID) {
+        if inspector.terminated(token) { engine.traceEnabled = false }
+    }
+
+    private func emitInspectorUpdate() {
+        inspector.emit(
+            counts: .init(
+                recording: recording, samplesFed: realSamples,
+                sessionBaseSeconds: sessionBaseSeconds, vadChunks: vadVerdicts.count,
+                sortFrames: sortFrames, uploadQueueDepth: uploadQueue.count,
+                uploadsInFlight: uploadsInFlight), engine: &engine)
     }
 
     public var isRecording: Bool { recording }
@@ -147,6 +148,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         realSamples = 0
         ring = SampleRingBuffer()
         engine = CutEngine()
+        engine.traceEnabled = inspector.isActive
         vadVerdicts = []
         sortProbabilities = []
         sortFrames = 0
@@ -209,6 +211,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
             absorb(chunk)
         }
         try releaseRecords(upTo: Int.max)
+        emitInspectorUpdate()
     }
 
     /// Queues one Sortformer burst's finalized frames (§3.2 holding queue).
@@ -239,6 +242,14 @@ public actor RecordingPipeline: TranscriptFixerHost {
                 / CutConstants.vadChunkSamples
             guard chunkIndex < vadVerdicts.count else { break }
             let base = frame * 4
+            if inspector.isActive {
+                let probabilities = Array(sortProbabilities[base..<(base + 4)])
+                inspector.records.append(
+                    InspectorFrameRecord(
+                        frame: frame, vadActive: vadVerdicts[chunkIndex],
+                        dominantSlot: labelFrame(probabilities: probabilities[...]).slot,
+                        probabilities: probabilities))
+            }
             let commands = engine.push(
                 vadActive: vadVerdicts[chunkIndex],
                 probabilities: sortProbabilities[base..<(base + 4)])
@@ -302,89 +313,13 @@ public actor RecordingPipeline: TranscriptFixerHost {
             index: cueIndex, start: startSec, end: endSec,
             speaker: "Speaker \(speakerSlot + 1)",
             continuation: false)
+        if inspector.isActive {
+            inspector.uploadEvents.append(
+                .queued(
+                    cue: cueIndex, startFrame: command.startFrame, endFrame: command.endFrame,
+                    speaker: command.speaker, reason: command.reason))
+        }
         enqueueUpload(cueIndex)
-    }
-
-    // MARK: - Upload workers (§9.2, stub in M2)
-
-    private func enqueueUpload(_ cueIndex: Int) {
-        uploadQueue.append(cueIndex)
-        kickUploads()
-    }
-
-    private func kickUploads() {
-        while !uploadsPaused, uploadsInFlight < 2, !uploadQueue.isEmpty {
-            let cueIndex = uploadQueue.removeFirst()
-            uploadsInFlight += 1
-            Task { await self.runUpload(cueIndex: cueIndex) }
-        }
-    }
-
-    private func runUpload(cueIndex: Int) async {
-        let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
-        let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
-
-        for attempt in 1...Self.uploadMaxAttempts {
-            do {
-                let text = try await transcriber.transcribe(webmFile: webmURL)
-                try? FileManager.default.removeItem(at: webmURL)
-                try? FileManager.default.removeItem(at: jsonURL)
-                uploadFinished(cueIndex: cueIndex, text: text)
-                return
-            } catch let error as TranscriptionClient.TranscriptionError {
-                switch error {
-                case .authUnavailable, .authRejected:
-                    // Not this segment's fault: requeue it, pause the whole
-                    // queue, retry after a delay (SPEC.md §7 — the queue is
-                    // disk-backed and drains on recovery).
-                    pauseUploads(requeuing: cueIndex)
-                    return
-                case .requestFailed, .malformedResponse:
-                    break  // retryable
-                }
-            } catch {
-                // Unknown error: treat as retryable transport failure.
-            }
-            if attempt < Self.uploadMaxAttempts {
-                try? await Task.sleep(for: Self.uploadBackoff[attempt - 1])
-            }
-        }
-
-        // Terminal failure: the timeline stays complete with [inaudible];
-        // the encoded segment moves to failed/ for post-hoc retry tooling
-        // (pending/ must only hold cues not yet rendered to the VTT).
-        let failedDir = noteFolderURL.appending(path: ".simbi/failed")
-        try? FileManager.default.createDirectory(at: failedDir, withIntermediateDirectories: true)
-        for url in [webmURL, jsonURL] {
-            try? FileManager.default.moveItem(
-                at: url, to: failedDir.appending(path: url.lastPathComponent))
-        }
-        uploadFinished(cueIndex: cueIndex, text: "[inaudible]")
-    }
-
-    private func uploadFinished(cueIndex: Int, text: String) {
-        try? outbox.fulfillCue(index: cueIndex, text: text)
-        uploadsInFlight -= 1
-        kickUploads()
-        if let fixer {
-            Task { await fixer.cueAppended(index: cueIndex) }
-        }
-    }
-
-    private func pauseUploads(requeuing cueIndex: Int) {
-        uploadQueue.insert(cueIndex, at: 0)
-        uploadsInFlight -= 1
-        guard !uploadsPaused else { return }
-        uploadsPaused = true
-        Task {
-            try? await Task.sleep(for: Self.authRetryDelay)
-            self.resumeUploads()
-        }
-    }
-
-    private func resumeUploads() {
-        uploadsPaused = false
-        kickUploads()
     }
 
     // MARK: - Stop (§5.4)
@@ -438,6 +373,9 @@ public actor RecordingPipeline: TranscriptFixerHost {
         state.lastSessionEnd = .now
         state.activeSession = nil
         try state.saveRecording(noteFolder: noteFolderURL)
+        // Final snapshot (recording == false); the stream stays open for
+        // the late cue transcriptions.
+        emitInspectorUpdate()
         liveContinuation?.finish()
         liveContinuation = nil
 
@@ -570,5 +508,93 @@ public actor RecordingPipeline: TranscriptFixerHost {
             .sessionEnd(
                 n: active.n, wallClock: estimatedEnd,
                 offset: TimeInterval(totalSamples) / 16000))
+    }
+}
+
+// MARK: - Upload workers (§9.2, stub in M2)
+
+extension RecordingPipeline {
+    private func enqueueUpload(_ cueIndex: Int) {
+        uploadQueue.append(cueIndex)
+        kickUploads()
+    }
+
+    private func kickUploads() {
+        while !uploadsPaused, uploadsInFlight < 2, !uploadQueue.isEmpty {
+            let cueIndex = uploadQueue.removeFirst()
+            uploadsInFlight += 1
+            Task { await self.runUpload(cueIndex: cueIndex) }
+        }
+    }
+
+    private func runUpload(cueIndex: Int) async {
+        let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
+        let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
+
+        for attempt in 1...Self.uploadMaxAttempts {
+            do {
+                let text = try await transcriber.transcribe(webmFile: webmURL)
+                try? FileManager.default.removeItem(at: webmURL)
+                try? FileManager.default.removeItem(at: jsonURL)
+                uploadFinished(cueIndex: cueIndex, text: text)
+                return
+            } catch let error as TranscriptionClient.TranscriptionError {
+                switch error {
+                case .authUnavailable, .authRejected:
+                    // Not this segment's fault: requeue it, pause the whole
+                    // queue, retry after a delay (SPEC.md §7 — the queue is
+                    // disk-backed and drains on recovery).
+                    pauseUploads(requeuing: cueIndex)
+                    return
+                case .requestFailed, .malformedResponse:
+                    break  // retryable
+                }
+            } catch {
+                // Unknown error: treat as retryable transport failure.
+            }
+            if attempt < Self.uploadMaxAttempts {
+                try? await Task.sleep(for: Self.uploadBackoff[attempt - 1])
+            }
+        }
+
+        // Terminal failure: the timeline stays complete with [inaudible];
+        // the encoded segment moves to failed/ for post-hoc retry tooling
+        // (pending/ must only hold cues not yet rendered to the VTT).
+        let failedDir = noteFolderURL.appending(path: ".simbi/failed")
+        try? FileManager.default.createDirectory(at: failedDir, withIntermediateDirectories: true)
+        for url in [webmURL, jsonURL] {
+            try? FileManager.default.moveItem(
+                at: url, to: failedDir.appending(path: url.lastPathComponent))
+        }
+        uploadFinished(cueIndex: cueIndex, text: "[inaudible]")
+    }
+
+    private func uploadFinished(cueIndex: Int, text: String) {
+        try? outbox.fulfillCue(index: cueIndex, text: text)
+        uploadsInFlight -= 1
+        kickUploads()
+        if inspector.isActive {
+            inspector.uploadEvents.append(.finished(cue: cueIndex, text: text))
+            emitInspectorUpdate()
+        }
+        if let fixer {
+            Task { await fixer.cueAppended(index: cueIndex) }
+        }
+    }
+
+    private func pauseUploads(requeuing cueIndex: Int) {
+        uploadQueue.insert(cueIndex, at: 0)
+        uploadsInFlight -= 1
+        guard !uploadsPaused else { return }
+        uploadsPaused = true
+        Task {
+            try? await Task.sleep(for: Self.authRetryDelay)
+            self.resumeUploads()
+        }
+    }
+
+    private func resumeUploads() {
+        uploadsPaused = false
+        kickUploads()
     }
 }

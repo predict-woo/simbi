@@ -255,4 +255,93 @@ struct CutEngineTests {
                 FlushCommand(startFrame: 0, endFrame: 30, speaker: 0, reason: .stop)
             ])
     }
+
+    // MARK: - Inspector trace (opt-in; must never change decisions)
+
+    @Test("trace is off by default and stays empty")
+    func traceOffByDefault() {
+        var engine = CutEngine()
+        _ = push(&engine, count: 40, vadActive: true, slot: 0)
+        _ = push(&engine, count: 30, vadActive: false, slot: nil)
+        _ = engine.stop()
+        #expect(engine.trace.isEmpty)
+    }
+
+    @Test("trace records R1 cut, R3 flush and R6 discards with attribution")
+    func traceSilenceScenario() {
+        var engine = CutEngine()
+        engine.traceEnabled = true
+        // Speech f0–39 (speaker init at the 6th record, f5), then silence:
+        // R1 cut at f42 -> cut(43), R3 flush at f64, first R6 discard to 53.
+        _ = push(&engine, count: 40, vadActive: true, slot: 0)
+        _ = push(&engine, count: 25, vadActive: false, slot: nil)
+        let events = engine.drainTrace()
+        #expect(events.first == .speakerInit(frame: 5, slot: 0))
+        #expect(events.contains(.cut(frame: 43, rule: .r1)))
+        #expect(
+            events.contains(
+                .flush(FlushCommand(startFrame: 0, endFrame: 43, speaker: 0, reason: .longSilence))
+            ))
+        #expect(events.contains(.discard(start: 43, end: 53)))
+        #expect(engine.trace.isEmpty)  // drainTrace empties the buffer
+    }
+
+    @Test("R4 direct switch traces cut(mid, .r4), the flush, and the change")
+    func traceSpeakerCutBranch() {
+        var engine = CutEngine()
+        engine.traceEnabled = true
+        // A f0–29, B from f30 with no pause: stable at f35, mid = 30.
+        _ = push(&engine, count: 30, vadActive: true, slot: 0)
+        _ = push(&engine, count: 6, vadActive: true, slot: 1)
+        let events = engine.drainTrace()
+        #expect(events.contains(.cut(frame: 30, rule: .r4)))
+        #expect(
+            events.contains(
+                .flush(
+                    FlushCommand(startFrame: 0, endFrame: 30, speaker: 0, reason: .speakerChange))
+            ))
+        #expect(events.contains(.speakerChange(frame: 35, from: 0, to: 1)))
+    }
+
+    @Test("R5 forced cut is attributed .r5; stop cut .stop")
+    func traceForcedAndStop() {
+        var engine = CutEngine()
+        engine.traceEnabled = true
+        _ = push(&engine, count: 375, vadActive: true, slot: 0)
+        #expect(engine.drainTrace().contains(.cut(frame: 375, rule: .r5)))
+        _ = push(&engine, count: 10, vadActive: true, slot: 0)
+        _ = engine.stop()
+        let events = engine.drainTrace()
+        #expect(events.contains(.cut(frame: 385, rule: .stop)))
+        #expect(
+            events.contains(
+                .flush(FlushCommand(startFrame: 375, endFrame: 385, speaker: 0, reason: .stop))))
+    }
+
+    @Test("a silent stop tail traces its discard")
+    func traceStopDiscard() {
+        var engine = CutEngine()
+        engine.traceEnabled = true
+        _ = push(&engine, count: 10, vadActive: false, slot: nil)
+        _ = engine.stop()
+        #expect(engine.drainTrace().contains(.discard(start: 0, end: 10)))
+    }
+
+    @Test("tracing does not change decisions")
+    func traceEquivalence() {
+        func run(traced: Bool) -> [FlushCommand] {
+            var engine = CutEngine()
+            engine.traceEnabled = traced
+            var commands: [FlushCommand] = []
+            commands += push(&engine, count: 40, vadActive: true, slot: 0)
+            commands += push(&engine, count: 30, vadActive: false, slot: nil)
+            commands += push(&engine, count: 60, vadActive: true, slot: 1)
+            commands += push(&engine, count: 6, vadActive: true, slot: 2)
+            commands += push(&engine, count: 130, vadActive: true, slot: 2)
+            commands += push(&engine, count: 4, vadActive: false, slot: nil)
+            commands += engine.stop()
+            return commands
+        }
+        #expect(run(traced: true) == run(traced: false))
+    }
 }
