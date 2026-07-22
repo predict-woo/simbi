@@ -67,6 +67,18 @@ struct TranscriptView: View {
     @State private var renameText = ""
     @FocusState private var renameFieldFocused: Bool
 
+    /// Tail-following (SPEC.md §6): while the user is scrolled to the
+    /// bottom, new cues keep the view pinned there; once they scroll up to
+    /// read something, growth must not yank them away. Tracked with
+    /// `scrollPosition(id:anchor:)` — the row currently at the viewport
+    /// bottom. Two prior mechanisms failed here: scroll-geometry
+    /// preferences go stale (macOS doesn't re-fire them during user
+    /// scrolling → the view yanked), and per-row onAppear/onDisappear
+    /// crashes outright (the LazyVStack cache reinserts rows during
+    /// NSHostingView.layout, and AppearanceEffect.didReinsert then requests
+    /// a constraint update mid-layout-pass — AppKit throws).
+    @State private var bottomRow: Int?
+
     /// Keyed by ROW, not just name — the same speaker appears on many
     /// rows, and a name-keyed binding would anchor the popover on the
     /// last row that matches instead of the one that was clicked.
@@ -94,8 +106,23 @@ struct TranscriptView: View {
                                     .id(index)
                             }
                         }
+                        .scrollTargetLayout()
                         .padding(Design.paneInset)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .scrollPosition(id: $bottomRow, anchor: .bottom)
+                    // Tail-follow: only when the PREVIOUS last row was at the
+                    // viewport bottom (slack of one row for a partially
+                    // visible tail) — a user who scrolled up to read an
+                    // earlier segment is never yanked down. `bottomRow` is
+                    // nil until the first scroll; that only matters once
+                    // content overflows, which is exactly when following
+                    // should wait for the user to reach the bottom.
+                    .onChange(of: document.entries.count) { oldCount, newCount in
+                        guard newCount > oldCount,
+                            oldCount <= 1 || (bottomRow ?? -1) >= oldCount - 2
+                        else { return }
+                        bottomRow = newCount - 1
                     }
                     // Follow playback: keep the highlighted cue in view.
                     .onChange(of: activeRow) { _, row in
@@ -267,3 +294,4 @@ struct TranscriptView: View {
         renameTarget = nil
     }
 }
+
