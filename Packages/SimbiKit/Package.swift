@@ -86,6 +86,7 @@ let package = Package(
                 "OutlineViewKit",
                 "SimbiAudio",
                 "CodexKit",
+                .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineCodeBlocks", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
@@ -120,11 +121,6 @@ let package = Package(
         .executableTarget(
             name: "simbi-tap-spike",
             dependencies: ["SimbiAudio"]
-        ),
-        // M7 spike: chat-in-codex round-trip + model/list.
-        .executableTarget(
-            name: "simbi-chat-spike",
-            dependencies: ["CodexKit", "SimbiKit"]
         ),
         // M8 spike: embedded Ghostty terminal running the ChatGPT app's
         // packaged codex TUI directly — the terminal-instead-of-chat-UI

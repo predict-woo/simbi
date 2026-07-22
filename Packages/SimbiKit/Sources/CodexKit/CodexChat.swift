@@ -1,8 +1,8 @@
 import Foundation
 
-/// Shared helpers for the in-app chat (SPEC.md §5.4). The chat thread's
-/// lifecycle — resume-or-create, turns, approvals — lives in `ChatSession`;
-/// this file keeps the path helper and model discovery.
+/// Shared helpers for the in-app chat (SPEC.md §5.4): the path helper used
+/// by the terminal chat's developer instructions, and model discovery for
+/// the settings pickers.
 public enum CodexChat {
     /// The note's path relative to the home root, as shown to the agent.
     static func notePath(noteFolderURL: URL, homeRootURL: URL) -> String {
