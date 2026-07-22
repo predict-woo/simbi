@@ -6,6 +6,10 @@ import SwiftUI
 /// The app's root: sidebar file tree | note editor | transcript pane.
 public struct SimbiRootView: View {
     @State private var model = FileTreeModel()
+    /// The note actually shown in the detail pane. Follows `model.selection`
+    /// asynchronously (see the `.task(id:)` below) so a sidebar click paints
+    /// its highlight immediately instead of waiting on NoteView construction.
+    @State private var openNoteURL: URL?
 
     public init() {}
 
@@ -27,6 +31,24 @@ public struct SimbiRootView: View {
                 .keyboardShortcut("n", modifiers: .command)
             }
         }
+        // Decouple opening a note from clicking it: building NoteView (five
+        // models, file reads, the markdown parse) is the expensive part, so
+        // it runs a beat after the selection change. The short sleep lets the
+        // sidebar highlight paint first, and — because `.task(id:)` cancels
+        // on every selection change — rapid clicking coalesces to only ever
+        // build the last-clicked note. The previous note stays visible while
+        // the next one builds.
+        .task(id: model.selection) {
+            let target = model.selectedNode
+            guard target?.kind == .note else {
+                openNoteURL = nil
+                return
+            }
+            guard target?.url != openNoteURL else { return }
+            try? await Task.sleep(for: .milliseconds(80))
+            guard !Task.isCancelled else { return }
+            openNoteURL = target?.url
+        }
         .task {
             model.start()
             // Load the diarizer + VAD models now so Record never waits on
@@ -39,10 +61,10 @@ public struct SimbiRootView: View {
 
     @ViewBuilder
     private var detail: some View {
-        if let node = model.selectedNode, node.kind == .note {
-            // .id() recreates the document state when the selection changes.
-            NoteView(noteFolderURL: node.url)
-                .id(node.url)
+        if let url = openNoteURL {
+            // .id() recreates the document state when the open note changes.
+            NoteView(noteFolderURL: url)
+                .id(url)
         } else {
             ContentUnavailableView(
                 "Select a Note",

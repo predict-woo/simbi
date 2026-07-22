@@ -107,6 +107,11 @@ public final class FileTreeModel {
 
     public func rename(_ url: URL, to newName: String) {
         if let renamed = try? NoteOperations.rename(url, to: newName) {
+            SidebarOrder.renamed(
+                from: url.lastPathComponent,
+                to: renamed.lastPathComponent,
+                in: url.deletingLastPathComponent()
+            )
             refresh()
             if selection == url {
                 selection = renamed
@@ -116,7 +121,67 @@ public final class FileTreeModel {
 
     public func trash(_ url: URL) {
         try? NoteOperations.trash(url)
+        SidebarOrder.removed(url.lastPathComponent, in: url.deletingLastPathComponent())
         refresh()
+    }
+
+    /// Moves `sources` into `folder` (the home root included), inserting at
+    /// `childIndex` within the folder's displayed children (nil = append).
+    /// Same-parent drops just reorder; cross-folder drops move on disk.
+    /// Both persist the folder's order via `SidebarOrder`.
+    public func move(_ sources: [URL], into folder: URL, at childIndex: Int?) {
+        let folderPath = folder.standardizedFileURL.path
+        let children = folderPath == home.rootURL.standardizedFileURL.path
+            ? nodes
+            : FileTreeNode.find(folder, in: nodes)?.children ?? []
+        var names = children.map(\.name)
+        var insertAt = childIndex.map { min(max($0, 0), names.count) } ?? names.count
+
+        var movedNames: [String] = []
+        for source in sources {
+            let sourcePath = source.standardizedFileURL.path
+            // Never drop a folder onto itself or into its own subtree.
+            guard sourcePath != folderPath,
+                !folderPath.hasPrefix(sourcePath + "/")
+            else { continue }
+            let sourceParent = source.deletingLastPathComponent()
+            if sourceParent.standardizedFileURL.path == folderPath {
+                if let old = names.firstIndex(of: source.lastPathComponent) {
+                    names.remove(at: old)
+                    if old < insertAt { insertAt -= 1 }
+                }
+                movedNames.append(source.lastPathComponent)
+            } else {
+                let name = NoteOperations.availableName(source.lastPathComponent, in: folder)
+                let destination = folder.appending(path: name)
+                do {
+                    try FileManager.default.moveItem(at: source, to: destination)
+                } catch {
+                    continue
+                }
+                SidebarOrder.removed(source.lastPathComponent, in: sourceParent)
+                movedNames.append(name)
+                retargetSelection(from: source, to: destination)
+            }
+        }
+        guard !movedNames.isEmpty else { return }
+        names.insert(contentsOf: movedNames, at: insertAt)
+        SidebarOrder.write(names, in: folder)
+        refresh()
+    }
+
+    /// Keeps the selection pointing at a moved item — including one nested
+    /// inside a moved folder.
+    private func retargetSelection(from source: URL, to destination: URL) {
+        guard let selection else { return }
+        let selectedPath = selection.standardizedFileURL.path
+        let sourcePath = source.standardizedFileURL.path
+        if selectedPath == sourcePath {
+            self.selection = destination
+        } else if selectedPath.hasPrefix(sourcePath + "/") {
+            let suffix = String(selectedPath.dropFirst(sourcePath.count + 1))
+            self.selection = destination.appending(path: suffix)
+        }
     }
 }
 

@@ -45,9 +45,14 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
 /// - a folder containing `note.md` is a note folder and a **leaf** — its
 ///   internals (`files/`, `context/`, `.simbi/`, …) are never children;
 /// - hidden entries are skipped;
-/// - folders sort before loose files, each group alphabetically.
+/// - folders sort before loose files, each group alphabetically —
+///   unless the folder has a manual `SidebarOrder`, which wins.
 public enum FileTreeScanner {
     public static let noteMarkerName = "note.md"
+
+    /// App-managed files that never show in the sidebar (SPEC.md §2.1's
+    /// `AGENTS.md` is written by bootstrap, not the user).
+    static let reservedNames: Set<String> = ["AGENTS.md"]
 
     public static func isNoteFolder(_ url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.appending(path: noteMarkerName).path)
@@ -71,6 +76,7 @@ public enum FileTreeScanner {
             let url = entry.standardizedFileURL
             let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             let name = url.lastPathComponent
+            if reservedNames.contains(name) { continue }
             if isDirectory {
                 if isNoteFolder(url) {
                     folders.append(FileTreeNode(url: url, name: name, kind: .note, children: nil))
@@ -85,6 +91,7 @@ public enum FileTreeScanner {
         let byName: (FileTreeNode, FileTreeNode) -> Bool = {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
-        return folders.sorted(by: byName) + files.sorted(by: byName)
+        let defaultOrder = folders.sorted(by: byName) + files.sorted(by: byName)
+        return SidebarOrder.apply(to: defaultOrder, in: root)
     }
 }

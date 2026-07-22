@@ -55,6 +55,17 @@ struct FileTreeScannerTests {
         }
     }
 
+    @Test("reserved app-managed files (AGENTS.md) never appear")
+    func reservedNamesAreHidden() throws {
+        try withTempRoot { root in
+            try Data().write(to: root.appending(path: "AGENTS.md"))
+            try Data().write(to: root.appending(path: "notes.md"))
+
+            let names = FileTreeScanner.scan(root: root).map(\.name)
+            #expect(names == ["notes.md"])
+        }
+    }
+
     @Test("folders sort before loose files, each alphabetically")
     func sortingIsFoldersFirst() throws {
         try withTempRoot { root in
