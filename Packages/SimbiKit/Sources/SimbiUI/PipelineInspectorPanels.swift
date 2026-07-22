@@ -19,7 +19,7 @@ struct InspectorFrontEndRow: View {
             box("Wrapped VAD", subtitle: "256 ms chunks · ≤ 4 fr lag") {
                 let inChunk = (latest?.samplesFed ?? 0) % CutConstants.vadChunkSamples
                 fillBar(
-                    Double(inChunk) / Double(CutConstants.vadChunkSamples), color: HUD.ink2)
+                    Double(inChunk) / Double(CutConstants.vadChunkSamples), color: .secondary)
                 labelRow("\(inChunk) / 4096", trailing: "\(latest?.vadChunks ?? 0) chunks")
                 verdictDots
             }
@@ -37,7 +37,7 @@ struct InspectorFrontEndRow: View {
             box("PCM ring", subtitle: "evicts below flushedUpTo") {
                 let retained = retainedSeconds(latest)
                 bigValue(String(format: "%.1f s", retained), unit: retainedMB(retained))
-                fillBar(retained / 31.0, color: HUD.amber)
+                fillBar(retained / 31.0, color: InspectorDesign.accent)
             }
         }
     }
@@ -49,7 +49,7 @@ struct InspectorFrontEndRow: View {
             let verdicts = recentChunkVerdicts(count: 24)
             ForEach(Array(verdicts.enumerated()), id: \.offset) { _, active in
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(active ? HUD.vadTick : Color.white.opacity(0.07))
+                    .fill(active ? Color.secondary : Color.primary.opacity(0.07))
                     .frame(width: 7, height: 7)
             }
         }
@@ -61,27 +61,27 @@ struct InspectorFrontEndRow: View {
             ForEach(0..<4, id: \.self) { slot in
                 GridRow {
                     Text("S\(slot + 1)")
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(HUD.ink3)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.06))
+                            Capsule().fill(Color.primary.opacity(0.06))
                             Capsule()
-                                .fill(HUD.speaker(slot))
+                                .fill(InspectorDesign.speaker(slot))
                                 .frame(width: geo.size.width * CGFloat(probs[slot]))
                                 .opacity(
                                     probs[slot] >= CutConstants.activeProbability ? 1 : 0.4)
                             // 0.5 activation threshold marker
                             Rectangle()
-                                .fill(Color.white.opacity(0.25))
+                                .fill(Color.primary.opacity(0.25))
                                 .frame(width: 1)
                                 .offset(x: geo.size.width * 0.5)
                         }
                     }
                     .frame(height: 5)
                     Text(String(format: "%.2f", probs[slot]))
-                        .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(HUD.ink3)
+                        .font(.system(size: 9))
+                        .foregroundStyle(.tertiary)
                         .monospacedDigit()
                 }
             }
@@ -138,36 +138,34 @@ struct InspectorFrontEndRow: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(HUD.ink)
+                .font(.metaSemibold)
             Text(subtitle)
                 .font(.system(size: 10))
-                .foregroundStyle(HUD.ink3)
+                .foregroundStyle(.tertiary)
             content()
             Spacer(minLength: 0)
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-        .background(HUD.raised, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(HUD.line))
+        .background(InspectorDesign.card, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(InspectorDesign.line))
     }
 
     private func bigValue(_ value: String, unit: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
-                .foregroundStyle(HUD.ink)
+                .font(.system(size: 15, weight: .medium))
                 .monospacedDigit()
             Text(unit)
                 .font(.system(size: 10))
-                .foregroundStyle(HUD.ink3)
+                .foregroundStyle(.tertiary)
         }
     }
 
     private func fillBar(_ fraction: Double, color: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.06))
+                Capsule().fill(Color.primary.opacity(0.06))
                 Capsule()
                     .fill(color)
                     .frame(width: geo.size.width * CGFloat(max(0, min(1, fraction))))
@@ -182,8 +180,8 @@ struct InspectorFrontEndRow: View {
             Spacer()
             Text(trailing)
         }
-        .font(.system(size: 10, design: .monospaced))
-        .foregroundStyle(HUD.ink3)
+        .font(.system(size: 10))
+        .foregroundStyle(.tertiary)
         .monospacedDigit()
     }
 }
@@ -199,7 +197,7 @@ struct InspectorMetersRow: View {
         let desc: String
         let fraction: Double
         let value: String
-        var color: Color = HUD.ink2
+        var color: Color = .secondary
     }
 
     var body: some View {
@@ -223,8 +221,8 @@ struct InspectorMetersRow: View {
                     id: "R6", name: "Silence trim",
                     desc: "Past R3, dead air is discarded — only a 0.96 s pre-roll is kept.",
                     fraction: isTrimming(latest) ? 1 : 0,
-                    value: isTrimming(latest) ? "TRIMMING — pre-roll 0.96 s" : "idle",
-                    color: HUD.amber))
+                    value: isTrimming(latest) ? "trimming — pre-roll 0.96 s" : "idle",
+                    color: InspectorDesign.accent))
             meterR4(latest)
             meterView(
                 Meter(
@@ -283,20 +281,21 @@ struct InspectorMetersRow: View {
         return meterCard("R4", "Speaker change") {
             Text("A new speaker holding 0.48 s of dominance flushes the old turn.")
                 .font(.system(size: 10))
-                .foregroundStyle(HUD.ink3)
+                .foregroundStyle(.tertiary)
                 .frame(minHeight: 26, alignment: .top)
             meterBar(
-                fraction: fraction(run, of: CutConstants.speakerStableFrames), color: HUD.ink2)
+                fraction: fraction(run, of: CutConstants.speakerStableFrames), color: .secondary)
             HStack(spacing: 5) {
                 speakerChip(latest?.currentSpeaker, empty: "no speaker yet")
                 if let challenger {
                     Text("←")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(HUD.ink3)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                     speakerChip(challenger, empty: "")
                     Text("\(run)/6")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(HUD.ink2)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
                 }
             }
             .frame(minHeight: 15)
@@ -306,19 +305,11 @@ struct InspectorMetersRow: View {
     @ViewBuilder
     private func speakerChip(_ slot: Int?, empty: String) -> some View {
         if let slot {
-            HStack(spacing: 4) {
-                Circle().fill(HUD.speaker(slot)).frame(width: 6, height: 6)
-                Text(HUD.speakerName(slot))
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundStyle(HUD.ink)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .overlay(Capsule().stroke(HUD.line))
+            SpeakerChip(name: InspectorDesign.speakerName(slot))
         } else {
             Text(empty)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(HUD.ink3)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -326,12 +317,12 @@ struct InspectorMetersRow: View {
         meterCard(meter.id, meter.name) {
             Text(meter.desc)
                 .font(.system(size: 10))
-                .foregroundStyle(HUD.ink3)
+                .foregroundStyle(.tertiary)
                 .frame(minHeight: 26, alignment: .top)
             meterBar(fraction: meter.fraction, color: meter.color)
             Text(meter.value)
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(HUD.ink2)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
                 .monospacedDigit()
                 .lineLimit(1)
                 .frame(minHeight: 15)
@@ -344,24 +335,23 @@ struct InspectorMetersRow: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Text(id)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(HUD.amber)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(InspectorDesign.accent)
                 Text(name)
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(HUD.ink)
+                    .font(.metaSemibold)
             }
             content()
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(HUD.raised, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(HUD.line))
+        .background(InspectorDesign.card, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(InspectorDesign.line))
     }
 
     private func meterBar(fraction: Double, color: Color) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.white.opacity(0.06))
+                Capsule().fill(Color.primary.opacity(0.06))
                 Capsule()
                     .fill(color)
                     .frame(width: geo.size.width * CGFloat(max(0, min(1, fraction))))
@@ -385,14 +375,14 @@ struct InspectorFlushLane: View {
                             "No uploads yet — the first flush appears here with its transcript."
                         )
                         .font(.meta)
-                        .foregroundStyle(HUD.ink3)
+                        .foregroundStyle(.tertiary)
                         .padding(.vertical, 24)
                     }
                     ForEach(state.segments) { segment in
                         card(segment).id(segment.id)
                     }
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, Design.paneInset)
             }
             .onChange(of: state.segments.last?.id) { _, lastId in
                 if let lastId {
@@ -403,46 +393,45 @@ struct InspectorFlushLane: View {
     }
 
     private func card(_ segment: InspectorTimelineState.Segment) -> some View {
-        let color = segment.speaker == nil ? HUD.ink3 : HUD.speaker(segment.speaker)
-        let duration = Double(segment.endFrame - segment.startFrame) * HUD.frameSeconds
+        let color =
+            segment.speaker == nil
+            ? InspectorDesign.faintInk : InspectorDesign.speaker(segment.speaker)
+        let duration =
+            Double(segment.endFrame - segment.startFrame) * InspectorDesign.frameSeconds
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Text("CUE \(String(format: "%03d", segment.id))")
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(HUD.ink3)
+                Text("Cue \(String(format: "%03d", segment.id))")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
                 if segment.speaker != nil {
-                    HStack(spacing: 4) {
-                        Circle().fill(color).frame(width: 6, height: 6)
-                        Text(HUD.speakerName(segment.speaker))
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(color)
-                    }
+                    SpeakerChip(name: InspectorDesign.speakerName(segment.speaker))
                 }
                 Spacer()
                 Text(String(format: "%.1f s", duration))
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(HUD.ink2)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
             HStack(spacing: 6) {
                 Text(InspectorTimelineState.tag(segment.reason))
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold))
                     .padding(.horizontal, 5)
                     .padding(.vertical, 1)
-                    .background(HUD.bg, in: RoundedRectangle(cornerRadius: 3))
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(HUD.line))
-                    .foregroundStyle(HUD.ink2)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(InspectorDesign.line))
+                    .foregroundStyle(.secondary)
                 Text(spanLabel(segment))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(HUD.ink3)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
             }
             Group {
                 switch segment.status {
                 case .queued:
                     Text("transcribing…")
-                        .foregroundStyle(HUD.ink3)
+                        .foregroundStyle(.tertiary)
                 case .done(let text):
                     Text("“\(text)”")
-                        .foregroundStyle(HUD.ink)
                 }
             }
             .font(.system(size: 11))
@@ -451,8 +440,8 @@ struct InspectorFlushLane: View {
         }
         .padding(9)
         .frame(width: 210, alignment: .topLeading)
-        .background(HUD.raised, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(HUD.line))
+        .background(InspectorDesign.card, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(InspectorDesign.line))
         .overlay(alignment: .leading) {
             UnevenRoundedRectangle(topLeadingRadius: 8, bottomLeadingRadius: 8)
                 .fill(color)
@@ -461,8 +450,8 @@ struct InspectorFlushLane: View {
     }
 
     private func spanLabel(_ segment: InspectorTimelineState.Segment) -> String {
-        let start = Design.time(Double(segment.startFrame) * HUD.frameSeconds)
-        let end = Design.time(Double(segment.endFrame) * HUD.frameSeconds)
+        let start = Design.time(Double(segment.startFrame) * InspectorDesign.frameSeconds)
+        let end = Design.time(Double(segment.endFrame) * InspectorDesign.frameSeconds)
         return "\(start)–\(end)"
     }
 }
@@ -477,28 +466,29 @@ struct InspectorEventLog: View {
             VStack(alignment: .leading, spacing: 3) {
                 if state.log.isEmpty {
                     Text("— waiting for the first engine decision —")
-                        .foregroundStyle(HUD.ink3)
+                        .foregroundStyle(.tertiary)
                 }
                 ForEach(state.log) { entry in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(Design.time(entry.time))
-                            .foregroundStyle(HUD.ink3)
+                            .foregroundStyle(.tertiary)
+                            .monospacedDigit()
                         Text(entry.tag)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(HUD.amber)
+                            .font(.metaSemibold)
+                            .foregroundStyle(InspectorDesign.accent)
                             .frame(width: 34, alignment: .leading)
                         Text(entry.message)
-                            .foregroundStyle(HUD.ink2)
+                            .foregroundStyle(.secondary)
                         Spacer(minLength: 0)
                     }
                 }
             }
-            .font(.system(size: 11, design: .monospaced))
+            .font(.meta)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(8)
         }
         .frame(minHeight: 90, maxHeight: 150)
-        .background(HUD.bg, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(HUD.line))
+        .background(InspectorDesign.well, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(InspectorDesign.line))
     }
 }
