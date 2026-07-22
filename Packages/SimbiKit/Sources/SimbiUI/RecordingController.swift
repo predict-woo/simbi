@@ -69,7 +69,12 @@ public final class RecordingController {
         AudioInputDevices.list()
     }
 
-    private let noteFolderURL: URL
+    /// Fixer status + activity feed for the header button/popover.
+    let fixerActivity = FixerActivityModel()
+
+    /// Exposed so the header's fixer button can open the note's activity
+    /// window (keyed by this URL).
+    let noteFolderURL: URL
     private let pipeline: RecordingPipeline
     private var capture: MixedCapture?
     private var ingestTask: Task<Void, Never>?
@@ -121,14 +126,22 @@ public final class RecordingController {
         }
         do {
             // Fixer (SPEC.md §5.2): reuses the note's saved thread if any.
-            let savedThreadId = (try? NoteRecordingState.load(noteFolder: noteFolderURL))?
-                .fixerThreadId
+            // A thread created under older instructions is retired — a
+            // fresh thread with the current prompt starts instead.
+            let noteState = try? NoteRecordingState.load(noteFolder: noteFolderURL)
+            let savedThreadId =
+                noteState?.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
+                ? noteState?.fixerThreadId : nil
             let settings =
                 (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
-            await pipeline.attachFixer(
-                TranscriptFixer(
-                    noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                    savedThreadId: savedThreadId, model: settings.fixerModel))
+            let fixer = TranscriptFixer(
+                noteFolderURL: noteFolderURL, client: CodexServices.appServer,
+                savedThreadId: savedThreadId, model: settings.fixerModel)
+            let activity = fixerActivity
+            await fixer.setEventSink { event in
+                Task { @MainActor in activity.handle(event) }
+            }
+            await pipeline.attachFixer(fixer)
             try await pipeline.start()
             let capture = MixedCapture()
             self.capture = capture
@@ -148,6 +161,7 @@ public final class RecordingController {
             systemAudioBanner = capture.systemAudioFailure ?? micBanner
             status = .recording
             hasRecording = true
+            fixerActivity.noteRecordingStarted()
 
             liveTask = Task { [pipeline] in
                 for await update in await pipeline.liveUpdates() {
