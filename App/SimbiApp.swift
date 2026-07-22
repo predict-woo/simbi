@@ -26,6 +26,16 @@ struct SimbiApp: App {
             }
         }
         .defaultSize(width: 480, height: 620)
+        // Per-note pipeline inspector (recording debug HUD), opened from
+        // the recording header while a session is live.
+        WindowGroup(
+            "Pipeline Inspector", id: PipelineInspectorWindow.windowId, for: URL.self
+        ) { $url in
+            if let url {
+                PipelineInspectorWindow(noteFolderURL: url)
+            }
+        }
+        .defaultSize(width: 1100, height: 900)
         Settings {
             SettingsView()
         }

@@ -72,6 +72,21 @@ public func labelFrame(probabilities: ArraySlice<Float>) -> FrameLabel {
     return .speech(slot: best.slot)
 }
 
+/// Which rule performed a traced cut (Pipeline Inspector attribution).
+public enum CutRule: Equatable, Sendable {
+    case r1, r4, r5, stop
+}
+
+/// One traced engine decision. Emitted only while `traceEnabled` — the
+/// Pipeline Inspector's food, never consulted by the engine itself.
+public enum CutEvent: Equatable, Sendable {
+    case cut(frame: Int, rule: CutRule)
+    case flush(FlushCommand)
+    case discard(start: Int, end: Int)
+    case speakerInit(frame: Int, slot: Int)
+    case speakerChange(frame: Int, from: Int, to: Int)
+}
+
 public enum FlushReason: Equatable, Sendable {
     /// R3 — a silence run reached 2 s.
     case longSilence
@@ -108,9 +123,14 @@ public struct CutEngine {
     public private(set) var cutUpTo = 0
     public private(set) var frontier = 0
 
-    private var silenceRun = 0
-    private var previousDominant: Int?
-    private var dominantRun = 0
+    /// Inspector trace (opt-in). Decisions never read it; with
+    /// `traceEnabled` false nothing is appended, so the engine stays free.
+    public var traceEnabled = false
+    public private(set) var trace: [CutEvent] = []
+
+    public private(set) var silenceRun = 0
+    public private(set) var previousDominant: Int?
+    public private(set) var dominantRun = 0
     private var dominantRunStart = 0
     /// Last frame each slot was dominant — R4's `lastStop` source.
     private var lastDominantFrame: [Int: Int] = [:]
@@ -122,6 +142,17 @@ public struct CutEngine {
     public private(set) var currentSpeaker: Int?
 
     public init() {}
+
+    /// Returns and empties the trace buffer.
+    public mutating func drainTrace() -> [CutEvent] {
+        let drained = trace
+        trace.removeAll(keepingCapacity: true)
+        return drained
+    }
+
+    private mutating func traceEvent(_ event: CutEvent) {
+        if traceEnabled { trace.append(event) }
+    }
 
     /// §5.3 unflushedVad query: does `[lo, hi)` contain a VAD-active record?
     private func hasSpeech(_ lo: Int, _ hi: Int) -> Bool {
@@ -155,7 +186,7 @@ public struct CutEngine {
         // without it the cut would set up a pure-silence upload.
         if !vadActive, silenceRun == CutConstants.silenceCutFrames,
             hasSpeech(flushedUpTo, frame + 1) {
-            cut(frame + 1, into: &commands)
+            cut(frame + 1, rule: .r1, into: &commands)
         }
 
         // R3 — long-silence flush: the staged speech reaches the transcript
@@ -200,6 +231,7 @@ public struct CutEngine {
         if let dominant, dominantRun == CutConstants.speakerStableFrames {
             if currentSpeaker == nil {
                 currentSpeaker = dominant
+                traceEvent(.speakerInit(frame: frame, slot: dominant))
             } else if dominant != currentSpeaker,
                 let lastStop = lastDominantFrame[currentSpeaker!] {
                 let newStart = dominantRunStart
@@ -216,9 +248,10 @@ public struct CutEngine {
                     // Direct switch or overlap: midpoint of the gap,
                     // degenerating to the boundary when newStart follows
                     // lastStop immediately.
-                    cut(mid, into: &commands)
+                    cut(mid, rule: .r4, into: &commands)
                     flush(.speakerChange, into: &commands)
                 }
+                traceEvent(.speakerChange(frame: frame, from: currentSpeaker!, to: dominant))
                 currentSpeaker = dominant
             }
         }
@@ -230,7 +263,7 @@ public struct CutEngine {
         // explicit flush — the staged span now necessarily exceeds the R2
         // limit, so the size check inside the cut ships it.
         if frontier - flushedUpTo >= CutConstants.maxUnflushedFrames {
-            cut(frontier, into: &commands, sizeReason: .maxLatency)
+            cut(frontier, rule: .r5, into: &commands, sizeReason: .maxLatency)
         }
 
         assert(flushedUpTo <= cutUpTo && cutUpTo <= frontier)
@@ -249,7 +282,7 @@ public struct CutEngine {
             discard(frontier)
         } else {
             if frontier > cutUpTo {
-                cut(frontier, into: &commands)
+                cut(frontier, rule: .stop, into: &commands)
             }
             flush(.stop, into: &commands)
         }
@@ -260,11 +293,12 @@ public struct CutEngine {
     /// every cut, so staging never exceeds the limit *before* a cut. An R5
     /// cut passes `.maxLatency` so its forced upload is labeled honestly.
     private mutating func cut(
-        _ point: Int, into commands: inout [FlushCommand],
+        _ point: Int, rule: CutRule, into commands: inout [FlushCommand],
         sizeReason: FlushReason = .sizeLimit
     ) {
         assert(cutUpTo < point && point <= frontier, "cut(\(point)) outside (\(cutUpTo), \(frontier)]")
         cutUpTo = point
+        traceEvent(.cut(frame: point, rule: rule))
         if cutUpTo - flushedUpTo > CutConstants.stagingFlushFrames {
             flush(sizeReason, into: &commands)
         }
@@ -273,10 +307,11 @@ public struct CutEngine {
     /// §5.1 flush(): no-op when staging is empty.
     private mutating func flush(_ reason: FlushReason, into commands: inout [FlushCommand]) {
         guard cutUpTo > flushedUpTo else { return }
-        commands.append(
-            FlushCommand(
-                startFrame: flushedUpTo, endFrame: cutUpTo,
-                speaker: currentSpeaker, reason: reason))
+        let command = FlushCommand(
+            startFrame: flushedUpTo, endFrame: cutUpTo,
+            speaker: currentSpeaker, reason: reason)
+        commands.append(command)
+        traceEvent(.flush(command))
         unflushedVad.removeFirst(cutUpTo - flushedUpTo)
         flushedUpTo = cutUpTo
     }
@@ -289,6 +324,7 @@ public struct CutEngine {
         assert(
             flushedUpTo < point && point <= frontier,
             "discard(\(point)) outside (\(flushedUpTo), \(frontier)]")
+        traceEvent(.discard(start: flushedUpTo, end: point))
         unflushedVad.removeFirst(point - flushedUpTo)
         flushedUpTo = point
         cutUpTo = point

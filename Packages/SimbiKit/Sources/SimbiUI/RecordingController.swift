@@ -105,6 +105,12 @@ public final class RecordingController {
         try? settings.save(to: home.settingsFileURL)
     }
 
+    /// Pipeline Inspector stream for this note's pipeline (the pipeline
+    /// itself is private to the controller).
+    public func inspectorUpdates() async -> AsyncStream<InspectorUpdate> {
+        await pipeline.inspectorUpdates()
+    }
+
     public func toggle() {
         switch status {
         case .idle, .failed:
