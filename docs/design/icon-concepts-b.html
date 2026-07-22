@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simbi — Concept B Variations</title>
+<style>
+  :root {
+    --ground: #f2f5f4;
+    --ink: #17201f;
+    --muted: #5b6b69;
+    --accent: #147a73;
+    --hairline: #dde5e3;
+    --chip-light: #e9eaee;
+    --chip-dark: #232329;
+    --chip-border: #d3d6dd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0f1514;
+      --ink: #e4ecea;
+      --muted: #93a5a2;
+      --accent: #3fb3a9;
+      --hairline: #243130;
+      --chip-border: #2c3a38;
+      --chip-dark: #1b1b20;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    line-height: 1.55;
+    padding: 3.5rem 1.5rem 5rem;
+  }
+  .wrap { max-width: 64rem; margin: 0 auto; }
+  header { margin-bottom: 2.75rem; }
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 0.6rem;
+  }
+  h1 {
+    font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+    font-weight: 600; font-size: clamp(1.6rem, 4vw, 2.2rem);
+    letter-spacing: -0.015em; margin-bottom: 0.5rem;
+  }
+  header p { color: var(--muted); max-width: 44rem; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+    gap: 2.75rem 2.25rem;
+  }
+  .concept h2 {
+    font-family: "Avenir Next", "Helvetica Neue", sans-serif;
+    font-weight: 600; font-size: 1.05rem; letter-spacing: -0.01em;
+    margin: 0.9rem 0 0.1rem;
+  }
+  .tag {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .concept p.rationale { color: var(--muted); font-size: 0.88rem; margin: 0.35rem 0 1rem; }
+  .hero-icon svg {
+    width: 176px; height: 176px;
+    filter: drop-shadow(0 8px 20px rgba(10, 30, 28, 0.16));
+  }
+  .strip { display: flex; align-items: flex-end; gap: 0.9rem; flex-wrap: wrap; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 0.4rem; }
+  .chip {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px; border: 1px solid var(--chip-border);
+  }
+  .chip.light { background: var(--chip-light); }
+  .chip.dark  { background: var(--chip-dark); }
+  .chip.s64 { width: 84px; height: 84px; }
+  .chip.s32 { width: 50px; height: 50px; }
+  .chip.s16 { width: 36px; height: 36px; }
+  .cell figcaption {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.62rem; color: var(--muted); letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f6f0e3"/><stop offset="1" stop-color="#e9ddc6"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#186660"/><stop offset="1" stop-color="#0e4b46"/>
+    </linearGradient>
+
+    <!-- B1 · Refined original -->
+    <symbol id="b1" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <g fill="#1a6b66">
+        <rect x="96"  y="192" width="28" height="128" rx="14"/>
+        <rect x="140" y="148" width="28" height="216" rx="14"/>
+        <rect x="184" y="208" width="28" height="96"  rx="14"/>
+        <rect x="228" y="172" width="28" height="168" rx="14"/>
+        <rect x="288" y="182" width="128" height="28" rx="14"/>
+        <rect x="288" y="242" width="128" height="28" rx="14"/>
+        <rect x="288" y="302" width="92"  height="28" rx="14"/>
+      </g>
+    </symbol>
+
+    <!-- B2 · Transcript rows -->
+    <symbol id="b2" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <g fill="#1a6b66">
+        <rect x="104" y="140" width="18" height="56" rx="9"/>
+        <rect x="134" y="126" width="18" height="84" rx="9"/>
+        <rect x="164" y="148" width="18" height="40" rx="9"/>
+        <rect x="200" y="158" width="208" height="20" rx="10"/>
+
+        <rect x="104" y="234" width="18" height="44" rx="9"/>
+        <rect x="134" y="222" width="18" height="68" rx="9"/>
+        <rect x="164" y="240" width="18" height="32" rx="9"/>
+        <rect x="200" y="246" width="208" height="20" rx="10"/>
+
+        <rect x="104" y="322" width="18" height="60" rx="9"/>
+        <rect x="134" y="334" width="18" height="36" rx="9"/>
+        <rect x="164" y="328" width="18" height="48" rx="9"/>
+        <rect x="200" y="342" width="152" height="20" rx="10"/>
+      </g>
+    </symbol>
+
+    <!-- B3 · Inverted (teal ground, cream glyph) -->
+    <symbol id="b3" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#teal)"/>
+      <g fill="#f4eddd">
+        <rect x="96"  y="192" width="28" height="128" rx="14"/>
+        <rect x="140" y="148" width="28" height="216" rx="14"/>
+        <rect x="184" y="208" width="28" height="96"  rx="14"/>
+        <rect x="228" y="172" width="28" height="168" rx="14"/>
+        <rect x="288" y="182" width="128" height="28" rx="14"/>
+        <rect x="288" y="242" width="128" height="28" rx="14"/>
+        <rect x="288" y="302" width="92"  height="28" rx="14"/>
+      </g>
+    </symbol>
+
+    <!-- B4 · Folded note -->
+    <symbol id="b4" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <path d="M 116 130 Q 116 98 148 98 L 336 98 L 396 158 L 396 382
+               Q 396 414 364 414 L 148 414 Q 116 414 116 382 Z"
+            fill="#fffdf6" stroke="#d9cba6" stroke-width="4"/>
+      <path d="M 336 98 L 336 158 L 396 158 Z" fill="#e8dab5"/>
+      <g fill="#1a6b66">
+        <rect x="156" y="172" width="20" height="60"  rx="10"/>
+        <rect x="188" y="152" width="20" height="100" rx="10"/>
+        <rect x="220" y="180" width="20" height="44"  rx="10"/>
+        <rect x="156" y="272" width="200" height="20" rx="10"/>
+        <rect x="156" y="316" width="200" height="20" rx="10"/>
+        <rect x="156" y="360" width="132" height="20" rx="10"/>
+      </g>
+    </symbol>
+
+    <!-- B5 · Tipping bars -->
+    <symbol id="b5" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <g fill="#1a6b66">
+        <rect x="83"  y="190" width="26" height="132" rx="13"/>
+        <rect x="133" y="190" width="26" height="132" rx="13" transform="rotate(15 146 256)"/>
+        <rect x="187" y="190" width="26" height="132" rx="13" transform="rotate(35 200 256)"/>
+        <rect x="245" y="190" width="26" height="132" rx="13" transform="rotate(60 258 256)"/>
+        <rect x="307" y="190" width="26" height="132" rx="13" transform="rotate(80 320 256)"/>
+        <rect x="330" y="243" width="132" height="26" rx="13"/>
+      </g>
+    </symbol>
+
+    <!-- B6 · Settling line -->
+    <symbol id="b6" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <path d="M 96 190 L 122 146 L 148 226 L 174 160 L 200 212 L 226 180 L 252 194 L 416 194"
+            fill="none" stroke="#1a6b66" stroke-width="26"
+            stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="96" y="262" width="320" height="26" rx="13" fill="#1a6b66"/>
+      <rect x="96" y="326" width="228" height="26" rx="13" fill="#1a6b66"/>
+    </symbol>
+
+    <!-- B7 · Live bar accent -->
+    <symbol id="b7" viewBox="0 0 512 512">
+      <rect width="512" height="512" rx="116" fill="url(#paper)"/>
+      <g fill="#1a6b66">
+        <rect x="96"  y="192" width="28" height="128" rx="14"/>
+        <rect x="184" y="208" width="28" height="96"  rx="14"/>
+        <rect x="228" y="172" width="28" height="168" rx="14"/>
+        <rect x="288" y="182" width="128" height="28" rx="14"/>
+        <rect x="288" y="242" width="128" height="28" rx="14"/>
+        <rect x="288" y="302" width="92"  height="28" rx="14"/>
+      </g>
+      <rect x="140" y="148" width="28" height="216" rx="14" fill="#c9822e"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Simbi · Concept B Variations</div>
+    <h1>Sound settles into text — seven takes</h1>
+    <p>The chosen direction: waveform on the left, transcript on the right, warm paper
+    and deep teal. Each variation is shown large, then at Dock (64&nbsp;px) and
+    menu-bar (32 / 16&nbsp;px) scale on light and dark grounds.</p>
+  </header>
+
+  <div class="grid">
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b1"/></svg></div>
+      <div class="tag">B1</div>
+      <h2>Refined original</h2>
+      <p class="rationale">The first mockup with tuned spacing and optical centering.
+      The baseline the others deviate from.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b1"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b1"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b1"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b1"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b2"/></svg></div>
+      <div class="tag">B2</div>
+      <h2>Transcript rows</h2>
+      <p class="rationale">Every line begins as its own little waveform — reads as a
+      diarized transcript, which is literally what Simbi produces.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b2"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b2"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b2"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b2"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b3"/></svg></div>
+      <div class="tag">B3</div>
+      <h2>Inverted</h2>
+      <p class="rationale">Same mark, teal ground with cream glyph. Heavier presence
+      in the Dock; holds up better against light desktops.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b3"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b3"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b3"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b3"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b4"/></svg></div>
+      <div class="tag">B4</div>
+      <h2>Folded note</h2>
+      <p class="rationale">The glyph placed on a dog-eared page — leans hardest into
+      "notes app", at the cost of some abstraction.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b4"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b4"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b4"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b4"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b5"/></svg></div>
+      <div class="tag">B5</div>
+      <h2>Tipping bars</h2>
+      <p class="rationale">One bar rotating through the sequence until it lies down as
+      a line of text — the transformation itself as the mark.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b5"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b5"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b5"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b5"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b6"/></svg></div>
+      <div class="tag">B6</div>
+      <h2>Settling line</h2>
+      <p class="rationale">The first line of the note is still oscillating; the rest
+      have settled into prose. One continuous stroke, very calm.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b6"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b6"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b6"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b6"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+    <section class="concept">
+      <div class="hero-icon"><svg><use href="#b7"/></svg></div>
+      <div class="tag">B7</div>
+      <h2>Live bar accent</h2>
+      <p class="rationale">B1 with the tallest bar in warm amber — a quiet nod to the
+      recording indicator, and a second brand color if you want one.</p>
+      <div class="strip">
+        <figure class="cell"><div class="chip light s64"><svg width="64" height="64"><use href="#b7"/></svg></div><figcaption>64 · light</figcaption></figure>
+        <figure class="cell"><div class="chip dark s64"><svg width="64" height="64"><use href="#b7"/></svg></div><figcaption>64 · dark</figcaption></figure>
+        <figure class="cell"><div class="chip light s32"><svg width="32" height="32"><use href="#b7"/></svg></div><figcaption>32</figcaption></figure>
+        <figure class="cell"><div class="chip dark s16"><svg width="16" height="16"><use href="#b7"/></svg></div><figcaption>16</figcaption></figure>
+      </div>
+    </section>
+
+  </div>
+</div>
+</body>
+</html>
