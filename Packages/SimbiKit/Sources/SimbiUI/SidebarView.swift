@@ -1,9 +1,15 @@
 import AppKit
+@preconcurrency import OutlineViewKit
 import SimbiKit
 import SwiftUI
 
 /// The file tree over `~/Simbi`. Notes are leaves with a distinct icon;
 /// context menu offers the plain FS operations (SPEC.md §6).
+///
+/// Rendered with the vendored OutlineViewKit (`NSOutlineView`) rather than
+/// SwiftUI `List`/`OutlineGroup`, which on macOS supports neither dragging
+/// rows between folders nor manual reordering. Order edits persist via
+/// `SidebarOrder`.
 struct SidebarView: View {
     @Bindable var model: FileTreeModel
 
@@ -11,15 +17,23 @@ struct SidebarView: View {
     @State private var renameText = ""
 
     var body: some View {
-        List(selection: $model.selection) {
-            OutlineGroup(model.nodes, children: \.children) { node in
-                row(for: node)
-            }
+        OutlineView(
+            model.nodes,
+            children: \.children,
+            selection: selectedNode
+        ) { node in
+            SidebarCellView(node: node)
         }
-        .contextMenu {
-            // Empty-area menu: act on the home root.
-            Button("New Note") { model.promptForNewNote() }
-            Button("New Folder") { model.createFolder() }
+        .outlineViewStyle(.sourceList)
+        .quietRowSelection()
+        .dragDataSource { node in
+            let item = NSPasteboardItem()
+            item.setString(node.url.standardizedFileURL.path, forType: .simbiSidebarItem)
+            return item
+        }
+        .onDrop(of: [.simbiSidebarItem], receiver: SidebarDropReceiver(model: model))
+        .contextMenu { node in
+            contextMenu(for: node)
         }
         .overlay {
             if model.nodes.isEmpty {
@@ -42,6 +56,13 @@ struct SidebarView: View {
         }
     }
 
+    private var selectedNode: Binding<FileTreeNode?> {
+        Binding(
+            get: { model.selectedNode },
+            set: { model.selection = $0?.url }
+        )
+    }
+
     private var renameAlertPresented: Binding<Bool> {
         Binding(
             get: { renameTarget != nil },
@@ -51,41 +72,35 @@ struct SidebarView: View {
         )
     }
 
-    @ViewBuilder
-    private func row(for node: FileTreeNode) -> some View {
-        Label(node.name, systemImage: icon(for: node))
-            .tag(node.url)
-            .contextMenu {
-                if node.kind == .folder {
-                    Button("New Note") {
-                        model.selection = node.url
-                        model.promptForNewNote()
-                    }
-                    Button("New Folder") {
-                        model.selection = node.url
-                        model.createFolder()
-                    }
-                    Divider()
-                }
-                Button("Rename…") {
-                    renameText = node.name
-                    renameTarget = node
-                }
-                Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([node.url])
-                }
-                Divider()
-                Button("Move to Trash", role: .destructive) {
-                    model.trash(node.url)
-                }
-            }
-    }
-
-    private func icon(for node: FileTreeNode) -> String {
-        switch node.kind {
-        case .folder: "folder"
-        case .note: "doc.text"
-        case .file: "doc"
+    /// Per-row context menu; `nil` node means the empty area below the rows,
+    /// which acts on the home root.
+    private func contextMenu(for node: FileTreeNode?) -> NSMenu {
+        let menu = NSMenu()
+        guard let node else {
+            menu.addItem(HandlerMenuItem("New Note") { model.promptForNewNote() })
+            menu.addItem(HandlerMenuItem("New Folder") { model.createFolder() })
+            return menu
         }
+        if node.kind == .folder {
+            menu.addItem(HandlerMenuItem("New Note") {
+                model.selection = node.url
+                model.promptForNewNote()
+            })
+            menu.addItem(HandlerMenuItem("New Folder") {
+                model.selection = node.url
+                model.createFolder()
+            })
+            menu.addItem(.separator())
+        }
+        menu.addItem(HandlerMenuItem("Rename…") {
+            renameText = node.name
+            renameTarget = node
+        })
+        menu.addItem(HandlerMenuItem("Reveal in Finder") {
+            NSWorkspace.shared.activateFileViewerSelecting([node.url])
+        })
+        menu.addItem(.separator())
+        menu.addItem(HandlerMenuItem("Move to Trash") { model.trash(node.url) })
+        return menu
     }
 }
