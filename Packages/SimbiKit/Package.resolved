@@ -1,5 +1,5 @@
 {
-  "originHash" : "319e4af66b33862966c9c5cd7a93135de981ee6dfb56e6dc55db52636af43469",
+  "originHash" : "3c1cc0ccdab3d09c8acc37ba655190a27b1f12442fd4d67f80f6b522e632cd74",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -16,6 +16,24 @@
       "state" : {
         "revision" : "fe7aae9c9b31d3b296fd3d2dd575e1a207bb29e0",
         "version" : "3.1.0"
+      }
+    },
+    {
+      "identity" : "libghostty-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/libghostty-spm.git",
+      "state" : {
+        "revision" : "5530721e8e975178ac8293708f23815281f16f72",
+        "version" : "1.3.2"
+      }
+    },
+    {
+      "identity" : "msdisplaylink",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Lakr233/MSDisplayLink.git",
+      "state" : {
+        "revision" : "1ba3e769b734e456317fa7e45321fa7f53eefb67",
+        "version" : "2.1.0"
       }
     },
     {

@@ -21,7 +21,10 @@ let package = Package(
             revision: "baa11f65daa3003daf4401308786b1dcdeddd84e"),
         // TextKit 2 live-styled markdown editor (replaces the M0
         // STTextView + Neon source editor). Pre-1.0 — pin exactly.
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0")
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0"),
+        // Ghostty terminal emulator wrapped as a Swift package (prebuilt
+        // XCFramework, MIT). Tracks a pinned Ghostty commit — pin exactly.
+        .package(url: "https://github.com/Lakr233/libghostty-spm.git", exact: "1.3.2")
     ],
     targets: [
         .target(name: "SimbiKit"),
@@ -122,6 +125,16 @@ let package = Package(
         .executableTarget(
             name: "simbi-chat-spike",
             dependencies: ["CodexKit", "SimbiKit"]
+        ),
+        // M8 spike: embedded Ghostty terminal running the ChatGPT app's
+        // packaged codex TUI directly — the terminal-instead-of-chat-UI
+        // direction. Opens a real window; run by hand, not in CI.
+        .executableTarget(
+            name: "simbi-terminal-spike",
+            dependencies: [
+                "CodexKit",
+                .product(name: "GhosttyTerminal", package: "libghostty-spm")
+            ]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
