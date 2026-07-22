@@ -1,5 +1,5 @@
 {
-  "originHash" : "3c1cc0ccdab3d09c8acc37ba655190a27b1f12442fd4d67f80f6b522e632cd74",
+  "originHash" : "3c2c763d05ac23313933775b9d6b3a501558f19625a69cea126b24d049902ba8",
   "pins" : [
     {
       "identity" : "fluidaudio",
@@ -21,10 +21,10 @@
     {
       "identity" : "libghostty-spm",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Lakr233/libghostty-spm.git",
+      "location" : "https://github.com/predict-woo/libghostty-spm.git",
       "state" : {
-        "revision" : "5530721e8e975178ac8293708f23815281f16f72",
-        "version" : "1.3.2"
+        "revision" : "abd45deb491e33d811c413a40e4bdc962aeafc2d",
+        "version" : "1.3.2-simbi.1"
       }
     },
     {
