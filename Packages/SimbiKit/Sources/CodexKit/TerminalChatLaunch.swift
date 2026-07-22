@@ -10,15 +10,24 @@ import Foundation
 /// note titles, paths, and the context blurb out of shell-quoting territory
 /// entirely.
 public struct TerminalChatLaunch: Sendable, Equatable {
-    /// Ghostty runs this via the user's shell (`command =` config key).
+    /// Ghostty runs this via `bash -c "exec -l <command>"` (`command =`
+    /// config key), with two parsing traps verified against Ghostty 1.3:
+    /// it prepends the `exec` itself (a leading `exec` here becomes
+    /// `exec exec` and fails), and it strips a matching pair of
+    /// surrounding double quotes from the config value — so the string
+    /// must neither start nor end with `"`. $SIMBI_CODEX_BIN stays
+    /// unquoted (the ChatGPT.app path has no spaces); the dir and context
+    /// vars keep their quotes.
+    ///
     /// Flags mirror the retired app-server chat: workspace-write sandbox,
-    /// on-request approvals, the whole Simbi home writable. Note context is
-    /// injected as a developer message; a `-c` value that fails TOML parsing
-    /// is taken as a literal string (codex --help), so no escaping is needed.
+    /// on-request approvals, the whole Simbi home writable. Note context
+    /// is injected as a developer message; a `-c` value that fails TOML
+    /// parsing is taken as a literal string (codex --help), so no
+    /// escaping is needed.
     public static let commandLine =
-        "exec \"$SIMBI_CODEX_BIN\" -C \"$SIMBI_NOTE_DIR\" --add-dir \"$SIMBI_HOME_ROOT\" "
-        + "-s workspace-write -a on-request "
-        + "-c developer_instructions=\"$SIMBI_CHAT_CONTEXT\""
+        "$SIMBI_CODEX_BIN -C \"$SIMBI_NOTE_DIR\" --add-dir \"$SIMBI_HOME_ROOT\" "
+        + "-c developer_instructions=\"$SIMBI_CHAT_CONTEXT\" "
+        + "-s workspace-write -a on-request"
 
     public let envVars: [String: String]
 

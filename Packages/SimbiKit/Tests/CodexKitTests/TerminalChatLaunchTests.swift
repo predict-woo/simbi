@@ -33,7 +33,14 @@ struct TerminalChatLaunchTests {
     @Test("command line is constant and env-indirected — no per-note text")
     func commandLineShape() {
         let command = TerminalChatLaunch.commandLine
-        #expect(command.hasPrefix("exec \"$SIMBI_CODEX_BIN\""))
+        // Ghostty wraps the command in its own `exec -l` (a leading `exec`
+        // becomes `exec exec`) and strips a matching pair of surrounding
+        // double quotes from the config value — the string must neither
+        // start nor end with a quote.
+        #expect(command.hasPrefix("$SIMBI_CODEX_BIN "))
+        #expect(!command.hasPrefix("exec "))
+        #expect(!command.hasPrefix("\""))
+        #expect(!command.hasSuffix("\""))
         #expect(command.contains("-C \"$SIMBI_NOTE_DIR\""))
         #expect(command.contains("--add-dir \"$SIMBI_HOME_ROOT\""))
         #expect(command.contains("-s workspace-write"))
