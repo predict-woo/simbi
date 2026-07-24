@@ -30,7 +30,6 @@ jobs:
             ~/Library/Caches/org.swift.swiftpm
             ~/Library/org.swift.swiftpm
           key: spm-${{ runner.os }}-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: spm-${{ runner.os }}-
       - name: Build
         run: swift build --package-path Packages/SimbiKit
       - name: Test
