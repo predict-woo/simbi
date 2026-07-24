@@ -30,7 +30,7 @@ let package = Package(
         // pinned Ghostty commit — pin exactly.
         .package(
             url: "https://github.com/predict-woo/libghostty-spm.git",
-            exact: "1.3.2-simbi.2"),
+            exact: "1.3.2-simbi.3"),
     ],
     targets: [
         .target(name: "SimbiKit"),
