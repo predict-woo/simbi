@@ -21,7 +21,16 @@ let package = Package(
             revision: "baa11f65daa3003daf4401308786b1dcdeddd84e"),
         // TextKit 2 live-styled markdown editor (replaces the M0
         // STTextView + Neon source editor). Pre-1.0 — pin exactly.
-        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0")
+        .package(url: "https://github.com/nodes-app/swift-markdown-engine", exact: "0.10.0"),
+        // Ghostty terminal emulator wrapped as a Swift package (prebuilt
+        // XCFramework, MIT). Fork of Lakr233/libghostty-spm 1.3.2 with the
+        // xcframework headers namespaced (Headers/GhosttyKitHeaders/) so the
+        // modulemap doesn't collide with FluidAudio's NemoTextProcessing in
+        // Xcode's include/ copy step ("Multiple commands produce"). Tracks a
+        // pinned Ghostty commit — pin exactly.
+        .package(
+            url: "https://github.com/predict-woo/libghostty-spm.git",
+            exact: "1.3.2-simbi.1")
     ],
     targets: [
         .target(name: "SimbiKit"),
@@ -83,6 +92,7 @@ let package = Package(
                 "OutlineViewKit",
                 "SimbiAudio",
                 "CodexKit",
+                .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineCodeBlocks", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
@@ -118,10 +128,15 @@ let package = Package(
             name: "simbi-tap-spike",
             dependencies: ["SimbiAudio"]
         ),
-        // M7 spike: chat-in-codex round-trip + model/list.
+        // M8 spike: embedded Ghostty terminal running the ChatGPT app's
+        // packaged codex TUI directly — the terminal-instead-of-chat-UI
+        // direction. Opens a real window; run by hand, not in CI.
         .executableTarget(
-            name: "simbi-chat-spike",
-            dependencies: ["CodexKit", "SimbiKit"]
+            name: "simbi-terminal-spike",
+            dependencies: [
+                "CodexKit",
+                .product(name: "GhosttyTerminal", package: "libghostty-spm")
+            ]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(
