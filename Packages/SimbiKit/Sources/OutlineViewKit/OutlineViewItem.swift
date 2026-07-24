@@ -19,11 +19,11 @@ where Data.Element: Identifiable {
     init(value: Data.Element, children: KeyPath<Data.Element, Data?>) {
         self.init(value: value, children: .keyPath(children))
     }
-    
+
     init(value: Data.Element, children: @escaping (Data.Element) -> Data?) {
         self.init(value: value, children: .provider(children))
     }
-    
+
     init(value: Data.Element, children: ChildSource<Data>) {
         self.value = value
         self.childSource = children

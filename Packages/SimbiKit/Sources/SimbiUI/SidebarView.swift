@@ -82,23 +82,27 @@ struct SidebarView: View {
             return menu
         }
         if node.kind == .folder {
-            menu.addItem(HandlerMenuItem("New Note") {
-                model.selection = node.url
-                model.promptForNewNote()
-            })
-            menu.addItem(HandlerMenuItem("New Folder") {
-                model.selection = node.url
-                model.createFolder()
-            })
+            menu.addItem(
+                HandlerMenuItem("New Note") {
+                    model.selection = node.url
+                    model.promptForNewNote()
+                })
+            menu.addItem(
+                HandlerMenuItem("New Folder") {
+                    model.selection = node.url
+                    model.createFolder()
+                })
             menu.addItem(.separator())
         }
-        menu.addItem(HandlerMenuItem("Rename…") {
-            renameText = node.name
-            renameTarget = node
-        })
-        menu.addItem(HandlerMenuItem("Reveal in Finder") {
-            NSWorkspace.shared.activateFileViewerSelecting([node.url])
-        })
+        menu.addItem(
+            HandlerMenuItem("Rename…") {
+                renameText = node.name
+                renameTarget = node
+            })
+        menu.addItem(
+            HandlerMenuItem("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([node.url])
+            })
         menu.addItem(.separator())
         menu.addItem(HandlerMenuItem("Move to Trash") { model.trash(node.url) })
         return menu

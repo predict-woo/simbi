@@ -40,7 +40,8 @@ where Data.Element: Identifiable {
             // Release any unused row views.
             releaseUnusedRowViews(from: outlineView)
             // Local edit (see VENDORED.md): quiet-selection row view option.
-            let rowView = quietRowSelection
+            let rowView =
+                quietRowSelection
                 ? QuietSelectionRowView(frame: .zero)
                 : AdjustableSeparatorRowView(frame: .zero)
             rowView.separatorInsets = separatorInsets?(typedItem(item).value)

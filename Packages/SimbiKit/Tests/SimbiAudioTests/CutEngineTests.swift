@@ -225,7 +225,7 @@ struct CutEngineTests {
         #expect(
             uploads == [
                 FlushCommand(startFrame: 0, endFrame: 53, speaker: 0, reason: .longSilence),
-                FlushCommand(startFrame: 68, endFrame: 120, speaker: 1, reason: .stop)
+                FlushCommand(startFrame: 68, endFrame: 120, speaker: 1, reason: .stop),
             ])
         #expect(engine.flushedUpTo == 120)
         #expect(uploads.last?.reason == .stop)

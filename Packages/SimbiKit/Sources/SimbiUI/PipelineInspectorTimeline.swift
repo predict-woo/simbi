@@ -289,7 +289,8 @@ private struct TimelineDrawer {
             } else {
                 for interval in labelRows[row].sorted(by: { $0.lowerBound < $1.lowerBound })
                 where labelX < interval.upperBound + 8
-                    && labelX + textSize.width > interval.lowerBound - 8 {
+                    && labelX + textSize.width > interval.lowerBound - 8
+                {
                     labelX = interval.upperBound + 8
                 }
                 labelX = min(labelX, size.width - textSize.width - 2)

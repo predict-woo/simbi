@@ -131,7 +131,8 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     public static func update(
         noteFolder: URL, _ mutate: (inout NoteRecordingState) -> Void
     )
-        throws {
+        throws
+    {
         ioLock.lock()
         defer { ioLock.unlock() }
         var state = (try? load(noteFolder: noteFolder)) ?? NoteRecordingState()

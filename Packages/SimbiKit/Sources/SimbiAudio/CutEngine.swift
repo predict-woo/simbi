@@ -185,7 +185,8 @@ public struct CutEngine {
         // flush boundary landing at/inside the run (an R5 cut can do that);
         // without it the cut would set up a pure-silence upload.
         if !vadActive, silenceRun == CutConstants.silenceCutFrames,
-            hasSpeech(flushedUpTo, frame + 1) {
+            hasSpeech(flushedUpTo, frame + 1)
+        {
             cut(frame + 1, rule: .r1, into: &commands)
         }
 
@@ -201,7 +202,8 @@ public struct CutEngine {
         // never uploaded. Level-triggered; the staging-empty precondition
         // makes it self-pausing.
         if !vadActive, silenceRun >= CutConstants.longSilenceFlushFrames,
-            cutUpTo == flushedUpTo {
+            cutUpTo == flushedUpTo
+        {
             let target = frame + 1 - CutConstants.preRollFrames
             if target > cutUpTo {
                 discard(target)
@@ -233,11 +235,13 @@ public struct CutEngine {
                 currentSpeaker = dominant
                 traceEvent(.speakerInit(frame: frame, slot: dominant))
             } else if dominant != currentSpeaker,
-                let lastStop = lastDominantFrame[currentSpeaker!] {
+                let lastStop = lastDominantFrame[currentSpeaker!]
+            {
                 let newStart = dominantRunStart
                 let mid = (lastStop + 1 + newStart) / 2
                 if lastStop - CutConstants.sortLagToleranceFrames < cutUpTo
-                    || !hasSpeech(flushedUpTo, mid) {
+                    || !hasSpeech(flushedUpTo, mid)
+                {
                     // Either the boundary was already cut (an R1 silence cut
                     // beat Sortformer, which reports offsets late), or the
                     // would-be upload [flushedUpTo, mid) contains no VAD

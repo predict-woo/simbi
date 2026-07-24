@@ -27,7 +27,7 @@ final class SidebarCellView: NSTableCellView {
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
             label.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 

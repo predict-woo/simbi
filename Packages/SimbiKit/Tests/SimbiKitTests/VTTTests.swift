@@ -32,7 +32,7 @@ struct VTTTests {
                 text: "…and this cue continues mid-sentence.", continuation: true),
             // Whole-second wall clock: ISO8601 rendering has no sub-second
             // precision (offsets keep milliseconds; wall clocks don't).
-            .sessionEnd(n: 1, wallClock: wall.addingTimeInterval(730), offset: 730.24)
+            .sessionEnd(n: 1, wallClock: wall.addingTimeInterval(730), offset: 730.24),
         ]
         var file = VTT.header(noteName: "2026-07-15 Standup")
         for entry in entries {

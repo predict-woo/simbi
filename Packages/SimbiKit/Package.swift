@@ -10,7 +10,7 @@ let package = Package(
         .library(name: "SimbiKit", targets: ["SimbiKit"]),
         .library(name: "SimbiAudio", targets: ["SimbiAudio"]),
         .library(name: "CodexKit", targets: ["CodexKit"]),
-        .library(name: "SimbiUI", targets: ["SimbiUI"])
+        .library(name: "SimbiUI", targets: ["SimbiUI"]),
     ],
     dependencies: [
         // Fast-moving 0.x — pin exactly; bump deliberately. Pinned to the
@@ -30,7 +30,7 @@ let package = Package(
         // pinned Ghostty commit — pin exactly.
         .package(
             url: "https://github.com/predict-woo/libghostty-spm.git",
-            exact: "1.3.2-simbi.1")
+            exact: "1.3.2-simbi.1"),
     ],
     targets: [
         .target(name: "SimbiKit"),
@@ -57,7 +57,7 @@ let package = Package(
                 .define("OPUS_BUILD"),
                 .define("VAR_ARRAYS", to: "1"),
                 .define("HAVE_LRINT", to: "1"),
-                .define("HAVE_LRINTF", to: "1")
+                .define("HAVE_LRINTF", to: "1"),
             ]
         ),
         // Vendored google/libwebm 1.0.0.31 (mkvmuxer + mkvparser) behind a
@@ -67,7 +67,7 @@ let package = Package(
             exclude: ["libwebm/LICENSE.TXT", "libwebm/PATENTS.TXT"],
             cxxSettings: [
                 .headerSearchPath("libwebm"),
-                .headerSearchPath("include")
+                .headerSearchPath("include"),
             ],
             linkerSettings: [
                 .linkedLibrary("c++")
@@ -80,7 +80,7 @@ let package = Package(
                 "CodexKit",
                 "CLibOpus",
                 "CLibWebM",
-                .product(name: "FluidAudio", package: "FluidAudio")
+                .product(name: "FluidAudio", package: "FluidAudio"),
             ]
         ),
         // ChatSession persists its thread id in the note's state.json.
@@ -95,7 +95,7 @@ let package = Package(
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 .product(name: "MarkdownEngine", package: "swift-markdown-engine"),
                 .product(name: "MarkdownEngineCodeBlocks", package: "swift-markdown-engine"),
-                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine")
+                .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine"),
             ]
         ),
         // M1 spike (SPEC.md §8): proves the vendored encoder's output is
@@ -135,7 +135,7 @@ let package = Package(
             name: "simbi-terminal-spike",
             dependencies: [
                 "CodexKit",
-                .product(name: "GhosttyTerminal", package: "libghostty-spm")
+                .product(name: "GhosttyTerminal", package: "libghostty-spm"),
             ]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
@@ -145,6 +145,6 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(name: "SimbiAudioTests", dependencies: ["SimbiAudio"]),
-        .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"])
+        .testTarget(name: "CodexKitTests", dependencies: ["CodexKit"]),
     ]
 )

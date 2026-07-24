@@ -61,7 +61,8 @@ public final class PipelineInspectorModel {
             state.apply(update)
             phase = update.recording ? .live : .ended
             if !update.records.isEmpty || !update.events.isEmpty
-                || !update.uploadEvents.isEmpty {
+                || !update.uploadEvents.isEmpty
+            {
                 summaryTick &+= 1
             }
         }

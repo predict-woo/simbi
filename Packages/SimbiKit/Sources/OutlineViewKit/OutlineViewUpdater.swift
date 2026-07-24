@@ -7,7 +7,7 @@ where Data.Element: Identifiable {
     /// `performUpdates` will escape its recursion for objects that are not
     /// expanded in the outlineView.
     var assumeOutlineIsExpanded = false
-    
+
     /// Perform updates on the outline view based on the change in state.
     /// - NOTE: Calls to this method must be surrounded by
     ///  `NSOutlineView.beginUpdates` and `NSOutlineView.endUpdates`.
@@ -29,7 +29,7 @@ where Data.Element: Identifiable {
         } else {
             oldIDs = nil
         }
-        
+
         let newNonOptionalState = newState ?? []
 
         guard oldIDs != nil || newState != nil else {
@@ -46,14 +46,15 @@ where Data.Element: Identifiable {
             // Children are not reloaded to allow animation.
             outlineView.reloadItem(parent, reloadChildren: false)
         }
-        
+
         guard assumeOutlineIsExpanded || outlineView.isItemExpanded(parent) else {
             // Another early exit. If item isn't expanded, no need to compare its children.
             // They'll be updated when the item is later expanded.
             return
         }
 
-        var oldUnchangedElements = newNonOptionalState
+        var oldUnchangedElements =
+            newNonOptionalState
             .filter { oldNonOptionalIDs.contains($0.id) }
             .reduce(into: [:], { $0[$1.id] = $1 })
 

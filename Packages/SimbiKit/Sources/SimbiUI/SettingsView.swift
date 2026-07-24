@@ -36,7 +36,8 @@ public struct SettingsView: View {
                     // A saved-but-unplugged mic stays selectable rather
                     // than silently snapping to another option.
                     if case .device(let uid) = micSelection.wrappedValue,
-                        !microphones.contains(where: { $0.id == uid }) {
+                        !microphones.contains(where: { $0.id == uid })
+                    {
                         Text("Saved microphone (not connected)").tag(MicChoice.device(uid))
                     }
                 }

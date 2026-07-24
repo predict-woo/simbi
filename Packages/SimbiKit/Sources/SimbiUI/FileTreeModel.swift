@@ -58,7 +58,8 @@ public final class FileTreeModel {
         // pipeline writing into the note folder) must not tear down the
         // selected note view mid-recording.
         if let selection, FileTreeNode.find(selection, in: nodes) == nil,
-            !FileManager.default.fileExists(atPath: selection.path) {
+            !FileManager.default.fileExists(atPath: selection.path)
+        {
             self.selection = nil
         }
     }
@@ -84,7 +85,8 @@ public final class FileTreeModel {
         guard let entered = NoteNamePrompt.run(suggestedName: suggested) else { return }
         // "/" would silently nest the note; an emptied field falls back to
         // the dated default rather than failing.
-        var name = entered
+        var name =
+            entered
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
         if name.isEmpty {
@@ -131,7 +133,8 @@ public final class FileTreeModel {
     /// Both persist the folder's order via `SidebarOrder`.
     public func move(_ sources: [URL], into folder: URL, at childIndex: Int?) {
         let folderPath = folder.standardizedFileURL.path
-        let children = folderPath == home.rootURL.standardizedFileURL.path
+        let children =
+            folderPath == home.rootURL.standardizedFileURL.path
             ? nodes
             : FileTreeNode.find(folder, in: nodes)?.children ?? []
         var names = children.map(\.name)

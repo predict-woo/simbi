@@ -40,7 +40,7 @@ public struct MarkdownEditor: View {
         string: "Write your note…",
         attributes: [
             .foregroundColor: NSColor.tertiaryLabelColor,
-            .font: NSFont.systemFont(ofSize: Design.editorFontSize)
+            .font: NSFont.systemFont(ofSize: Design.editorFontSize),
         ]
     )
 

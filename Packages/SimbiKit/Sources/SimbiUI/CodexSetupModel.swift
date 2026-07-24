@@ -25,7 +25,8 @@ final class CodexSetupModel {
     ) {
         self.isInstalled = isInstalled
         self.isSignedIn = isSignedIn
-        state = Self.previewState()
+        state =
+            Self.previewState()
             ?? CodexSetupState.resolve(isInstalled: isInstalled(), isSignedIn: isSignedIn())
     }
 

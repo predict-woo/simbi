@@ -185,7 +185,8 @@ public actor RecordingPipeline: TranscriptFixerHost {
             try? await fixer.recordingStarted()
             if let threadId = await fixer.threadId,
                 threadId != state.fixerThreadId
-                    || state.fixerInstructionsVersion != TranscriptFixer.instructionsVersion {
+                    || state.fixerInstructionsVersion != TranscriptFixer.instructionsVersion
+            {
                 state.fixerThreadId = threadId
                 state.fixerInstructionsVersion = TranscriptFixer.instructionsVersion
                 try? state.saveRecording(noteFolder: noteFolderURL)
@@ -238,7 +239,8 @@ public actor RecordingPipeline: TranscriptFixerHost {
             // §3.1 midpoint rule: the frame's VAD verdict is the chunk
             // containing its midpoint. Always already computed (§3.3) —
             // except with lag-free test fakes, where we just wait.
-            let chunkIndex = (frame * CutConstants.frameSamples + CutConstants.frameSamples / 2)
+            let chunkIndex =
+                (frame * CutConstants.frameSamples + CutConstants.frameSamples / 2)
                 / CutConstants.vadChunkSamples
             guard chunkIndex < vadVerdicts.count else { break }
             let base = frame * 4
@@ -468,7 +470,8 @@ public actor RecordingPipeline: TranscriptFixerHost {
         var lastCueEndSec: TimeInterval = 0
         let vttURL = noteFolderURL.appending(path: "transcript.vtt")
         if let text = try? String(contentsOf: vttURL, encoding: .utf8),
-            let document = try? VTTParser.parse(text) {
+            let document = try? VTTParser.parse(text)
+        {
             for case .cue(_, _, let end, _, _, _) in document.entries {
                 lastCueEndSec = max(lastCueEndSec, end)
             }

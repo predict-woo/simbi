@@ -17,7 +17,7 @@ final class InspectorPreviewDriver {
         (245..<310, 1),  // 19.6–24.8 s  1.2 s pause → R1, then R4 flush branch
         (310..<370, 0),  // 24.8–29.6 s  direct switch → R4 cut branch
         // 29.6–39.2 s long silence → R3 flush, R6 trimming
-        (490..<540, 2)  // 39.2–43.2 s  S3 wraps up; session ends at 45 s
+        (490..<540, 2),  // 39.2–43.2 s  S3 wraps up; session ends at 45 s
     ]
     private static let endFrame = 563  // 45 s
     private static let texts = [
@@ -25,7 +25,7 @@ final class InspectorPreviewDriver {
         "The drag and drop landed last week and it changed how folders load.",
         "Quick question on that — does the sidecar survive a sync conflict?",
         "Right, that matches what I saw in testing.",
-        "One note from my side: the release checklist is green."
+        "One note from my side: the release checklist is green.",
     ]
 
     private static func speaker(at frame: Int) -> Int? {

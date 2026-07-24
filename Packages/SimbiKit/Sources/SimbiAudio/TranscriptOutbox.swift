@@ -84,7 +84,8 @@ public final class TranscriptOutbox {
     public func fulfillCue(index: Int, text: String) throws {
         for (i, slot) in queue.enumerated() {
             if case .pendingCue(index, let start, let end, let speaker, let continuation, nil) =
-                slot {
+                slot
+            {
                 queue[i] = .pendingCue(
                     index: index, start: start, end: end, speaker: speaker,
                     continuation: continuation, text: text)
@@ -130,7 +131,8 @@ public final class TranscriptOutbox {
         while i < lines.count {
             // A cue block: bare integer line, then a timing line.
             if let cueIndex = Int(lines[i]), i + 1 < lines.count,
-                lines[i + 1].contains(" --> "), let edit = byIndex[cueIndex] {
+                lines[i + 1].contains(" --> "), let edit = byIndex[cueIndex]
+            {
                 out.append(lines[i])
                 out.append(lines[i + 1])
                 out.append("<v \(Self.sanitizeSpeaker(edit.speaker))>\(Self.sanitizeText(edit.text))")

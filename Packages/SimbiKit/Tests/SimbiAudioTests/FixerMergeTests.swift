@@ -20,11 +20,11 @@ struct FixerMergeTests {
     func diffChangedOnly() {
         let before = vtt([
             .init(index: 1, speaker: "Speaker 1", text: "helo world"),
-            .init(index: 2, speaker: "Speaker 2", text: "fine text")
+            .init(index: 2, speaker: "Speaker 2", text: "fine text"),
         ])
         let after = vtt([
             .init(index: 1, speaker: "Speaker 1", text: "hello world"),
-            .init(index: 2, speaker: "Speaker 2", text: "fine text")
+            .init(index: 2, speaker: "Speaker 2", text: "fine text"),
         ])
         let edits = TranscriptOutbox.fixerEdits(before: before, after: after)
         #expect(edits == [.init(index: 1, speaker: "Speaker 1", text: "hello world")])
@@ -34,12 +34,12 @@ struct FixerMergeTests {
     func diffIgnoresStructuralChanges() {
         let before = vtt([
             .init(index: 1, speaker: "Speaker 1", text: "a"),
-            .init(index: 2, speaker: "Speaker 2", text: "b")
+            .init(index: 2, speaker: "Speaker 2", text: "b"),
         ])
         // Fixer deleted cue 2 and invented cue 9 — both ignored.
         let after = vtt([
             .init(index: 1, speaker: "Speaker 1", text: "a"),
-            .init(index: 9, speaker: "Speaker 9", text: "made up")
+            .init(index: 9, speaker: "Speaker 9", text: "made up"),
         ])
         #expect(TranscriptOutbox.fixerEdits(before: before, after: after).isEmpty)
         #expect(TranscriptOutbox.fixerEdits(before: before, after: before).isEmpty)
@@ -71,10 +71,11 @@ struct FixerMergeTests {
         // Include a session NOTE and an unknown NOTE — both must survive
         // byte-for-byte (the parser drops unknown NOTEs, so a parse→render
         // rewrite would lose them; the surgical rewrite must not).
-        let original = vtt([
-            .init(index: 1, speaker: "Speaker 1", text: "helo wrld"),
-            .init(index: 2, speaker: "Speaker 2", text: "keep me")
-        ])
+        let original =
+            vtt([
+                .init(index: 1, speaker: "Speaker 1", text: "helo wrld"),
+                .init(index: 2, speaker: "Speaker 2", text: "keep me"),
+            ])
             + "\nNOTE custom marker\n"
             + VTT.render(.sessionEnd(n: 1, wallClock: .init(timeIntervalSince1970: 0), offset: 3))
         try original.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -82,7 +83,7 @@ struct FixerMergeTests {
         let outbox = TranscriptOutbox(fileURL: fileURL, noteName: "test")
         try outbox.applyEdits([
             .init(index: 1, speaker: "Speaker 1", text: "hello world"),
-            .init(index: 42, speaker: "X", text: "no such cue")
+            .init(index: 42, speaker: "X", text: "no such cue"),
         ])
 
         let updated = try String(contentsOf: fileURL, encoding: .utf8)

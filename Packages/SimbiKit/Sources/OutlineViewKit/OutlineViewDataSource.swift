@@ -8,23 +8,23 @@ where Drop.DataElement == Data.Element {
     var dropReceiver: Drop?
     var dragWriter: DragSourceWriter<Data.Element>?
     let childrenSource: ChildSource<Data>
-    
+
     var treeMap: TreeMap<Data.Element.ID>
-    
+
     private var willExpandToken: AnyCancellable?
     private var didCollapseToken: AnyCancellable?
-        
+
     init(items: [OutlineViewItem<Data>], childSource: ChildSource<Data>) {
         self.items = items
         self.childrenSource = childSource
-        
+
         treeMap = TreeMap()
         for item in items {
             treeMap.addItem(item.value.id, isLeaf: item.children == nil, intoItem: nil, atIndex: nil)
         }
-        
+
         super.init()
-        
+
         // Listen for expand/collapse notifications in order to keep TreeMap up to date
         willExpandToken = NotificationCenter.default.publisher(for: NSOutlineView.itemWillExpandNotification)
             .compactMap { NSOutlineView.expansionNotificationInfo($0) }
@@ -37,11 +37,11 @@ where Drop.DataElement == Data.Element {
                 self?.receiveItemDidCollapseNotification(outlineView: $0.outlineView, collapsedObject: $0.object)
             }
     }
-        
+
     func rebuildIDTree(rootItems: [OutlineViewItem<Data>], outlineView: NSOutlineView) {
         treeMap = TreeMap(rootItems: rootItems, itemIsExpanded: { outlineView.isItemExpanded($0) })
     }
-    
+
     private func typedItem(_ item: Any) -> OutlineViewItem<Data> {
         item as! OutlineViewItem<Data>
     }
@@ -99,20 +99,20 @@ where Drop.DataElement == Data.Element {
             return items[index]
         }
     }
-    
+
     // MARK: - Drag & Drop
-    
+
     func outlineView(
         _ outlineView: NSOutlineView,
         pasteboardWriterForItem item: Any
     ) -> NSPasteboardWriting? {
         guard let writer = dragWriter,
-              let writeData = writer(typedItem(item).value)
+            let writeData = writer(typedItem(item).value)
         else { return nil }
-        
+
         return writeData
     }
-        
+
     func outlineView(
         _ outlineView: NSOutlineView,
         validateDrop info: NSDraggingInfo,
@@ -120,7 +120,7 @@ where Drop.DataElement == Data.Element {
         proposedChildIndex index: Int
     ) -> NSDragOperation {
         guard let dropTarget = dropTargetData(in: outlineView, dragInfo: info, item: item, childIndex: index),
-              let validationResult = dropReceiver?.validateDrop(target: dropTarget)
+            let validationResult = dropReceiver?.validateDrop(target: dropTarget)
         else { return [] }
 
         switch validationResult {
@@ -148,10 +148,10 @@ where Drop.DataElement == Data.Element {
         childIndex index: Int
     ) -> Bool {
         guard let dropTarget = dropTargetData(in: outlineView, dragInfo: info, item: item, childIndex: index),
-              // Perform `acceptDrop(target:)` to get result of drop
-              let dropIsSuccessful = dropReceiver?.acceptDrop(target: dropTarget)
+            // Perform `acceptDrop(target:)` to get result of drop
+            let dropIsSuccessful = dropReceiver?.acceptDrop(target: dropTarget)
         else { return false }
-        
+
         return dropIsSuccessful
     }
 }
@@ -162,9 +162,9 @@ where Drop.DataElement == Data.Element {
 private extension OutlineViewDataSource {
     func receiveItemWillExpandNotification(outlineView: NSOutlineView, objectToExpand: Any) {
         guard let outlineDataSource = outlineView.dataSource,
-              outlineDataSource.isEqual(self)
+            outlineDataSource.isEqual(self)
         else { return }
-        
+
         // Local edit (see VENDORED.md): resolve through `currentItem` so
         // TreeMap records the current children, not a stale snapshot's.
         let typedObjToExpand = currentItem(typedItem(objectToExpand))
@@ -172,16 +172,16 @@ private extension OutlineViewDataSource {
             treeMap.expandItem(typedObjToExpand.value.id, children: childIDs)
         }
     }
-    
+
     func receiveItemDidCollapseNotification(outlineView: NSOutlineView, collapsedObject: Any) {
         guard let outlineDataSource = outlineView.dataSource,
-              outlineDataSource.isEqual(self)
+            outlineDataSource.isEqual(self)
         else { return }
-        
+
         let typedObjThatCollapsed = typedItem(collapsedObject)
         treeMap.collapseItem(typedObjThatCollapsed.value.id)
     }
-    
+
     func dropTargetData(
         in outlineView: NSOutlineView,
         dragInfo: NSDraggingInfo,
@@ -189,14 +189,14 @@ private extension OutlineViewDataSource {
         childIndex: Int
     ) -> DropTarget<Data.Element>? {
         guard let pasteboardItems = dragInfo.draggingPasteboard.pasteboardItems,
-              !pasteboardItems.isEmpty,
-              let dropReceiver
+            !pasteboardItems.isEmpty,
+            let dropReceiver
         else { return nil }
-        
+
         let decodedItems = pasteboardItems.compactMap {
             dropReceiver.readPasteboard(item: $0)
         }
-        
+
         let dropTarget = DropTarget<Data.Element>(
             items: decodedItems,
             intoElement: item.map(typedItem)?.value,

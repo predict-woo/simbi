@@ -322,7 +322,8 @@ struct RecordingHeader: View {
             Image(systemName: "sparkles")
                 .foregroundStyle(
                     recorder.fixerActivity.status == .working
-                        ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
+                )
                 .modifier(PulseEffect(active: recorder.fixerActivity.status == .working))
         }
         .buttonStyle(.borderless)
@@ -379,7 +380,8 @@ struct RecordingHeader: View {
                 // Keep a saved-but-unplugged mic visible so the selection
                 // isn't silently misrepresented.
                 if recorder.micEnabled, let uid = recorder.micDeviceUID,
-                    !mics.contains(where: { $0.id == uid }) {
+                    !mics.contains(where: { $0.id == uid })
+                {
                     micOption("Saved microphone (not connected)", selected: true) {}
                 }
             }
@@ -492,7 +494,8 @@ public struct FixerActivityWindow: View {
                 Image(systemName: "sparkles")
                     .foregroundStyle(
                         model.status == .working
-                            ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                            ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
+                    )
                     .modifier(PulseEffect(active: model.status == .working))
                 Text(headline(model.status))
                     .font(.headline)

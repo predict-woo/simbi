@@ -29,7 +29,8 @@ public enum CodexModels {
         let object = try? JSONSerialization.jsonObject(with: data)
         let array: [Any]
         if let dict = object as? [String: Any],
-            let models = (dict["models"] ?? dict["items"] ?? dict["data"]) as? [Any] {
+            let models = (dict["models"] ?? dict["items"] ?? dict["data"]) as? [Any]
+        {
             array = models
         } else if let bare = object as? [Any] {
             array = bare

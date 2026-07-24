@@ -165,7 +165,8 @@ struct TranscriptView: View {
         guard let position = playbackPosition else { return nil }
         for (index, entry) in entries.enumerated() {
             if case .cue(_, let start, let end, _, _, _) = entry,
-                position >= start, position < end {
+                position >= start, position < end
+            {
                 return index
             }
         }

@@ -1,10 +1,10 @@
-import SwiftUI
 import Cocoa
+import SwiftUI
 
 enum ChildSource<Data: Sequence> {
     case keyPath(KeyPath<Data.Element, Data?>)
     case provider((Data.Element) -> Data?)
-    
+
     func children(for element: Data.Element) -> Data? {
         switch self {
         case .keyPath(let keyPath):
@@ -53,7 +53,7 @@ where Drop.DataElement == Data.Element {
     var quietRowSelectionEnabled = false
 
     // MARK: NSViewControllerRepresentable
-    
+
     public func makeNSViewController(context: Context) -> OutlineViewController<Data, Drop> {
         let controller = OutlineViewController<Data, Drop>(
             data: data,
@@ -131,7 +131,7 @@ public extension OutlineView {
         mutableSelf.dropReceiver = receiver
         return mutableSelf
     }
-    
+
     /// Enables dragging of rows from the `OutlineView` by setting the `DragSourceWriter`
     /// of the `OutlineView`.
     ///

@@ -98,9 +98,9 @@ public final class SystemAudioCapture: @unchecked Sendable {
                 kAudioAggregateDeviceTapListKey: [
                     [
                         kAudioSubTapUIDKey: description.uuid.uuidString,
-                        kAudioSubTapDriftCompensationKey: true
+                        kAudioSubTapDriftCompensationKey: true,
                     ]
-                ]
+                ],
             ]
             var aggregate = AudioObjectID(kAudioObjectUnknown)
             let aggregateStatus = AudioHardwareCreateAggregateDevice(

@@ -116,7 +116,8 @@ struct RecordingPipelineTests {
         while Date() < deadline {
             if let text = try? String(contentsOf: url, encoding: .utf8),
                 let document = try? VTTParser.parse(text),
-                document.entries.count >= entryCount {
+                document.entries.count >= entryCount
+            {
                 return document
             }
             try await Task.sleep(for: .milliseconds(50))

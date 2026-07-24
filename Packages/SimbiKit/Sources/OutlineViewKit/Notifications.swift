@@ -1,7 +1,7 @@
 import AppKit
 
 extension NSOutlineView {
-    
+
     /// Converts a notification from any of `NSOutlineView`'s item notifiers
     /// into a tuple of the `NSOutlineView` and the item that was notified about.
     ///
@@ -15,10 +15,10 @@ extension NSOutlineView {
     /// this function returns `nil`.
     static func expansionNotificationInfo(_ note: Notification) -> (outlineView: NSOutlineView, object: Any)? {
         guard let outlineView = note.object as? NSOutlineView,
-              let object = note.userInfo?["NSObject"]
+            let object = note.userInfo?["NSObject"]
         else { return nil }
-        
+
         return (outlineView, object)
     }
-    
+
 }

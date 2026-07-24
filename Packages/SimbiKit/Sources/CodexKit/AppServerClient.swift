@@ -32,8 +32,7 @@ public actor AppServerClient {
         case result([String: any Sendable])
     }
 
-    private var serverRequestHandlers:
-        [UUID: @Sendable (String, Data) async -> ServerRequestReply] = [:]
+    private var serverRequestHandlers: [UUID: @Sendable (String, Data) async -> ServerRequestReply] = [:]
 
     public init(installation: CodexInstallation = .standard) {
         self.installation = installation
@@ -178,7 +177,7 @@ public actor AppServerClient {
     private func respondMethodNotFound(id: RPCID, method: String) {
         try? write([
             "jsonrpc": "2.0", "id": id.jsonValue,
-            "error": ["code": -32601, "message": "unhandled server request: \(method)"]
+            "error": ["code": -32601, "message": "unhandled server request: \(method)"],
         ])
     }
 

@@ -77,12 +77,14 @@ struct InspectorTimelineStateTests {
     @Test("a gap from dropped updates is padded so alignment holds")
     func gapPadding() {
         var state = InspectorTimelineState()
-        state.apply(update(records: [
-            InspectorFrameRecord(frame: 5, vadActive: true, dominantSlot: 1)
-        ]))
-        state.apply(update(records: [
-            InspectorFrameRecord(frame: 8, vadActive: true, dominantSlot: 1)
-        ]))
+        state.apply(
+            update(records: [
+                InspectorFrameRecord(frame: 5, vadActive: true, dominantSlot: 1)
+            ]))
+        state.apply(
+            update(records: [
+                InspectorFrameRecord(frame: 8, vadActive: true, dominantSlot: 1)
+            ]))
         #expect(state.frames.count == 4)  // 5, 6 (pad), 7 (pad), 8
         #expect(state.frames.map(\.frame) == [5, 6, 7, 8])
         #expect(state.frames[1].vadActive == false)
@@ -104,9 +106,10 @@ struct InspectorTimelineStateTests {
                 ]))
         // Stop + resume: session-local frames restart below the expected
         // next frame — the old artifacts no longer share an axis.
-        state.apply(update(records: [
-            InspectorFrameRecord(frame: 0, vadActive: false, dominantSlot: nil)
-        ]))
+        state.apply(
+            update(records: [
+                InspectorFrameRecord(frame: 0, vadActive: false, dominantSlot: nil)
+            ]))
         #expect(state.firstBufferedFrame == 0)
         #expect(state.frames.map(\.frame) == [0])
         #expect(state.segments.isEmpty)

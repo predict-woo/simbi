@@ -1,4 +1,3 @@
-
 /// An object representing the state of an OutlineView in which the content
 /// of the OutlineView is Identifiable. The TreeMap should be able to stay
 /// in sync with the OutlineView by reacting to data updates in the OutlineView.
@@ -13,22 +12,22 @@ class TreeMap<D: Hashable> {
 
         var parentID: D?
         var state: State
-        
+
         init(parentID: D?, isLeaf: Bool) {
             self.parentID = parentID
             self.state = isLeaf ? .leaf : .collapsed
         }
     }
-        
+
     private(set) var rootData: [D] = []
-    private var directory: [D : Node] = [:]
-        
+    private var directory: [D: Node] = [:]
+
     var allItemIds: Set<D> {
         Set(directory.keys)
     }
-    
+
     init() {}
-    
+
     init<Data: Sequence>(
         rootItems: [OutlineViewItem<Data>],
         itemIsExpanded: ((OutlineViewItem<Data>) -> Bool)
@@ -37,12 +36,12 @@ class TreeMap<D: Hashable> {
         for item in rootItems {
             addItem(item.value.id, isLeaf: item.children == nil, intoItem: nil, atIndex: nil)
         }
-        
+
         // Loop through all items, adding their children if they're expanded
         var checkingItems: [(parentID: D?, item: OutlineViewItem<Data>)] = rootItems.map { (nil, $0) }
         while let nextItem = checkingItems.popLast()?.item {
             if itemIsExpanded(nextItem),
-               let children = nextItem.children
+                let children = nextItem.children
             {
                 let expandingChildren = children.map { ($0.id, $0.children == nil) }
                 expandItem(nextItem.id, children: expandingChildren)
@@ -50,7 +49,7 @@ class TreeMap<D: Hashable> {
             }
         }
     }
-    
+
     /// Adds an item to the TreeMap
     ///
     /// - Parameters:
@@ -65,8 +64,8 @@ class TreeMap<D: Hashable> {
     func addItem(_ item: D, isLeaf: Bool, intoItem: D?, atIndex: Int?) {
         // Add to parent or root
         if let intoItem,
-           var fullIntoItem = directory[intoItem],
-           case var .expanded(intoChildren) = fullIntoItem.state
+            var fullIntoItem = directory[intoItem],
+            case var .expanded(intoChildren) = fullIntoItem.state
         {
             // Add to children of selected item
             if let atIndex {
@@ -76,7 +75,7 @@ class TreeMap<D: Hashable> {
                 // append to end
                 intoChildren.append(item)
             }
-            
+
             fullIntoItem.state = .expanded(children: intoChildren)
             directory[intoItem] = fullIntoItem
         } else {
@@ -89,12 +88,12 @@ class TreeMap<D: Hashable> {
                 rootData.append(item)
             }
         }
-        
+
         // create new node
         let newNode = Node(parentID: intoItem, isLeaf: isLeaf)
         directory[item] = newNode
     }
-    
+
     /// Marks the item with the given ID as expanded by adding its
     /// children to the TreeMap
     ///
@@ -106,13 +105,13 @@ class TreeMap<D: Hashable> {
     func expandItem(_ item: D, children: [(id: D, isLeaf: Bool)]) {
         guard case .collapsed = directory[item]?.state
         else { return }
-        
+
         directory[item]?.state = .expanded(children: children.map(\.id))
         for child in children {
             directory[child.id] = Node(parentID: item, isLeaf: child.isLeaf)
         }
     }
-    
+
     /// Marks the item with the given ID as collapsed/unexpanded by
     /// removing its children from the TreeMap
     ///
@@ -126,7 +125,7 @@ class TreeMap<D: Hashable> {
             directory[childID] = nil
         }
     }
-    
+
     /// Deletes an item from the TreeMap, along with all its children.
     ///
     /// - Parameter item: The ID of the item to remove.
@@ -135,25 +134,25 @@ class TreeMap<D: Hashable> {
         if case let .expanded(childIDs) = directory[item]?.state {
             childIDs.forEach { removeItem($0) }
         }
-        
+
         // remove from parent
         if let parentID = directory[item]?.parentID,
-           case var .expanded(siblingIDs) = directory[parentID]?.state,
-           let childIdx = siblingIDs.firstIndex(of: item)
+            case var .expanded(siblingIDs) = directory[parentID]?.state,
+            let childIdx = siblingIDs.firstIndex(of: item)
         {
             siblingIDs.remove(at: childIdx)
             directory[parentID]?.state = .expanded(children: siblingIDs)
         }
-        
+
         // remove from root
         if let rootIdx = rootData.firstIndex(of: item) {
             rootData.remove(at: rootIdx)
         }
-        
+
         // remove from directory
         directory[item] = nil
     }
-    
+
     /// Gets the IDs of the children of the selected item if it is expanded.
     ///
     /// - Parameter item: the item to check for children.
@@ -167,7 +166,7 @@ class TreeMap<D: Hashable> {
             return nil
         }
     }
-    
+
     /// Tests whether the selected item is a leaf or an internal node that can expand.
     ///
     /// - Parameter item: the ID of the item to test
@@ -180,7 +179,7 @@ class TreeMap<D: Hashable> {
             return true
         }
     }
-    
+
     /// Tests whether the selected item is an expanded internal node.
     ///
     /// - Parameter item: The ID of the item to test.
@@ -193,7 +192,7 @@ class TreeMap<D: Hashable> {
             return false
         }
     }
-    
+
     /// Finds the full parentage of the selected item all the way from the root
     /// of the TreeMap
     ///
@@ -203,7 +202,7 @@ class TreeMap<D: Hashable> {
     /// ending with the ID of the selected item.
     func lineageOfItem(_ item: D) -> [D]? {
         guard let node = directory[item] else { return nil }
-        
+
         var result = [item]
         var parent = node.parentID
         while let nonNilParent = parent {
@@ -218,14 +217,14 @@ class TreeMap<D: Hashable> {
 extension TreeMap: CustomStringConvertible {
     var description: String {
         var strings: [String] = []
-        
+
         for rootItem in rootData {
             strings.append(contentsOf: descriptionStrings(for: rootItem))
         }
-        
+
         return strings.joined(separator: "\n")
     }
-    
+
     private func descriptionStrings(for item: D) -> [String] {
         guard let depth = lineageOfItem(item)?.count
         else {

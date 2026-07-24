@@ -116,7 +116,8 @@ public final class AudioPlayback: @unchecked Sendable {
                 }
                 self.bufferGate.lock()
                 while self.inFlight >= self.lookahead,
-                    self.state.withLock({ $0.generation == generation }) {
+                    self.state.withLock({ $0.generation == generation })
+                {
                     self.bufferGate.wait()
                 }
                 self.bufferGate.unlock()

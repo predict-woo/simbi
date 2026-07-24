@@ -146,7 +146,8 @@ public enum VTTParser {
         let head = lines[0]
         if head.hasPrefix("NOTE simbi") {
             if let range = head.range(of: "note=\""), let end = head.lastIndex(of: "\""),
-                range.upperBound < end {
+                range.upperBound < end
+            {
                 document.noteName = String(head[range.upperBound..<end])
             }
             return nil

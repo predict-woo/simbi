@@ -6,7 +6,7 @@ where Drop.DataElement == Data.Element {
     // Local edit (see VENDORED.md): MenuOutlineView adds context-menu support.
     let outlineView = MenuOutlineView()
     let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 400, height: 400))
-    
+
     let dataSource: OutlineViewDataSource<Data, Drop>
     let delegate: OutlineViewDelegate<Data>
     let updater = OutlineViewUpdater<Data>()
@@ -46,7 +46,7 @@ where Drop.DataElement == Data.Element {
         outlineView.delegate = delegate
 
         self.childrenSource = childrenSource
-        
+
         super.init(nibName: nil, bundle: nil)
 
         view.addSubview(scrollView)
@@ -92,7 +92,7 @@ extension OutlineViewController {
             parent: nil)
 
         outlineView.endUpdates()
-        
+
         // After updates, dataSource must rebuild its idTree for future updates
         dataSource.rebuildIDTree(rootItems: newState, outlineView: outlineView)
     }
@@ -129,19 +129,19 @@ extension OutlineViewController {
         outlineView.gridColor = color
         outlineView.reloadData()
     }
-        
+
     func setDragSourceWriter(_ writer: DragSourceWriter<Data.Element>?) {
         dataSource.dragWriter = writer
     }
-    
+
     func setDropReceiver(_ receiver: Drop?) {
         dataSource.dropReceiver = receiver
     }
-    
+
     func setAcceptedDragTypes(_ acceptedTypes: [NSPasteboard.PasteboardType]?) {
         outlineView.unregisterDraggedTypes()
         if let acceptedTypes,
-           !acceptedTypes.isEmpty
+            !acceptedTypes.isEmpty
         {
             outlineView.registerForDraggedTypes(acceptedTypes)
         }

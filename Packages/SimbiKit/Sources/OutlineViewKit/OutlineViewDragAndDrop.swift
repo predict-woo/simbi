@@ -5,7 +5,7 @@ import AppKit
 @available(macOS 10.15, *)
 public protocol DropReceiver {
     associatedtype DataElement: Identifiable
-    
+
     /// Converts a `NSPasteboardItem` received by a drag-and-drop operation to the data
     /// element of an `OutlineView`.
     ///
@@ -15,7 +15,7 @@ public protocol DropReceiver {
     ///   a tuple with the decoded item and its associated PasteboardType, which must
     ///   be included in `acceptedTypes`.
     func readPasteboard(item: NSPasteboardItem) -> DraggedItem<DataElement>?
-    
+
     /// Defines the behavior of the `OutlineView` and the drag cursor when an item is
     /// being dragged. Called continuously as a dragged item is moved over the `OutlineView`.
     ///
@@ -26,7 +26,7 @@ public protocol DropReceiver {
     ///   of the `OutlineView` where the item will be dropped, or some other behavior.
     ///   See `ValidationResult` for possible return values.
     func validateDrop(target: DropTarget<DataElement>) -> ValidationResult<DataElement>
-    
+
     /// Handles updating the data source once an item is dropped into the `OutlineView`.
     /// Called once after the drop completes and `validateDrop(target:)` returns a case
     /// other than `deny`.
@@ -41,15 +41,15 @@ public protocol DropReceiver {
 @available(macOS 10.15, *)
 public enum NoDropReceiver<Element: Identifiable>: DropReceiver {
     public typealias DataElement = Element
-    
+
     public func readPasteboard(item: NSPasteboardItem) -> DraggedItem<Element>? {
         fatalError()
     }
-    
+
     public func validateDrop(target: DropTarget<Element>) -> ValidationResult<Element> {
         fatalError()
     }
-    
+
     public func acceptDrop(target: DropTarget<Element>) -> Bool {
         fatalError()
     }
@@ -66,7 +66,7 @@ public struct DropTarget<D> {
     /// that is being dragged, and the `NSPasteboard.PasteboardType` that
     /// generated the item from the dragging pasteboard.
     public var items: [DraggedItem<D>]
-    
+
     /// The `OutlineView` data element into which the target is dropping
     /// items.
     ///
@@ -74,7 +74,7 @@ public struct DropTarget<D> {
     /// the data hierarchy. Otherwise, they are to be dropped into the given
     /// item's children array.
     public var intoElement: D?
-    
+
     /// The index of the children array that the dragged items are to be
     /// dropped.
     ///
@@ -83,7 +83,7 @@ public struct DropTarget<D> {
     /// or into a default sorting order). Otherwise, the items should be
     /// inserted at the given index within the children.
     public var childIndex: Int?
-    
+
     /// A closure that can be called to determine if the `OutlineView`'s
     /// representation of a given item is expanded. This may be used in
     /// `DropReceiver` functions that take a `DropTarget` as a parameter,
@@ -99,15 +99,15 @@ public enum ValidationResult<D> {
     /// location. The given location will be highlighted, and the cursor
     /// will show a "+" icon.
     case copy
-    
+
     /// Indicates that the dragged item will be moved to the indicated
     /// location. The given location will be highlighted.
     case move
-    
+
     /// Indicates that the dragged item will not be moved. No location
     /// will be highlighted.
     case deny
-    
+
     /// Indicates that the dragged item will be copied to a different
     /// location than it is currently hovering over. The cursor will
     /// show a "+" icon, and the highlighted location will be determined
@@ -121,7 +121,7 @@ public enum ValidationResult<D> {
     ///     item will be dropped. A nil value will cause `item` to be highlighted,
     ///     while a non-nil value will cause a space between rows to be highlighted.
     case copyRedirect(item: D?, childIndex: Int?)
-    
+
     /// Indicates that the dragged item will be moved to a different
     /// location than it is currently hovering over. The highlighted location
     /// will be determined by the bound values in this enum.
