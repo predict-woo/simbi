@@ -12,6 +12,7 @@ public struct SettingsView: View {
         (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
     @State private var models: [String] = []
     @State private var modelsUnavailable = false
+    @Bindable private var updates = UpdateModel.shared
 
     public init() {}
 
@@ -45,6 +46,27 @@ public struct SettingsView: View {
                     // The last active source can't be turned off.
                     .disabled(!settings.micEnabled)
             }
+            Section("Updates") {
+                Picker("Updates", selection: $updates.mode) {
+                    ForEach(UpdateMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                Picker("Channel", selection: $updates.channel) {
+                    ForEach(UpdateChannel.allCases, id: \.self) { channel in
+                        Text(channel.title).tag(channel)
+                    }
+                }
+                LabeledContent("Version") {
+                    HStack(spacing: 8) {
+                        Text(updateStatusText)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Button("Check Now") { updates.checkForUpdates() }
+                            .disabled(!updates.canCheckForUpdates || updates.isChecking)
+                    }
+                }
+            }
             Section("Notes folder") {
                 LabeledContent("Location") {
                     HStack(spacing: 8) {
@@ -73,6 +95,19 @@ public struct SettingsView: View {
                 modelsUnavailable = true
             }
         }
+    }
+
+    /// "1.3.0 — up to date" / "…— checking…" / "…— 1.4.0 available".
+    private var updateStatusText: String {
+        let version = updates.currentVersion
+        if updates.isChecking { return "\(version) — checking…" }
+        if let available = updates.availability.version {
+            return "\(version) — \(available) available"
+        }
+        guard updates.mode.checksAutomatically || updates.lastCheckDate != nil else {
+            return version
+        }
+        return "\(version) — up to date"
     }
 
     /// `~`-relative home path — friendlier than the absolute `/Users/…`.

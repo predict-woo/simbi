@@ -18,7 +18,10 @@ public struct SimbiRootView: View {
             SidebarView(model: model)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240)
                 .safeAreaInset(edge: .bottom) {
-                    CodexStatusFooter()
+                    VStack(spacing: 0) {
+                        UpdatePill(model: UpdateModel.shared)
+                        CodexStatusFooter()
+                    }
                 }
         } detail: {
             detail

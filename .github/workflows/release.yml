@@ -1,0 +1,266 @@
+name: Release
+
+# Tag-driven. `v1.3.0` ships to the stable channel; any tag with a prerelease
+# suffix (`v1.3.0-beta.1`) ships to the beta channel and is marked a GitHub
+# prerelease. See docs/release-setup.md for the one-time secret setup.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to (re)publish
+        required: true
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Two releases racing would clobber each other's appcast.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SPARKLE_VERSION: "2.9.4"
+  FEED_URL: https://predict-woo.github.io/simbi/appcast.xml
+
+jobs:
+  build:
+    name: Build, notarize, publish
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # CFBundleVersion is the commit count, so shallow clones lie.
+          fetch-depth: 0
+
+      - name: Derive version metadata
+        id: meta
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          BUILD=$(git rev-list --count HEAD)
+          if [[ "$VERSION" == *-* ]]; then
+            CHANNEL=beta
+            PRERELEASE=true
+          else
+            CHANNEL=stable
+            PRERELEASE=false
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "build=$BUILD"
+            echo "channel=$CHANNEL"
+            echo "prerelease=$PRERELEASE"
+            echo "dmg=Simbi-$VERSION.dmg"
+            echo "notes=Simbi-$VERSION-notes.html"
+          } >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION (build $BUILD) to the $CHANNEL channel"
+
+      # A build signed with the placeholder key can never be updated by
+      # Sparkle — fail before it reaches anyone.
+      - name: Verify update-signing key is configured
+        run: |
+          if grep -q 'REPLACE_WITH_generate_keys_OUTPUT' project.yml; then
+            echo "::error::SPARKLE_PUBLIC_ED_KEY is still a placeholder. See docs/release-setup.md"
+            exit 1
+          fi
+
+      - name: Install build tools
+        run: brew install xcodegen create-dmg
+
+      - name: Fetch Sparkle release tools
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sparkle"
+          curl -fsSL \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP/sparkle"
+          "$RUNNER_TEMP/sparkle/bin/sign_update" --version
+
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DEV_ID_CERT_P12 }}
+          p12-password: ${{ secrets.DEV_ID_CERT_PASSWORD }}
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (Developer ID, hardened runtime)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project Simbi.xcodeproj \
+            -scheme Simbi \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build \
+            MARKETING_VERSION='${{ steps.meta.outputs.version }}' \
+            CURRENT_PROJECT_VERSION='${{ steps.meta.outputs.build }}' \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM='${{ secrets.APPLE_TEAM_ID }}' \
+            OTHER_CODE_SIGN_FLAGS="--timestamp" \
+            build
+
+      - name: Verify signature
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release/Simbi.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'flags=.*runtime' \
+            || { echo "::error::hardened runtime missing"; exit 1; }
+          # Sparkle's XPC services and Autoupdate.app must carry the same
+          # identity or the installer is rejected at update time.
+          codesign --verify --strict \
+            "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+
+      - name: Notarize the app
+        env:
+          AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release/Simbi.app
+          printf '%s' "$AC_API_KEY_P8" > "$RUNNER_TEMP/ac_key.p8"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/Simbi.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/Simbi.zip" \
+            --key "$RUNNER_TEMP/ac_key.p8" \
+            --key-id '${{ secrets.AC_API_KEY_ID }}' \
+            --issuer '${{ secrets.AC_API_ISSUER_ID }}' \
+            --wait
+          # Staple the app itself so the copy Sparkle installs validates
+          # offline, not just the disk image it arrived in.
+          xcrun stapler staple "$APP"
+
+      - name: Build and notarize the DMG
+        env:
+          DMG: ${{ steps.meta.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist stage
+          cp -R build/Build/Products/Release/Simbi.app stage/
+          create-dmg \
+            --volname "Simbi" \
+            --window-size 540 380 \
+            --icon-size 96 \
+            --icon "Simbi.app" 140 190 \
+            --app-drop-link 400 190 \
+            --no-internet-enable \
+            "dist/$DMG" stage/
+          codesign --force --timestamp \
+            --sign "Developer ID Application" "dist/$DMG"
+          xcrun notarytool submit "dist/$DMG" \
+            --key "$RUNNER_TEMP/ac_key.p8" \
+            --key-id '${{ secrets.AC_API_KEY_ID }}' \
+            --issuer '${{ secrets.AC_API_ISSUER_ID }}' \
+            --wait
+          xcrun stapler staple "dist/$DMG"
+          xcrun stapler validate "dist/$DMG"
+
+      # The last line of defence: exactly what Gatekeeper will do on a user's
+      # Mac. Better to fail the release than to ship a blocked build.
+      - name: Gatekeeper assessment
+        run: |
+          set -euo pipefail
+          hdiutil attach "dist/${{ steps.meta.outputs.dmg }}" -mountpoint /Volumes/SimbiCheck -nobrowse -quiet
+          spctl -a -vvv -t install /Volumes/SimbiCheck/Simbi.app
+          hdiutil detach /Volumes/SimbiCheck -quiet
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          generate_release_notes: true
+          files: dist/${{ steps.meta.outputs.dmg }}
+
+      - name: Render release notes for the update sheet
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body -q .body > "$RUNNER_TEMP/body.md"
+          # GitHub renders the markdown for us — no pandoc, no pip install.
+          gh api --method POST /markdown \
+            -f mode=gfm -f context=${{ github.repository }} \
+            -f text="$(cat "$RUNNER_TEMP/body.md")" > "$RUNNER_TEMP/body.html"
+          {
+            echo '<!doctype html><meta charset="utf-8">'
+            echo '<style>'
+            echo ':root{color-scheme:light dark}'
+            echo 'body{font:13px -apple-system,system-ui,sans-serif;margin:12px;line-height:1.5}'
+            echo 'h1,h2,h3{font-size:1.05em;margin:1em 0 .4em}'
+            echo 'code,pre{font-family:ui-monospace,SFMono-Regular,monospace;font-size:.92em}'
+            echo 'pre{padding:8px;border-radius:6px;overflow-x:auto;background:color-mix(in srgb,currentColor 8%,transparent)}'
+            echo 'a{color:AccentColor}'
+            echo '</style>'
+            cat "$RUNNER_TEMP/body.html"
+          } > "dist/$NOTES"
+          gh release upload "$TAG" "dist/$NOTES" --clobber
+
+      - name: Sign the update and append it to the appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          DMG: ${{ steps.meta.outputs.dmg }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES: ${{ steps.meta.outputs.notes }}
+        run: |
+          set -euo pipefail
+          mkdir -p site
+
+          # Start from the live feed so past releases survive; a missing feed
+          # (first release) is fine, anything else is a real failure.
+          STATUS=$(curl -sSL -o site/appcast.xml -w '%{http_code}' "$FEED_URL" || echo 000)
+          if [ "$STATUS" = "404" ]; then
+            rm -f site/appcast.xml
+            echo "No published feed yet — starting a new one."
+          elif [ "$STATUS" != "200" ]; then
+            echo "::error::Fetching $FEED_URL returned $STATUS; refusing to truncate the feed"
+            exit 1
+          fi
+
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$RUNNER_TEMP/ed_key"
+          SIGNED=$("$RUNNER_TEMP/sparkle/bin/sign_update" "dist/$DMG" \
+            --ed-key-file "$RUNNER_TEMP/ed_key")
+          rm -f "$RUNNER_TEMP/ed_key"
+          # sign_update prints: sparkle:edSignature="…" length="…"
+          SIGNATURE=$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' <<<"$SIGNED")
+          LENGTH=$(sed -n 's/.*length="\([0-9]*\)".*/\1/p' <<<"$SIGNED")
+          test -n "$SIGNATURE" && test -n "$LENGTH"
+
+          BASE="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          python3 scripts/appcast.py \
+            --appcast site/appcast.xml \
+            --version '${{ steps.meta.outputs.version }}' \
+            --build '${{ steps.meta.outputs.build }}' \
+            --channel '${{ steps.meta.outputs.channel }}' \
+            --url "$BASE/$DMG" \
+            --length "$LENGTH" \
+            --signature "$SIGNATURE" \
+            --release-notes-url "$BASE/$NOTES"
+
+          cp docs/pages-index.html site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy-feed:
+    name: Publish appcast
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

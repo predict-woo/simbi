@@ -26,6 +26,12 @@ public final class RecordingController {
         return controller
     }
 
+    /// True while any open note is capturing. The auto-updater reads this to
+    /// keep an install from ever interrupting a meeting (`UpdateGate`).
+    public static var isAnyRecording: Bool {
+        controllers.values.contains { $0.status.isCapturing }
+    }
+
     public enum Status: Equatable {
         case idle
         /// Requesting mic permission. Models come preloaded from
@@ -35,9 +41,20 @@ public final class RecordingController {
         case recording
         case stopping
         case failed(String)
+
+        /// Audio is (or is about to be) flowing — the window in which an app
+        /// relaunch would cost the user their meeting.
+        var isCapturing: Bool {
+            switch self {
+            case .preparing, .recording, .stopping: true
+            case .idle, .failed: false
+            }
+        }
     }
 
-    private(set) var status: Status = .idle
+    private(set) var status: Status = .idle {
+        didSet { RecordingActivity.shared.refresh() }
+    }
     /// Note-timeline seconds, live while recording.
     private(set) var elapsed: TimeInterval = 0
     /// Tentative live indicator slot ("Speaker N speaking…"), display-only.

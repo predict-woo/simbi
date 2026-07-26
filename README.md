@@ -62,3 +62,17 @@ swift format --in-place --recursive App Packages/SimbiKit/Sources Packages/Simbi
 | Audio format | WebM/Opus everywhere, vendored libopus + libwebm (M1) | codex-native; no raw audio on disk |
 | Project generation | XcodeGen (`project.yml` in git, no `.xcodeproj`) | thin app shell only |
 | CI | GitHub Actions `macos-26`: format lint, `swift test`, unsigned app build | |
+| Updates | [Sparkle 2](https://sparkle-project.org) — notarized DMGs on GitHub Releases, appcast on GitHub Pages | see [docs/release-setup.md](docs/release-setup.md) |
+
+## Releasing
+
+Tag and push; the release workflow builds, signs, notarizes, publishes the DMG
+and updates the Sparkle feed:
+
+```bash
+git tag v1.3.0        && git push origin v1.3.0        # stable channel
+git tag v1.4.0-beta.1 && git push origin v1.4.0-beta.1 # beta channel
+```
+
+One-time setup (Developer ID, notarization keys, Sparkle signing key) is in
+[docs/release-setup.md](docs/release-setup.md).

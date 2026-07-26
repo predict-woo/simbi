@@ -5,9 +5,20 @@ import SwiftUI
 /// `swift build` / `swift test` work headless (SPEC.md §1).
 @main
 struct SimbiApp: App {
+    init() {
+        // Starts Sparkle. It checks in the background and shows nothing until
+        // the second launch, so this costs the first run nothing.
+        SparkleCoordinator.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup {
             SimbiRootView()
+        }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand()
+            }
         }
         // Per-note fixer activity window, opened from the recording
         // header's sparkles button (one window per note URL).

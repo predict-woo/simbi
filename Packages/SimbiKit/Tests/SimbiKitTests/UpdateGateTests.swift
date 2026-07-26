@@ -1,0 +1,129 @@
+import Foundation
+import Testing
+
+@testable import SimbiKit
+
+@Suite("UpdateGate")
+struct UpdateGateTests {
+    @Test("nothing to show when there is no update")
+    func noUpdate() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .none, isRecording: false, relaunchPending: false) == .hidden)
+    }
+
+    @Test("an available update shows while idle")
+    func availableWhileIdle() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .available(version: "1.3.0"),
+                isRecording: false,
+                relaunchPending: false) == .available(version: "1.3.0"))
+    }
+
+    @Test("a staged update shows as ready while idle")
+    func readyWhileIdle() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .readyToInstall(version: "1.3.0"),
+                isRecording: false,
+                relaunchPending: false) == .readyToInstall(version: "1.3.0"))
+    }
+
+    // The core promise: nothing invites a restart mid-meeting.
+    @Test(
+        "recording hides an available update",
+        arguments: [
+            UpdateAvailability.available(version: "1.3.0"),
+            UpdateAvailability.readyToInstall(version: "1.3.0"),
+            UpdateAvailability.none,
+        ])
+    func recordingHidesUnconsentedUpdates(availability: UpdateAvailability) {
+        #expect(
+            UpdateGate.presentation(
+                availability: availability, isRecording: true, relaunchPending: false) == .hidden)
+    }
+
+    @Test("an already-consented install shows as deferred while recording")
+    func consentedInstallReassuresWhileRecording() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .readyToInstall(version: "1.3.0"),
+                isRecording: true,
+                relaunchPending: true) == .waitingForRecordingToEnd(version: "1.3.0"))
+    }
+
+    @Test("a pending relaunch still reads as deferred once recording stops")
+    func pendingRelaunchOutlivesRecording() {
+        // The coordinator fires the stashed invocation on the next idle tick;
+        // until it does, the pill must not flip back to a clickable "install".
+        #expect(
+            UpdateGate.presentation(
+                availability: .readyToInstall(version: "1.3.0"),
+                isRecording: false,
+                relaunchPending: true) == .waitingForRecordingToEnd(version: "1.3.0"))
+    }
+
+    @Test("a pending relaunch with no known version cannot be shown")
+    func pendingRelaunchWithoutVersion() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .none, isRecording: false, relaunchPending: true) == .hidden)
+    }
+
+    @Test("relaunch is blocked exactly while recording")
+    func relaunchGate() {
+        #expect(UpdateGate.mayRelaunch(isRecording: false))
+        #expect(!UpdateGate.mayRelaunch(isRecording: true))
+    }
+}
+
+@Suite("UpdateMode")
+struct UpdateModeTests {
+    @Test("default keeps installs behind an explicit click")
+    func defaultMode() {
+        let mode = UpdateMode.default
+        #expect(mode == .downloadAndAsk)
+        #expect(mode.checksAutomatically)
+        #expect(mode.downloadsAutomatically)
+        #expect(mode.holdsInstallUntilConfirmed)
+    }
+
+    @Test("automatic lets Sparkle install on quit")
+    func automaticMode() {
+        #expect(UpdateMode.automatic.downloadsAutomatically)
+        #expect(!UpdateMode.automatic.holdsInstallUntilConfirmed)
+    }
+
+    @Test("notify-only checks but never pre-downloads")
+    func notifyOnlyMode() {
+        #expect(UpdateMode.notifyOnly.checksAutomatically)
+        #expect(!UpdateMode.notifyOnly.downloadsAutomatically)
+    }
+
+    @Test("never disables background checks entirely")
+    func neverMode() {
+        #expect(!UpdateMode.never.checksAutomatically)
+        #expect(!UpdateMode.never.downloadsAutomatically)
+    }
+
+    @Test("modes round-trip through their stored raw values")
+    func rawValueRoundTrip() {
+        for mode in UpdateMode.allCases {
+            #expect(UpdateMode(rawValue: mode.rawValue) == mode)
+        }
+    }
+}
+
+@Suite("UpdateChannel")
+struct UpdateChannelTests {
+    @Test("stable allows only untagged appcast items")
+    func stableAllowsNoChannels() {
+        #expect(UpdateChannel.stable.allowedChannelIdentifiers.isEmpty)
+    }
+
+    @Test("beta opts into the beta stream")
+    func betaAllowsBeta() {
+        #expect(UpdateChannel.beta.allowedChannelIdentifiers == ["beta"])
+    }
+}

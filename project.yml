@@ -10,6 +10,11 @@ options:
 packages:
   SimbiKit:
     path: Packages/SimbiKit
+  # Auto-update framework (MIT-style). Security-relevant, so patch releases
+  # within 2.x are taken automatically rather than pinned.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.9.4
 
 targets:
   Simbi:
@@ -20,10 +25,20 @@ targets:
     dependencies:
       - package: SimbiKit
         product: SimbiUI
+      - package: Sparkle
+        product: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ac.clap.simbi
         SWIFT_VERSION: "6.0"
+        # Overridden by the release workflow from the git tag. Sparkle
+        # compares CURRENT_PROJECT_VERSION, so it must only ever increase.
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        # Public half of the EdDSA update-signing keypair. Replace with the
+        # output of Sparkle's `generate_keys` — see docs/release-setup.md.
+        # Until then Sparkle refuses every update, which is the safe failure.
+        SPARKLE_PUBLIC_ED_KEY: "REPLACE_WITH_generate_keys_OUTPUT"
         ENABLE_HARDENED_RUNTIME: YES
         # App Sandbox off (SPEC.md §1): we spawn the codex binary, read
         # ~/.codex/auth.json, and write ~/Simbi.
@@ -34,6 +49,20 @@ targets:
       path: App/Info.plist
       properties:
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # Auto-update (docs/superpowers/specs/2026-07-27-github-auto-update-design.md).
+        # The feed URL is permanent — it ships in every build ever released,
+        # so it must never move. Binaries live on GitHub Releases; only this
+        # small XML is served from Pages.
+        SUFeedURL: https://predict-woo.github.io/simbi/appcast.xml
+        SUPublicEDKey: $(SPARKLE_PUBLIC_ED_KEY)
+        # Deliberately NOT setting SUEnableAutomaticChecks: Sparkle treats it
+        # as a pre-answered consent and skips its permission prompt. Leaving
+        # it out preserves the ask-on-second-launch behaviour, so a first run
+        # is silent. Once the user consents, downloads are on by default.
+        SUAutomaticallyUpdate: true
+        SUAllowsAutomaticUpdates: true
         NSMicrophoneUsageDescription: >-
           Simbi records meeting audio from your microphone to transcribe and
           diarize it into your notes.
