@@ -8,7 +8,7 @@ transcribes it through the ChatGPT backend, and delegates all "intelligence"
 **Status: feature-complete (M0–M7).** Recording + diarization, real
 transcription, fixer/converter/chat Codex threads, system-audio capture,
 playback, speaker rename, and per-feature model selectors are all
-implemented and verified (see `docs/verification/`). See [SPEC.md](SPEC.md)
+implemented and verified (see `docs/verification/`). See [docs/SPEC.md](docs/SPEC.md)
 for the full design and
 [docs/recording-algorithm.md](docs/recording-algorithm.md) for the normative
 recording-pipeline algorithm.

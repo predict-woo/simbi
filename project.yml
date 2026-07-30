@@ -40,7 +40,7 @@ targets:
         # Until then Sparkle refuses every update, which is the safe failure.
         SPARKLE_PUBLIC_ED_KEY: "REPLACE_WITH_generate_keys_OUTPUT"
         ENABLE_HARDENED_RUNTIME: YES
-        # App Sandbox off (SPEC.md §1): we spawn the codex binary, read
+        # App Sandbox off (docs/SPEC.md §1): we spawn the codex binary, read
         # ~/.codex/auth.json, and write ~/Simbi.
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_STYLE: Automatic
