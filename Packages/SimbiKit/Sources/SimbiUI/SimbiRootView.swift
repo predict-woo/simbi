@@ -87,18 +87,18 @@ private struct CodexStatusFooter: View {
 
     var body: some View {
         let available = installation.isBinaryInstalled && installation.loadAuth() != nil
-        HStack(spacing: 6) {
-            Circle()
-                .fill(available ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
+        HStack(spacing: Design.iconGap) {
+            StatusDot(color: available ? .statusOK : .statusWarning)
             Text(available ? "Codex connected" : "Codex unavailable — transcription off")
                 .font(.meta)
-                .foregroundStyle(available ? AnyShapeStyle(.secondary) : AnyShapeStyle(.orange))
+                .foregroundStyle(
+                    available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
+                )
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, Design.footerInset)
+        .padding(.vertical, Design.stripPadding)
         .background(.bar)
     }
 }

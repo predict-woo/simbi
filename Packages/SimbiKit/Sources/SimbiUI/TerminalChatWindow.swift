@@ -73,7 +73,7 @@ struct TerminalChatView: View {
     }
 
     private var sessionEndedOverlay: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: Design.rowGap) {
             Text("Codex session ended")
                 .font(.headline)
             Button("Start New Session") {
@@ -82,7 +82,7 @@ struct TerminalChatView: View {
             .keyboardShortcut(.defaultAction)
         }
         .padding(24)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Design.Radius.overlay))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black.opacity(0.25))
     }

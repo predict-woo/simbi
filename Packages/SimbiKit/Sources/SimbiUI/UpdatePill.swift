@@ -26,7 +26,7 @@ struct UpdatePill: View {
         case .waitingForRecordingToEnd(let version):
             // Reassurance, not an invitation: no button, nothing to click
             // wrong while a meeting is being captured.
-            HStack(spacing: 6) {
+            HStack(spacing: Design.iconGap) {
                 Image(systemName: "clock")
                     .font(.meta)
                 Text("Simbi \(version) installs after this recording")
@@ -35,8 +35,8 @@ struct UpdatePill: View {
             }
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Design.footerInset)
+            .padding(.vertical, Design.footerStripPadding)
         }
     }
 
@@ -44,7 +44,7 @@ struct UpdatePill: View {
         _ title: String, icon: String, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: Design.iconGap) {
                 Image(systemName: icon)
                     .font(.meta)
                 Text(title)
@@ -53,8 +53,8 @@ struct UpdatePill: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(Color.accentColor)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Design.footerInset)
+            .padding(.vertical, Design.footerStripPadding)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)

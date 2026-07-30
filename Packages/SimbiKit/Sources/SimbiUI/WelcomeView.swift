@@ -43,9 +43,7 @@ private struct CodexSetupCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(state == .connected ? Color.green : Color.orange)
-                .frame(width: 7, height: 7)
+            StatusDot(color: state == .connected ? .statusOK : .statusWarning)
                 .padding(.top, 4)
             VStack(alignment: .leading, spacing: Design.innerGap) {
                 Text(message)
@@ -54,11 +52,7 @@ private struct CodexSetupCard: View {
             }
         }
         .padding(Design.paneInset)
-        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor))
-        )
+        .card()
         .animation(.default, value: state)
     }
 
