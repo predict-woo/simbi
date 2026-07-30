@@ -30,27 +30,14 @@ public struct PipelineInspectorWindow: View {
     }
 }
 
-/// Window-local styling helpers. Chrome and ink come from the system so
-/// the window follows the app's appearance; only what the Canvas needs as
-/// concrete `Color`s lives here, plus the slot→speaker mapping shared
-/// with the transcript.
-enum InspectorDesign {
-    /// Recessed content wells (timeline, event log) — the text-view
-    /// surface, so lane colors read on it in both appearances.
-    static let well = Color(nsColor: .textBackgroundColor)
-    static let line = Color(nsColor: .separatorColor)
-    /// Card surface for the model boxes, rule meters and flush cards.
-    static let card = Color.primary.opacity(0.045)
-    /// Tertiary ink as a concrete color — Canvas text can't take the
-    /// hierarchical `.tertiary` style.
-    static let faintInk = Color(nsColor: .tertiaryLabelColor)
-    /// Staging + rule accent: the app's one warning hue (`StatusBanner`).
-    static let accent = Color.orange
-
+/// Pipeline-domain helpers for the inspector's canvas and panels. All
+/// styling comes from the shared design system; only the slot→speaker
+/// mapping and grid math live here.
+enum Inspector {
     /// Seconds per 80 ms grid frame.
     static let frameSeconds = Double(CutConstants.frameSamples) / 16000
 
-    static func speaker(_ slot: Int?) -> Color {
+    static func speakerColor(_ slot: Int?) -> Color {
         guard let slot else { return Color.primary.opacity(0.12) }
         return Design.speakerPalette[slot % Design.speakerPalette.count]
     }
@@ -141,15 +128,13 @@ struct PipelineInspectorView: View {
     }
 
     private var sectionDivider: some View {
-        Rectangle().fill(InspectorDesign.line).frame(height: 1)
+        Hairline()
     }
 
     private func statusRow(latest: InspectorUpdate?) -> some View {
         HStack(spacing: 12) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(model.phase == .live ? Color.red : InspectorDesign.faintInk)
-                    .frame(width: 8, height: 8)
+            HStack(spacing: Design.iconGap) {
+                StatusDot(color: model.phase == .live ? .statusLive : .faintInk)
                 Text(Design.time(model.elapsed))
                     .font(.system(size: 13, weight: .medium))
                     .monospacedDigit()
@@ -166,7 +151,7 @@ struct PipelineInspectorView: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, Design.paneInset)
-        .padding(.vertical, 8)
+        .padding(.vertical, Design.stripPadding)
     }
 
     private func sectionHeader(_ title: String, hint: String?) -> some View {
