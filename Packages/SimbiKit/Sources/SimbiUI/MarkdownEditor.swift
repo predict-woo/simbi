@@ -27,7 +27,7 @@ public struct MarkdownEditor: View {
         config.services.syntaxHighlighter = HighlighterSwiftBridge()
         config.services.latex = SwiftMathBridge()
         config.extensions = [HighlightExtension(), StrikethroughExtension()]
-        config.textInsets = TextInsets(horizontal: 24, vertical: 20)
+        config.textInsets = TextInsets(horizontal: Design.editorInset, vertical: 20)
         // The engine auto-pairs [ ( { but has no type-through of the closing
         // char, so typing literal markdown (`- [ ]`, `[text](url)`) leaves a
         // stray bracket behind. Notes are plain markdown — typed syntax must

@@ -175,7 +175,7 @@ struct PlaybackBar: View {
             .buttonStyle(.borderless)
             .help(playback.isPlaying ? "Pause" : "Play")
             Text(Design.time(scrubPosition ?? playback.position))
-                .font(.meta.monospacedDigit())
+                .font(.metaMono)
                 .foregroundStyle(.secondary)
             Slider(
                 value: Binding(
@@ -191,11 +191,11 @@ struct PlaybackBar: View {
             }
             .controlSize(.small)
             Text(Design.time(playback.duration))
-                .font(.meta.monospacedDigit())
+                .font(.metaMono)
                 .foregroundStyle(.tertiary)
         }
         .padding(.horizontal, Design.paneInset)
-        .padding(.vertical, 8)
+        .padding(.vertical, Design.stripPadding)
         .onAppear { playback.refreshDuration() }
     }
 }
@@ -218,7 +218,7 @@ struct RecordingHeader: View {
         VStack(spacing: 0) {
             controls
                 .padding(.horizontal, Design.paneInset)
-                .padding(.vertical, 10)
+                .padding(.vertical, Design.stripPadding)
             let banner =
                 Design.uiPreview
                 ? "System audio capture was denied — recording the mic only." : recorder.systemAudioBanner
@@ -255,7 +255,7 @@ struct RecordingHeader: View {
                             Text(recorder.hasRecording ? "Resume" : "Record")
                         } icon: {
                             Image(systemName: "record.circle.fill")
-                                .foregroundStyle(.red)
+                                .foregroundStyle(Color.statusLive)
                         }
                     case .preparing:
                         Label("Preparing…", systemImage: "record.circle")
@@ -265,14 +265,12 @@ struct RecordingHeader: View {
                 }
             }
             .buttonStyle(.bordered)
-            .tint(isRecording ? .red : nil)
+            .tint(isRecording ? .statusLive : nil)
             .disabled(recorder.status == .preparing || recorder.status == .stopping)
 
-            HStack(spacing: 6) {
+            HStack(spacing: Design.iconGap) {
                 if isRecording {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 7, height: 7)
+                    StatusDot(color: .statusLive)
                         .modifier(PulseEffect())
                 }
                 Text(Design.time(recorder.elapsed))
@@ -288,7 +286,7 @@ struct RecordingHeader: View {
             if case .failed(let message) = recorder.status {
                 Text(message)
                     .font(.meta)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusLive)
                     .lineLimit(2)
             }
 
@@ -391,7 +389,7 @@ struct RecordingHeader: View {
                     .disabled(!recorder.micEnabled)
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: Design.iconGap) {
                 Image(systemName: recorder.micEnabled ? "mic.fill" : "mic.slash")
                     .foregroundStyle(
                         recorder.micEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
@@ -436,15 +434,15 @@ struct RecordingHeader: View {
     private var liveIndicator: some View {
         if let slot = tentativeSpeaker {
             let name = "Speaker \(slot + 1)"
-            HStack(spacing: 5) {
+            HStack(spacing: Design.iconGap) {
                 Image(systemName: "waveform")
                     .font(.meta)
                 SpeakerChip(name: name)
             }
             .foregroundStyle(Design.speakerColor(name))
             .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Design.speakerColor(name).opacity(0.12), in: Capsule())
+            .padding(.vertical, Design.innerGap)
+            .background(Design.speakerTint(name), in: Capsule())
         } else {
             Text("Listening…")
                 .font(.meta)

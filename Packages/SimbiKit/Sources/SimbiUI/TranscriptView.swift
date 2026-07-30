@@ -128,7 +128,7 @@ struct TranscriptView: View {
                     // Follow playback: keep the highlighted cue in view.
                     .onChange(of: activeRow) { _, row in
                         guard let row else { return }
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(Design.Anim.standard) {
                             proxy.scrollTo(row, anchor: .center)
                         }
                     }
@@ -151,7 +151,7 @@ struct TranscriptView: View {
                         Text("macOS will ask for microphone access the first time.")
                         if CodexSetupModel.detectState() != .connected {
                             Text("Transcription needs the ChatGPT app — see the sidebar footer.")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Color.statusWarning)
                         }
                     }
                 }
@@ -199,7 +199,7 @@ struct TranscriptView: View {
                         onSeek?(start)
                     } label: {
                         Text(Design.time(start))
-                            .font(.meta.monospacedDigit())
+                            .font(.metaMono)
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
@@ -207,7 +207,7 @@ struct TranscriptView: View {
                     .help("Play from here")
                     if continuation {
                         Image(systemName: "arrow.turn.down.right")
-                            .font(.system(size: 9))
+                            .font(.micro)
                             .foregroundStyle(.quaternary)
                             .help("Continues across a session break")
                     }
@@ -234,15 +234,15 @@ struct TranscriptView: View {
             // slightly past the row bounds without affecting layout.
             .background {
                 if isActive {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Design.speakerColor(speaker).opacity(0.12))
+                    RoundedRectangle(cornerRadius: Design.Radius.row)
+                        .fill(Design.speakerTint(speaker))
                         .padding(.horizontal, -8)
                         .padding(.vertical, -4)
                 }
             }
         case .gap(let start, let end):
             Text("\(Int((end - start).rounded())) s of silence")
-                .font(.system(size: 10))
+                .font(.micro)
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .center)
         case .sessionStart(let n, let wallClock, _):
@@ -260,6 +260,9 @@ struct TranscriptView: View {
         }
     }
 
+    /// Deliberately fainter than the shared `Hairline` — a session break
+    /// is background texture, not a pane boundary (see the 2026-07-17
+    /// redesign README on marker loudness).
     private var hairline: some View {
         Rectangle()
             .fill(.quaternary)

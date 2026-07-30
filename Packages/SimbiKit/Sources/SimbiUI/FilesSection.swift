@@ -43,13 +43,13 @@ struct FilesSection: View {
             if let error = model.importError {
                 Text(error)
                     .font(.meta)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusLive)
                     .lineLimit(2)
             }
         }
         // Matches the editor's text inset so the section shares its left edge.
-        .padding(.horizontal, 24)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Design.editorInset)
+        .padding(.vertical, Design.stripPadding)
         .background(
             Color.accentColor.opacity(isDropTargeted ? 0.08 : 0)
         )
@@ -58,7 +58,7 @@ struct FilesSection: View {
                 .fill(Color.accentColor.opacity(isDropTargeted ? 1 : 0))
                 .frame(height: 2)
         }
-        .animation(.easeOut(duration: 0.15), value: isDropTargeted)
+        .animation(Design.Anim.quick, value: isDropTargeted)
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.item],
@@ -113,7 +113,7 @@ private struct FileRow: View {
             case .failed:
                 Text("Failed")
                     .font(.meta)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Color.statusLive)
                 Button {
                     model.retry(row.name)
                 } label: {
