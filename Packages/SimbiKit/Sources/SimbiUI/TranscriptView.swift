@@ -145,10 +145,8 @@ struct TranscriptView: View {
                     Label("No Recording", systemImage: "waveform")
                 } description: {
                     VStack(spacing: Design.innerGap) {
-                        Text(
-                            "Press Record to capture the room — Simbi transcribes and labels each speaker as they talk."
-                        )
-                        Text("macOS will ask for microphone access the first time.")
+                        Text("Press Record to capture the room")
+                        Text("Simbi transcribes and labels each speaker as they talk.")
                         if CodexSetupModel.detectState() != .connected {
                             Text("Transcription needs the ChatGPT app — see the sidebar footer.")
                                 .foregroundStyle(Color.statusWarning)
