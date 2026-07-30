@@ -98,11 +98,11 @@ struct NoteView: View {
         }
     }
 
-    /// In-app chat (SPEC.md §5.4): one persistent Codex thread per note,
-    /// one window per note; reopening focuses it.
+    /// In-app chat (SPEC.md §5.4): a note's chats live as native tabs of
+    /// one window; reopening focuses it, new chats come from its + button.
     private var chatButton: some View {
         Button {
-            openWindow(id: ChatWindow.windowId, value: document.noteFolderURL)
+            ChatWindowManager.shared.openOrFocus(noteFolderURL: document.noteFolderURL)
         } label: {
             Label("Chat", systemImage: "bubble.left.and.bubble.right")
         }

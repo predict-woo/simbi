@@ -6,9 +6,20 @@ import SwiftUI
 @main
 struct SimbiApp: App {
     init() {
+        // The system "prefer tabs: always" setting auto-tabs a new window
+        // into an existing group DURING creation, and SwiftUI (macOS 26)
+        // never commits window content for windows born that way — they
+        // stay permanently blank. Chat windows join their note's tab group
+        // explicitly instead (ChatWindowManager), after content exists.
+        NSWindow.allowsAutomaticWindowTabbing = false
+
         // Starts Sparkle. It checks in the background and shows nothing until
         // the second launch, so this costs the first run nothing.
-        SparkleCoordinator.shared.start()
+        // SIMBI_NO_SPARKLE skips it for headless verification runs: its
+        // failed-check alert is app-modal and stalls the whole scene layer.
+        if ProcessInfo.processInfo.environment["SIMBI_NO_SPARKLE"] == nil {
+            SparkleCoordinator.shared.start()
+        }
     }
 
     var body: some Scene {
@@ -29,14 +40,10 @@ struct SimbiApp: App {
         }
         .windowResizability(.contentSize)
         .defaultSize(width: 380, height: 300)
-        // Per-note chat window (docs/SPEC.md §5.4): the note's persistent Codex
-        // conversation, opened from the note toolbar.
-        WindowGroup("Chat", id: ChatWindow.windowId, for: URL.self) { $url in
-            if let url {
-                ChatWindow(noteFolderURL: url)
-            }
-        }
-        .defaultSize(width: 480, height: 620)
+        // The per-note chat windows (docs/SPEC.md §5.4) are NOT here on
+        // purpose: they are AppKit windows owned by ChatWindowManager
+        // (SimbiUI). See its doc comment for why they must not be a
+        // SwiftUI WindowGroup.
         // Per-note pipeline inspector (recording debug HUD), opened from
         // the recording header while a session is live.
         WindowGroup(
