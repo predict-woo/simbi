@@ -453,25 +453,6 @@ struct RecordingHeader: View {
     }
 }
 
-/// Slow opacity pulse for the live recording dot.
-private struct PulseEffect: ViewModifier {
-    var active = true
-    @State private var dimmed = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(dimmed ? 0.3 : 1)
-            .animation(
-                active ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : .default,
-                value: dimmed
-            )
-            .onAppear { dimmed = active }
-            .onChange(of: active) { _, nowActive in
-                dimmed = nowActive
-            }
-    }
-}
-
 /// The per-note fixer activity window (SPEC.md §5.2): coarse status
 /// headline over the one-line event feed. A glance at what the fixer is
 /// doing, not a log. The app shell declares the matching

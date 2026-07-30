@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Shared components of the design language. Tokens live in
-/// `DesignSystem/{Tokens,Colors,Typography}.swift`; the contract is
-/// `docs/design-system.md`.
+/// Shared components (docs/design-system.md § Components). A pattern
+/// earns a slot here on its third occurrence — one-offs stay inline.
 
 /// Uppercased, tracked section label — "FILES", "TRANSCRIPT".
 struct SectionLabel: View {
@@ -62,5 +61,52 @@ struct SpeakerChip: View {
                 .font(.metaSemibold)
                 .foregroundStyle(color)
         }
+    }
+}
+
+/// Status hue dot, optionally with a meta label — the connected /
+/// unavailable / live indicator (sidebar footer, welcome card, recording
+/// header, inspector status row).
+struct StatusDot: View {
+    let color: Color
+    var label: String?
+
+    var body: some View {
+        HStack(spacing: Design.iconGap) {
+            Circle()
+                .fill(color)
+                .frame(width: Design.dotSize, height: Design.dotSize)
+            if let label {
+                Text(label)
+                    .font(.meta)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// 1pt rule — the only divider besides stock `Divider()` in stock lists.
+struct Hairline: View {
+    var body: some View {
+        Rectangle().fill(Color.hairline).frame(height: 1)
+    }
+}
+
+/// Capsule meter: `trackFill` track with a tinted fill from the left.
+struct MeterBar: View {
+    let fraction: Double
+    let tint: Color
+    var height: CGFloat = 5
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.trackFill)
+                Capsule()
+                    .fill(tint)
+                    .frame(width: geo.size.width * min(max(fraction, 0), 1))
+            }
+        }
+        .frame(height: height)
     }
 }
