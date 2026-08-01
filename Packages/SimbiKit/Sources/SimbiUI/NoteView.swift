@@ -62,9 +62,9 @@ struct NoteView: View {
     var body: some View {
         HSplitView {
             editorPane
-                .frame(minWidth: 320, idealWidth: 560)
+                .frame(minWidth: 260, idealWidth: 560)
             transcriptPane
-                .frame(minWidth: 260, idealWidth: 380)
+                .frame(minWidth: 220, idealWidth: 380)
         }
         .navigationTitle(document.noteFolderURL.lastPathComponent)
         .toolbar {

@@ -16,7 +16,7 @@ public struct SimbiRootView: View {
     public var body: some View {
         NavigationSplitView {
             SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 180, ideal: 240)
+                .navigationSplitViewColumnWidth(min: 160, ideal: 240)
                 .safeAreaInset(edge: .bottom) {
                     VStack(spacing: 0) {
                         UpdatePill(model: UpdateModel.shared)
