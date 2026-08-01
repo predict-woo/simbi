@@ -24,7 +24,11 @@ public struct SimbiRootView: View {
                     }
                 }
         } detail: {
+            // Same floor as NoteView's split so the window minimum doesn't
+            // change with selection (the no-note placeholder has no
+            // intrinsic width of its own).
             detail
+                .frame(minWidth: 480, minHeight: 280)
         }
         .toolbar {
             ToolbarItem {
