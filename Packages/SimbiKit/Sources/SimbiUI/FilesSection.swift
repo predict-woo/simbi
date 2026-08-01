@@ -28,8 +28,10 @@ struct FilesSection: View {
                 .help("Add Files…")
                 .accessibilityLabel("Add Files")
             }
-            // Matches the editor's text inset so the section shares its left edge.
-            .padding(.horizontal, Design.editorInset)
+            // Leading matches the editor's text inset; trailing matches the strip's
+            // vertical rhythm so the add button sits square in the corner.
+            .padding(.leading, Design.editorInset)
+            .padding(.trailing, Design.stripPadding)
             if model.rows.isEmpty {
                 Text("Drop files here — Codex turns them into note context.")
                     .font(.meta)
