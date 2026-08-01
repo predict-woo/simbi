@@ -46,6 +46,10 @@ final class FilesModel {
         noteFolderURL.appending(path: "context/\(name).md")
     }
 
+    func fileURL(for name: String) -> URL {
+        filesURL.appending(path: name)
+    }
+
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
         let settings =
@@ -85,6 +89,20 @@ final class FilesModel {
     }
 
     func retry(_ name: String) {
+        try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+            $0.conversions[name] = nil
+        }
+        refresh()
+    }
+
+    /// Trashes the original and its converted markdown, and clears the
+    /// conversion record so a re-added file with the same name converts
+    /// fresh. Trash (not unlink) so a slip is recoverable, like Finder.
+    func delete(_ name: String) {
+        try? FileManager.default.trashItem(
+            at: fileURL(for: name), resultingItemURL: nil)
+        try? FileManager.default.trashItem(
+            at: contextURL(for: name), resultingItemURL: nil)
         try? NoteRecordingState.update(noteFolder: noteFolderURL) {
             $0.conversions[name] = nil
         }

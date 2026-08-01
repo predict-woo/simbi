@@ -14,7 +14,7 @@ enum Design {
 
     /// Pane content inset (transcript, files, banners, chrome strips).
     static let paneInset: CGFloat = 16
-    /// The editor canvas's text inset; the FILES strip aligns to it.
+    /// The editor canvas's text inset; the files strip aligns to it.
     static let editorInset: CGFloat = 24
     /// Horizontal inset for sidebar-footer rows (update pill, codex status).
     static let footerInset: CGFloat = 12
@@ -31,6 +31,10 @@ enum Design {
     static let footerStripPadding: CGFloat = 6
     /// Status and speaker identity dots, everywhere.
     static let dotSize: CGFloat = 7
+    /// Files-shelf tile width (thumbnail box and caption).
+    static let fileTileWidth: CGFloat = 88
+    /// Files-shelf thumbnail box height.
+    static let fileThumbHeight: CGFloat = 64
 
     /// The note editor's base point size (document canvas, not UI chrome).
     static let editorFontSize: CGFloat = 15

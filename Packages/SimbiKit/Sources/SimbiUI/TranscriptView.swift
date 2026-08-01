@@ -228,6 +228,11 @@ struct TranscriptView: View {
                         }
                     }
             }
+            .hoverFill(
+                RoundedRectangle(cornerRadius: Design.Radius.row),
+                horizontalBleed: 8, verticalBleed: 4,
+                enabled: onSeek != nil
+            )
             // Playing-now highlight in the cue's speaker color, bleeding
             // slightly past the row bounds without affecting layout.
             .background {
