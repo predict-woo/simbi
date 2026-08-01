@@ -103,24 +103,30 @@ struct FilesSection: View {
     /// Circular glass like the toolbar buttons on macOS 26; hover-highlight
     /// accessory style further back.
     @ViewBuilder private var addButton: some View {
-        let button = Button {
-            showImporter = true
-        } label: {
-            Image(systemName: "plus")
-                .font(.body)
-        }
-        .help("Add Files…")
-        .accessibilityLabel("Add Files")
-
         if #available(macOS 26.0, *) {
-            button
-                .buttonStyle(.plain)
-                .padding(Design.stripPadding)
-                .glassEffect(.regular.interactive(), in: Circle())
+            Button {
+                showImporter = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.body)
+                    .padding(Design.stripPadding)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .glassEffect(.regular.interactive(), in: Circle())
+            .help("Add Files…")
+            .accessibilityLabel("Add Files")
         } else {
-            button
-                .buttonStyle(.accessoryBar)
-                .controlSize(.large)
+            Button {
+                showImporter = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.body)
+            }
+            .buttonStyle(.accessoryBar)
+            .controlSize(.large)
+            .help("Add Files…")
+            .accessibilityLabel("Add Files")
         }
     }
 }
