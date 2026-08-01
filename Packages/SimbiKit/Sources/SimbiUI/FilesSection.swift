@@ -4,8 +4,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The note view's files section (SPEC.md §6): drag-drop target + file
-/// picker, one row per `files/` entry with conversion status and a link to
-/// its `context/` markdown.
+/// picker, one thumbnail tile per `files/` entry with conversion status
+/// and actions in a context menu.
 struct FilesSection: View {
     let model: FilesModel
     @State private var showImporter = false
@@ -105,6 +105,7 @@ private struct FileTile: View {
                 .truncationMode(.middle)
         }
         .frame(width: Design.fileTileWidth)
+        .contentShape(Rectangle())
         .help(row.name)
         .onTapGesture(count: 2) {
             NSWorkspace.shared.open(fileURL)
