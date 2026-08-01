@@ -21,9 +21,10 @@ struct FilesSection: View {
                     showImporter = true
                 } label: {
                     Image(systemName: "plus")
-                        .font(.metaSemibold)
+                        .font(.body)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.accessoryBar)
+                .controlSize(.large)
                 .help("Add Files…")
                 .accessibilityLabel("Add Files")
             }
