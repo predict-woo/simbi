@@ -31,6 +31,10 @@ enum Design {
     static let footerStripPadding: CGFloat = 6
     /// Status and speaker identity dots, everywhere.
     static let dotSize: CGFloat = 7
+    /// Files-shelf tile width (thumbnail box and caption).
+    static let fileTileWidth: CGFloat = 88
+    /// Files-shelf thumbnail box height.
+    static let fileThumbHeight: CGFloat = 64
 
     /// The note editor's base point size (document canvas, not UI chrome).
     static let editorFontSize: CGFloat = 15

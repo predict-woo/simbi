@@ -46,6 +46,10 @@ final class FilesModel {
         noteFolderURL.appending(path: "context/\(name).md")
     }
 
+    func fileURL(for name: String) -> URL {
+        filesURL.appending(path: name)
+    }
+
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
         let settings =

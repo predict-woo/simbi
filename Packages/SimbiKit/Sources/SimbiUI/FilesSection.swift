@@ -31,14 +31,13 @@ struct FilesSection: View {
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: Design.rowGap) {
                         ForEach(model.rows) { row in
-                            FileRow(model: model, row: row)
+                            FileTile(model: model, row: row)
                         }
                     }
                 }
-                .frame(maxHeight: 140)
             }
             if let error = model.importError {
                 Text(error)
@@ -79,66 +78,67 @@ struct FilesSection: View {
     }
 }
 
-private struct FileRow: View {
+/// One shelf tile: Quick Look thumbnail, name caption, conversion badge,
+/// and the file's actions in a context menu. Double-click opens the
+/// original; the badge shows converting/failed and nothing when done.
+private struct FileTile: View {
     let model: FilesModel
     let row: FilesModel.Row
 
+    private var fileURL: URL { model.fileURL(for: row.name) }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .frame(width: 16)
+        VStack(spacing: Design.innerGap) {
+            FileThumbnail(
+                url: fileURL,
+                size: CGSize(width: Design.fileTileWidth, height: Design.fileThumbHeight)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Design.Radius.card))
+            .overlay(
+                RoundedRectangle(cornerRadius: Design.Radius.card)
+                    .strokeBorder(Color.hairline)
+            )
+            .overlay(alignment: .topTrailing) { badge }
             Text(row.name)
-                .font(.body)
+                .font(.meta)
                 .lineLimit(1)
                 .truncationMode(.middle)
-            Spacer()
-            switch row.status {
-            case .converting:
-                ProgressView()
-                    .controlSize(.mini)
-                Text("Converting…")
-                    .font(.meta)
-                    .foregroundStyle(.secondary)
-            case .done:
-                Button {
+        }
+        .frame(width: Design.fileTileWidth)
+        .help(row.name)
+        .onTapGesture(count: 2) {
+            NSWorkspace.shared.open(fileURL)
+        }
+        .contextMenu {
+            Button("Open") { NSWorkspace.shared.open(fileURL) }
+            if case .done = row.status {
+                Button("Open Context") {
                     NSWorkspace.shared.open(model.contextURL(for: row.name))
-                } label: {
-                    Text("Open Context")
-                        .font(.meta)
                 }
-                .buttonStyle(.link)
-                .help("Open the converted markdown")
-            case .failed:
-                Text("Failed")
-                    .font(.meta)
-                    .foregroundStyle(Color.statusLive)
-                Button {
-                    model.retry(row.name)
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.meta)
-                }
-                .buttonStyle(.borderless)
-                .help("Retry conversion")
+            }
+            if case .failed = row.status {
+                Button("Retry Conversion") { model.retry(row.name) }
+            }
+            Divider()
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([fileURL])
             }
         }
-        .padding(.vertical, 1)
     }
 
-    /// File-type icon by extension, so the row hints at what was dropped.
-    private var icon: String {
-        switch (row.name as NSString).pathExtension.lowercased() {
-        case "png", "jpg", "jpeg", "gif", "heic", "webp": "photo"
-        case "pdf": "doc.richtext"
-        case "doc", "docx", "pages": "doc.text"
-        case "xls", "xlsx", "numbers", "csv": "tablecells"
-        case "ppt", "pptx", "key": "rectangle.on.rectangle"
-        case "mp3", "m4a", "wav", "opus": "waveform"
-        case "mp4", "mov": "film"
-        case "zip", "tar", "gz": "archivebox"
-        default: "doc"
+    @ViewBuilder private var badge: some View {
+        switch row.status {
+        case .converting:
+            ProgressView()
+                .controlSize(.mini)
+                .padding(2)
+        case .failed:
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.meta)
+                .foregroundStyle(.white, Color.statusLive)
+                .padding(2)
+        case .done:
+            EmptyView()
         }
     }
 }
