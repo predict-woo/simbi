@@ -114,8 +114,9 @@ struct FilesSection: View {
 
         if #available(macOS 26.0, *) {
             button
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
+                .buttonStyle(.plain)
+                .padding(Design.stripPadding)
+                .glassEffect(.regular.interactive(), in: Circle())
         } else {
             button
                 .buttonStyle(.accessoryBar)
