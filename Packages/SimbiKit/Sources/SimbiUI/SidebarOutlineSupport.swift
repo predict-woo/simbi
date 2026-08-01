@@ -16,6 +16,10 @@ final class SidebarCellView: NSTableCellView {
 
         let label = NSTextField(labelWithString: node.name)
         label.lineBreakMode = .byTruncatingTail
+        // A long name must never widen the row: the label yields to the
+        // cell bounds (low resistance + hard trailing pin) and shows an
+        // ellipsis instead of running under the sidebar's edge.
+        label.setContentCompressionResistancePriority(.init(249), for: .horizontal)
         if node.kind == .folder {
             label.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
         }
@@ -25,7 +29,7 @@ final class SidebarCellView: NSTableCellView {
         label.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
             label.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
