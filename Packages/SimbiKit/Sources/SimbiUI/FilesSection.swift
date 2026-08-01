@@ -25,12 +25,15 @@ struct FilesSection: View {
                 }
                 .buttonStyle(.borderless)
             }
+            // Matches the editor's text inset so the section shares its left edge.
+            .padding(.horizontal, Design.editorInset)
             if model.rows.isEmpty {
                 Text("Drop files here — Codex turns them into note context.")
                     .font(.meta)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 10)
+                    .padding(.horizontal, Design.editorInset)
             } else {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: Design.rowGap) {
@@ -41,6 +44,22 @@ struct FilesSection: View {
                     .padding(.vertical, Design.stripPadding)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                .contentMargins(.horizontal, Design.editorInset, for: .scrollContent)
+                .mask {
+                    HStack(spacing: 0) {
+                        LinearGradient(
+                            colors: [.clear, .black],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: Design.editorInset)
+                        Color.black
+                        LinearGradient(
+                            colors: [.black, .clear],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: Design.editorInset)
+                    }
+                }
                 .background {
                     Color.clear
                         .contentShape(Rectangle())
@@ -52,10 +71,9 @@ struct FilesSection: View {
                     .font(.meta)
                     .foregroundStyle(Color.statusLive)
                     .lineLimit(2)
+                    .padding(.horizontal, Design.editorInset)
             }
         }
-        // Matches the editor's text inset so the section shares its left edge.
-        .padding(.horizontal, Design.editorInset)
         .padding(.vertical, Design.stripPadding)
         .background(
             Color.accentColor.opacity(isDropTargeted ? 0.08 : 0)
