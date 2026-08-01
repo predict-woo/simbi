@@ -60,12 +60,22 @@ struct NoteView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        HSplitView {
-            editorPane
-                .frame(minWidth: 260, idealWidth: 560)
-            transcriptPane
-                .frame(minWidth: 220, idealWidth: 380)
+        // The GeometryReader is load-bearing: on macOS 26, an HSplitView
+        // nested in a NavigationSplitView detail pins the window minimum
+        // at a bogus constant (~1028 pt) while the sidebar is open. A
+        // GeometryReader accepts any proposal, so the split view's broken
+        // constraint never reaches the window; the frame below reimposes
+        // the real minimum (the sum of the two pane floors).
+        GeometryReader { geo in
+            HSplitView {
+                editorPane
+                    .frame(minWidth: 260, idealWidth: 560)
+                transcriptPane
+                    .frame(minWidth: 220, idealWidth: 380)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
+        .frame(minWidth: 480)
         .navigationTitle(document.noteFolderURL.lastPathComponent)
         .toolbar {
             ToolbarItem {
