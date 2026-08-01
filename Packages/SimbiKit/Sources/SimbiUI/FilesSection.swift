@@ -20,10 +20,12 @@ struct FilesSection: View {
                 Button {
                     showImporter = true
                 } label: {
-                    Label("Add Files…", systemImage: "plus")
-                        .font(.meta)
+                    Image(systemName: "plus")
+                        .font(.metaSemibold)
                 }
                 .buttonStyle(.borderless)
+                .help("Add Files…")
+                .accessibilityLabel("Add Files")
             }
             // Matches the editor's text inset so the section shares its left edge.
             .padding(.horizontal, Design.editorInset)
