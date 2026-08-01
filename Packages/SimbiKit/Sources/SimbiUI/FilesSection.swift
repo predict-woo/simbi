@@ -17,16 +17,7 @@ struct FilesSection: View {
             HStack {
                 SectionLabel(title: "Files")
                 Spacer()
-                Button {
-                    showImporter = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.body)
-                }
-                .buttonStyle(.accessoryBar)
-                .controlSize(.large)
-                .help("Add Files…")
-                .accessibilityLabel("Add Files")
+                addButton
             }
             // Leading matches the editor's text inset; trailing matches the strip's
             // vertical rhythm so the add button sits square in the corner.
@@ -106,6 +97,29 @@ struct FilesSection: View {
             return true
         } isTargeted: {
             isDropTargeted = $0
+        }
+    }
+
+    /// Circular glass like the toolbar buttons on macOS 26; hover-highlight
+    /// accessory style further back.
+    @ViewBuilder private var addButton: some View {
+        let button = Button {
+            showImporter = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.body)
+        }
+        .help("Add Files…")
+        .accessibilityLabel("Add Files")
+
+        if #available(macOS 26.0, *) {
+            button
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+        } else {
+            button
+                .buttonStyle(.accessoryBar)
+                .controlSize(.large)
         }
     }
 }
