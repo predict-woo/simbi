@@ -51,7 +51,7 @@ public final class FixerActivityModel {
         case .passCompleted(let merged, let failed):
             status = .waiting
             if failed {
-                add(icon: "exclamationmark.triangle", text: "Pass failed — will retry on new cues")
+                add(icon: "exclamationmark.triangle", text: "Pass failed, will retry on new cues")
             } else if merged > 0 {
                 add(
                     icon: "checkmark.circle",
@@ -61,7 +61,7 @@ public final class FixerActivityModel {
             }
         case .archived:
             status = .done
-            add(icon: "moon.zzz", text: "Done — all cues reviewed")
+            add(icon: "moon.zzz", text: "Done: all cues reviewed")
         }
     }
 

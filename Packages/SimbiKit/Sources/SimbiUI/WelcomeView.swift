@@ -59,11 +59,11 @@ private struct CodexSetupCard: View {
     private var message: String {
         switch state {
         case .notInstalled:
-            "ChatGPT app not found — Simbi uses it to transcribe and chat."
+            "ChatGPT app not found. Simbi uses it to transcribe and chat."
         case .signedOut:
             "ChatGPT is installed but signed out. Sign in there and Simbi connects automatically."
         case .connected:
-            "Codex connected — transcription and chat ready."
+            "Codex connected. Transcription and chat ready."
         }
     }
 

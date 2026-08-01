@@ -143,7 +143,7 @@ public final class RecordingController {
         status = .preparing
         if micEnabled {
             guard await AVCaptureDevice.requestAccess(for: .audio) else {
-                status = .failed("Microphone access denied — enable it in System Settings.")
+                status = .failed("Microphone access denied. Enable it in System Settings.")
                 return
             }
         }
@@ -174,7 +174,7 @@ public final class RecordingController {
             var micBanner: String?
             if micEnabled, let uid = deviceUID, AudioInputDevices.deviceID(forUID: uid) == nil {
                 deviceUID = nil
-                micBanner = "Selected microphone isn't connected — using the system default."
+                micBanner = "Selected microphone isn't connected. Using the system default."
             }
             let stream = try capture.start(
                 config: .init(

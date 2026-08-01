@@ -22,7 +22,7 @@ public struct SettingsView: View {
                 modelPicker("Transcript fixer", selection: $settings.fixerModel)
                 modelPicker("File converter", selection: $settings.converterModel)
                 if modelsUnavailable {
-                    Text("Model list unavailable — is the ChatGPT app installed?")
+                    Text("Model list unavailable. Is the ChatGPT app installed?")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -97,17 +97,17 @@ public struct SettingsView: View {
         }
     }
 
-    /// "1.3.0 — up to date" / "…— checking…" / "…— 1.4.0 available".
+    /// "1.3.0 (up to date)" / "…(checking…)" / "…(1.4.0 available)".
     private var updateStatusText: String {
         let version = updates.currentVersion
-        if updates.isChecking { return "\(version) — checking…" }
+        if updates.isChecking { return "\(version) (checking…)" }
         if let available = updates.availability.version {
-            return "\(version) — \(available) available"
+            return "\(version) (\(available) available)"
         }
         guard updates.mode.checksAutomatically || updates.lastCheckDate != nil else {
             return version
         }
-        return "\(version) — up to date"
+        return "\(version) (up to date)"
     }
 
     /// `~`-relative home path — friendlier than the absolute `/Users/…`.
