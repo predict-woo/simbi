@@ -207,9 +207,9 @@ struct InspectorMetersRow: View {
             meterView(
                 Meter(
                     id: "R6", name: "Silence trim",
-                    desc: "Past R3, dead air is discarded — only a 0.96 s pre-roll is kept.",
+                    desc: "Past R3, dead air is discarded. Only a 0.96 s pre-roll is kept.",
                     fraction: isTrimming(latest) ? 1 : 0,
-                    value: isTrimming(latest) ? "trimming — pre-roll 0.96 s" : "idle",
+                    value: isTrimming(latest) ? "trimming (pre-roll 0.96 s)" : "idle",
                     color: Color.statusWarning))
             meterR4(latest)
             meterView(
@@ -222,7 +222,7 @@ struct InspectorMetersRow: View {
             meterView(
                 Meter(
                     id: "R5", name: "Max latency",
-                    desc: "30 s unflushed forces a boundary — even mid-word.",
+                    desc: "30 s unflushed forces a boundary, even mid-word.",
                     fraction: fraction(unflushed(latest), of: CutConstants.maxUnflushedFrames),
                     value: String(
                         format: "%.1f s / 30 s unflushed",
@@ -251,14 +251,14 @@ struct InspectorMetersRow: View {
     private func r1Value(_ latest: InspectorUpdate?) -> String {
         guard let run = latest?.silenceRun, run > 0 else { return "in speech" }
         return run < CutConstants.silenceCutFrames
-            ? "silence \(run * 80) ms / 240 ms" : "fired — waiting for speech"
+            ? "silence \(run * 80) ms / 240 ms" : "fired: waiting for speech"
     }
 
     private func r3Value(_ latest: InspectorUpdate?) -> String {
-        guard let run = latest?.silenceRun, run > 0 else { return "—" }
+        guard let run = latest?.silenceRun, run > 0 else { return "–" }
         return run < CutConstants.longSilenceFlushFrames
             ? String(format: "%.1f s / 2.0 s", Double(run) * 0.08)
-            : "fired — R6 owns the pause"
+            : "fired: R6 owns the pause"
     }
 
     private func meterR4(_ latest: InspectorUpdate?) -> some View {
@@ -348,7 +348,7 @@ struct InspectorFlushLane: View {
                 HStack(spacing: 8) {
                     if state.segments.isEmpty {
                         Text(
-                            "No uploads yet — the first flush appears here with its transcript."
+                            "No uploads yet. The first flush appears here with its transcript."
                         )
                         .font(.meta)
                         .foregroundStyle(.tertiary)
@@ -444,7 +444,7 @@ struct InspectorEventLog: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 3) {
                 if state.log.isEmpty {
-                    Text("— waiting for the first engine decision —")
+                    Text("waiting for the first engine decision…")
                         .foregroundStyle(.tertiary)
                 }
                 ForEach(state.log) { entry in

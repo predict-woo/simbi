@@ -289,9 +289,9 @@ public struct InspectorTimelineState: Sendable {
             endTrimmingRun()
             let message: String
             switch rule {
-            case .r1: message = "silence cut — speech tail sealed into staging"
+            case .r1: message = "silence cut: speech tail sealed into staging"
             case .r4: message = "speaker cut at the turn midpoint"
-            case .r5: message = "forced cut — unflushed span hit 30 s"
+            case .r5: message = "forced cut: unflushed span hit 30 s"
             case .stop: message = "final cut at session stop"
             }
             addLog(tag: Self.tag(rule), time: base + Self.seconds(frame), message: message)
@@ -307,7 +307,7 @@ public struct InspectorTimelineState: Sendable {
             }
             trimmedFramesInRun += end - start
             let message = String(
-                format: "trimming silence — %.1f s discarded, never uploaded",
+                format: "trimming silence: %.1f s discarded, never uploaded",
                 Double(trimmedFramesInRun) * Self.frameSeconds)
             if let id = trimmingLogId, let index = log.firstIndex(where: { $0.id == id }) {
                 log[index].message = message

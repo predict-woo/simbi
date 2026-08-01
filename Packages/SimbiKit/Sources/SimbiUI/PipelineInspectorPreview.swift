@@ -21,9 +21,9 @@ final class InspectorPreviewDriver {
     ]
     private static let endFrame = 563  // 45 s
     private static let texts = [
-        "Okay — the main thing today is the sidebar ordering work.",
+        "Okay, the main thing today is the sidebar ordering work.",
         "The drag and drop landed last week and it changed how folders load.",
-        "Quick question on that — does the sidecar survive a sync conflict?",
+        "Quick question on that: does the sidecar survive a sync conflict?",
         "Right, that matches what I saw in testing.",
         "One note from my side: the release checklist is green.",
     ]

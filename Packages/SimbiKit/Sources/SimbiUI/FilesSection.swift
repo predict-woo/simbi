@@ -24,7 +24,7 @@ struct FilesSection: View {
             .padding(.leading, Design.editorInset)
             .padding(.trailing, Design.stripPadding)
             if model.rows.isEmpty {
-                Text("Drop files here — Codex turns them into note context.")
+                Text("Drop files here. Codex turns them into note context.")
                     .font(.meta)
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .center)

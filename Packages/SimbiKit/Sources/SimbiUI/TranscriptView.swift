@@ -136,7 +136,7 @@ struct TranscriptView: View {
                         if model.isInvalid {
                             StatusBanner(
                                 message:
-                                    "Transcript is being rewritten — showing the last good version.")
+                                    "Transcript is being rewritten. Showing the last good version.")
                         }
                     }
                 }
@@ -148,7 +148,7 @@ struct TranscriptView: View {
                         Text("Press Record to capture the room")
                         Text("Simbi transcribes and labels each speaker as they talk.")
                         if CodexSetupModel.detectState() != .connected {
-                            Text("Transcription needs the ChatGPT app — see the sidebar footer.")
+                            Text("Transcription needs the ChatGPT app. See the sidebar footer.")
                                 .foregroundStyle(Color.statusWarning)
                         }
                     }

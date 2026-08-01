@@ -174,9 +174,9 @@ public final class MixedCapture: @unchecked Sendable {
 
     private func failureMessage(for error: any Error) -> String {
         if case MixedCaptureError.systemAudioUnsupported = error {
-            return "System audio needs macOS 14.4 or later — recording mic only."
+            return "System audio needs macOS 14.4 or later. Recording the mic only."
         }
-        return "System audio unavailable (permission denied?) — recording mic only."
+        return "System audio unavailable (permission denied?). Recording the mic only."
     }
 }
 

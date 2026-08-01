@@ -101,7 +101,7 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
-        title = "Chat — \(noteFolderURL.lastPathComponent)"
+        title = "Chat: \(noteFolderURL.lastPathComponent)"
         // The manager keeps the strong reference; never restore chat
         // windows — a restored chat would spawn a codex process on launch
         // with nobody asking.
@@ -128,7 +128,7 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
         } else {
             contentView = NSHostingView(
                 rootView: StatusBanner(
-                    message: "ChatGPT app not found — chat needs the bundled codex."
+                    message: "ChatGPT app not found. Chat needs the bundled codex."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity))
         }

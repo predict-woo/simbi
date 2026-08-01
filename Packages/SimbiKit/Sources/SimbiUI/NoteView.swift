@@ -113,13 +113,13 @@ struct NoteView: View {
     /// and agent features need the ChatGPT app + a signed-in auth.json.
     private var degradedBanner: String? {
         if Design.uiPreview {
-            return "ChatGPT app not found — transcription and Codex features are disabled."
+            return "ChatGPT app not found. Transcription and Codex features are disabled."
         }
         if !CodexInstallation.standard.isBinaryInstalled {
-            return "ChatGPT app not found — transcription and Codex features are disabled."
+            return "ChatGPT app not found. Transcription and Codex features are disabled."
         }
         if CodexInstallation.standard.loadAuth() == nil {
-            return "Not signed in to ChatGPT — transcription will queue on disk until you sign in."
+            return "Not signed in to ChatGPT. Transcription will queue on disk until you sign in."
         }
         return nil
     }
@@ -221,7 +221,7 @@ struct RecordingHeader: View {
                 .padding(.vertical, Design.stripPadding)
             let banner =
                 Design.uiPreview
-                ? "System audio capture was denied — recording the mic only." : recorder.systemAudioBanner
+                ? "System audio capture was denied. Recording the mic only." : recorder.systemAudioBanner
             if let banner {
                 StatusBanner(
                     message: banner,
@@ -337,15 +337,15 @@ struct RecordingHeader: View {
                 .foregroundStyle(.secondary)
         }
         .buttonStyle(HoverCircleButtonStyle())
-        .help("Pipeline Inspector — watch the recording pipeline work")
+        .help("Pipeline Inspector: watch the recording pipeline work")
     }
 
     private var fixerHelp: String {
         switch recorder.fixerActivity.status {
         case .off: "Transcript fixer"
-        case .waiting: "Transcript fixer — waiting for new cues"
-        case .working: "Transcript fixer — reviewing"
-        case .done: "Transcript fixer — done"
+        case .waiting: "Transcript fixer: waiting for new cues"
+        case .working: "Transcript fixer: reviewing"
+        case .done: "Transcript fixer: done"
         }
     }
 
@@ -483,7 +483,7 @@ public struct FixerActivityWindow: View {
                 Spacer()
             }
             if model.events.isEmpty {
-                Text("No activity yet — the fixer reviews cues as they arrive.")
+                Text("No activity yet. The fixer reviews cues as they arrive.")
                     .font(.meta)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -512,7 +512,7 @@ public struct FixerActivityWindow: View {
         }
         .padding(12)
         .frame(minWidth: 320, idealWidth: 380, minHeight: 180, idealHeight: 300)
-        .navigationTitle("Fixer — \(noteName)")
+        .navigationTitle("Fixer: \(noteName)")
     }
 
     private func headline(_ status: FixerActivityModel.Status) -> String {
@@ -520,7 +520,7 @@ public struct FixerActivityWindow: View {
         case .off: "Transcript Fixer"
         case .waiting: "Waiting for new cues"
         case .working: "Reviewing…"
-        case .done: "Done — all cues reviewed"
+        case .done: "Done: all cues reviewed"
         }
     }
 }

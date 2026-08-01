@@ -89,7 +89,7 @@ private struct CodexStatusFooter: View {
         let available = installation.isBinaryInstalled && installation.loadAuth() != nil
         HStack(spacing: Design.iconGap) {
             StatusDot(color: available ? .statusOK : .statusWarning)
-            Text(available ? "Codex connected" : "Codex unavailable — transcription off")
+            Text(available ? "Codex connected" : "Codex unavailable: transcription off")
                 .font(.meta)
                 .foregroundStyle(
                     available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
