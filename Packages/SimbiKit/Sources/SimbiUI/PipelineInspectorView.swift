@@ -24,7 +24,7 @@ public struct PipelineInspectorWindow: View {
 
     public var body: some View {
         PipelineInspectorView(model: model)
-            .navigationTitle("Pipeline Inspector — \(noteName)")
+            .navigationTitle("Pipeline Inspector: \(noteName)")
             .onAppear { model.attach(recorder) }
             .onDisappear { model.detach() }
     }
@@ -43,7 +43,7 @@ enum Inspector {
     }
 
     static func speakerName(_ slot: Int?) -> String {
-        guard let slot else { return "—" }
+        guard let slot else { return "–" }
         return "Speaker \(slot + 1)"
     }
 }
@@ -90,7 +90,7 @@ struct PipelineInspectorView: View {
                 if model.phase == .ended {
                     StatusBanner(
                         message:
-                            "Session ended — showing the last pipeline state; "
+                            "Session ended. Showing the last pipeline state; "
                             + "cue text may still arrive.",
                         icon: "stop.circle")
                 }
@@ -102,7 +102,7 @@ struct PipelineInspectorView: View {
                 sectionDivider
                 sectionHeader(
                     "Record stream",
-                    hint: "buffers & pointers — released 1.04 s behind live (§4.1)")
+                    hint: "buffers & pointers: released 1.04 s behind live (§4.1)")
                 InspectorTimeline(model: model)
                     .frame(height: 175)
                     .padding(.horizontal, Design.paneInset)
@@ -146,7 +146,7 @@ struct PipelineInspectorView: View {
                     .monospacedDigit()
             }
             Spacer()
-            Text("live view of the real engine — nothing here is sampled or simulated")
+            Text("live view of the real engine: nothing here is sampled or simulated")
                 .font(.meta)
                 .foregroundStyle(.tertiary)
         }
