@@ -37,6 +37,7 @@ struct FilesSection: View {
                             FileTile(model: model, row: row)
                         }
                     }
+                    .padding(.vertical, Design.stripPadding)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -130,23 +131,36 @@ private struct FileTile: View {
         }
     }
 
-    // Centered so status reads on any preview; the material circle
-    // guarantees contrast. 36/24 are one-off display-glyph values per
+    // Centered so status reads on any preview; the glass/material circle
+    // guarantees contrast. 36/18 are one-off display-glyph values per
     // docs/design-system.md ("One-off display glyphs ... stay inline").
     @ViewBuilder private var statusOverlay: some View {
         switch row.status {
         case .converting:
             ProgressView()
+                .controlSize(.small)
                 .frame(width: 36, height: 36)
-                .background(.regularMaterial, in: Circle())
+                .statusCircleChrome()
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 24))
+                .font(.system(size: 18))
                 .foregroundStyle(Color.statusLive)
                 .frame(width: 36, height: 36)
-                .background(.regularMaterial, in: Circle())
+                .statusCircleChrome()
         case .done:
             EmptyView()
+        }
+    }
+}
+
+extension View {
+    /// Status-circle chrome: Liquid Glass where the OS has it (macOS 26),
+    /// the closest material further back.
+    @ViewBuilder fileprivate func statusCircleChrome() -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: Circle())
+        } else {
+            self.background(.regularMaterial, in: Circle())
         }
     }
 }
