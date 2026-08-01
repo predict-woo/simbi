@@ -95,6 +95,20 @@ final class FilesModel {
         refresh()
     }
 
+    /// Trashes the original and its converted markdown, and clears the
+    /// conversion record so a re-added file with the same name converts
+    /// fresh. Trash (not unlink) so a slip is recoverable, like Finder.
+    func delete(_ name: String) {
+        try? FileManager.default.trashItem(
+            at: fileURL(for: name), resultingItemURL: nil)
+        try? FileManager.default.trashItem(
+            at: contextURL(for: name), resultingItemURL: nil)
+        try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+            $0.conversions[name] = nil
+        }
+        refresh()
+    }
+
     func refresh() {
         let names =
             ((try? FileManager.default.contentsOfDirectory(atPath: filesURL.path)) ?? [])

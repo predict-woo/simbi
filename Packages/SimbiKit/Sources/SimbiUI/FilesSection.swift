@@ -138,9 +138,11 @@ private struct FileTile: View {
         .onTapGesture(count: 2) {
             NSWorkspace.shared.open(fileURL)
         }
-        .onTapGesture {
-            selection = row.name
-        }
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                selection = row.name
+            }
+        )
         .contextMenu {
             Button("Open") { NSWorkspace.shared.open(fileURL) }
             if case .done = row.status {
@@ -154,6 +156,11 @@ private struct FileTile: View {
             Divider()
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+            }
+            Divider()
+            Button("Move to Trash") {
+                if selection == row.name { selection = nil }
+                model.delete(row.name)
             }
         }
     }
