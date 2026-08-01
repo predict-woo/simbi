@@ -10,6 +10,7 @@ struct FilesSection: View {
     let model: FilesModel
     @State private var showImporter = false
     @State private var isDropTargeted = false
+    @State private var selectedFile: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -34,12 +35,17 @@ struct FilesSection: View {
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: Design.rowGap) {
                         ForEach(model.rows) { row in
-                            FileTile(model: model, row: row)
+                            FileTile(model: model, row: row, selection: $selectedFile)
                         }
                     }
                     .padding(.vertical, Design.stripPadding)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { selectedFile = nil }
+                }
             }
             if let error = model.importError {
                 Text(error)
@@ -86,6 +92,9 @@ struct FilesSection: View {
 private struct FileTile: View {
     let model: FilesModel
     let row: FilesModel.Row
+    @Binding var selection: String?
+
+    private var isSelected: Bool { selection == row.name }
 
     private var fileURL: URL { model.fileURL(for: row.name) }
 
@@ -101,18 +110,36 @@ private struct FileTile: View {
                 size: CGSize(width: Design.fileTileWidth, height: Design.fileThumbHeight)
             )
             .opacity(thumbnailOpacity)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: Design.Radius.card)
+                        .fill(Color.selectionBackplate)
+                }
+            }
             .overlay { statusOverlay }
             Text(row.name)
                 .font(.meta)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.middle)
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .padding(.horizontal, Design.iconGap)
+                .padding(.vertical, 1)
+                .background {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: Design.Radius.row)
+                            .fill(Color.accentColor)
+                    }
+                }
         }
         .frame(width: Design.fileTileWidth)
         .contentShape(Rectangle())
         .help(row.name)
         .onTapGesture(count: 2) {
             NSWorkspace.shared.open(fileURL)
+        }
+        .onTapGesture {
+            selection = row.name
         }
         .contextMenu {
             Button("Open") { NSWorkspace.shared.open(fileURL) }

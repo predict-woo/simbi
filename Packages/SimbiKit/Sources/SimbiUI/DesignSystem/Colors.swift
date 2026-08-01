@@ -20,6 +20,8 @@ extension Color {
     static let cardFill = Color.primary.opacity(0.045)
     /// Meter tracks, drop-target idle fill.
     static let trackFill = Color.primary.opacity(0.06)
+    /// Icon-selection backplate (files shelf), matching Finder's.
+    static let selectionBackplate = Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
     /// 1pt rules and card strokes.
     static let hairline = Color(nsColor: .separatorColor)
     /// Recessed content wells (timeline, event log) — the text-view
