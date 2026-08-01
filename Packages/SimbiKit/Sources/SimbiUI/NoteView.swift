@@ -172,7 +172,7 @@ struct PlaybackBar: View {
                 Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
                     .frame(width: 14)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(HoverCircleButtonStyle())
             .help(playback.isPlaying ? "Pause" : "Play")
             Text(Design.time(scrubPosition ?? playback.position))
                 .font(.metaMono)
@@ -324,7 +324,7 @@ struct RecordingHeader: View {
                 )
                 .modifier(PulseEffect(active: recorder.fixerActivity.status == .working))
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(HoverCircleButtonStyle())
         .help(fixerHelp)
     }
 
@@ -336,7 +336,7 @@ struct RecordingHeader: View {
             Image(systemName: "waveform.path.ecg")
                 .foregroundStyle(.secondary)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(HoverCircleButtonStyle())
         .help("Pipeline Inspector — watch the recording pipeline work")
     }
 
@@ -402,6 +402,8 @@ struct RecordingHeader: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
+        .padding(Design.footerStripPadding)
+        .hoverFill(Capsule())
         .disabled(recorder.status != .idle)
         .help(sourcesSummary)
     }

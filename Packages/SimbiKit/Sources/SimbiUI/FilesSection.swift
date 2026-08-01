@@ -113,29 +113,6 @@ struct FilesSection: View {
     }
 }
 
-/// Toolbar-like icon button: quiet at rest, circular highlight on
-/// hover, a deeper fill while pressed. Stock styles can't produce the
-/// toolbar hover treatment in content views, so the hover state is
-/// tracked explicitly.
-private struct HoverCircleButtonStyle: ButtonStyle {
-    @State private var isHovered = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(Design.stripPadding)
-            .contentShape(Circle())
-            .background {
-                Circle()
-                    .fill(
-                        configuration.isPressed
-                            ? Color.pressFill
-                            : isHovered ? Color.hoverFill : Color.clear)
-            }
-            .onHover { isHovered = $0 }
-            .animation(Design.Anim.quick, value: isHovered)
-    }
-}
-
 /// One shelf tile: Quick Look thumbnail, name caption, conversion status
 /// overlay, and the file's actions in a context menu. Double-click opens
 /// the original; the overlay shows converting/failed and nothing when done.
