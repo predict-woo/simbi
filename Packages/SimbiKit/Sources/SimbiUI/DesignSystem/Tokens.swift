@@ -14,7 +14,7 @@ enum Design {
 
     /// Pane content inset (transcript, files, banners, chrome strips).
     static let paneInset: CGFloat = 16
-    /// The editor canvas's text inset; the FILES strip aligns to it.
+    /// The editor canvas's text inset; the files strip aligns to it.
     static let editorInset: CGFloat = 24
     /// Horizontal inset for sidebar-footer rows (update pill, codex status).
     static let footerInset: CGFloat = 12

@@ -3,14 +3,13 @@ import SwiftUI
 /// Shared components (docs/design-system.md § Components). A pattern
 /// earns a slot here on its third occurrence — one-offs stay inline.
 
-/// Uppercased, tracked section label — "FILES", "TRANSCRIPT".
+/// Section label — "Files", inspector section headers.
 struct SectionLabel: View {
     let title: String
 
     var body: some View {
-        Text(title.uppercased())
+        Text(title)
             .font(.metaSemibold)
-            .kerning(0.8)
             .foregroundStyle(.secondary)
     }
 }
