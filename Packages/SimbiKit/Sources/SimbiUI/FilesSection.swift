@@ -100,34 +100,39 @@ struct FilesSection: View {
         }
     }
 
-    /// Circular glass like the toolbar buttons on macOS 26; hover-highlight
-    /// accessory style further back.
-    @ViewBuilder private var addButton: some View {
-        if #available(macOS 26.0, *) {
-            Button {
-                showImporter = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.body)
-                    .padding(Design.stripPadding)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: Circle())
-            .help("Add Files…")
-            .accessibilityLabel("Add Files")
-        } else {
-            Button {
-                showImporter = true
-            } label: {
-                Image(systemName: "plus")
-                    .font(.body)
-            }
-            .buttonStyle(.accessoryBar)
-            .controlSize(.large)
-            .help("Add Files…")
-            .accessibilityLabel("Add Files")
+    private var addButton: some View {
+        Button {
+            showImporter = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.body)
         }
+        .buttonStyle(HoverCircleButtonStyle())
+        .help("Add Files…")
+        .accessibilityLabel("Add Files")
+    }
+}
+
+/// Toolbar-like icon button: quiet at rest, circular highlight on
+/// hover, a deeper fill while pressed. Stock styles can't produce the
+/// toolbar hover treatment in content views, so the hover state is
+/// tracked explicitly.
+private struct HoverCircleButtonStyle: ButtonStyle {
+    @State private var isHovered = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(Design.stripPadding)
+            .contentShape(Circle())
+            .background {
+                Circle()
+                    .fill(
+                        configuration.isPressed
+                            ? Color.pressFill
+                            : isHovered ? Color.hoverFill : Color.clear)
+            }
+            .onHover { isHovered = $0 }
+            .animation(Design.Anim.quick, value: isHovered)
     }
 }
 
