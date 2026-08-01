@@ -34,6 +34,7 @@ private final class FileThumbnailLoader {
         if let cached = cache[url.path] { return cached }
         let request = QLThumbnailGenerator.Request(
             fileAt: url, size: size, scale: 2, representationTypes: .thumbnail)
+        request.iconMode = true
         let image = try? await QLThumbnailGenerator.shared
             .generateBestRepresentation(for: request).nsImage
         guard !Task.isCancelled else { return nil }

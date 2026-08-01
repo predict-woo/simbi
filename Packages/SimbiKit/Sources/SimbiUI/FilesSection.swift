@@ -38,6 +38,7 @@ struct FilesSection: View {
                         }
                     }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
             if let error = model.importError {
                 Text(error)
@@ -78,14 +79,19 @@ struct FilesSection: View {
     }
 }
 
-/// One shelf tile: Quick Look thumbnail, name caption, conversion badge,
-/// and the file's actions in a context menu. Double-click opens the
-/// original; the badge shows converting/failed and nothing when done.
+/// One shelf tile: Quick Look thumbnail, name caption, conversion status
+/// overlay, and the file's actions in a context menu. Double-click opens
+/// the original; the overlay shows converting/failed and nothing when done.
 private struct FileTile: View {
     let model: FilesModel
     let row: FilesModel.Row
 
     private var fileURL: URL { model.fileURL(for: row.name) }
+
+    private var thumbnailOpacity: Double {
+        if case .converting = row.status { return 0.35 }
+        return 1
+    }
 
     var body: some View {
         VStack(spacing: Design.innerGap) {
@@ -93,15 +99,12 @@ private struct FileTile: View {
                 url: fileURL,
                 size: CGSize(width: Design.fileTileWidth, height: Design.fileThumbHeight)
             )
-            .clipShape(RoundedRectangle(cornerRadius: Design.Radius.card))
-            .overlay(
-                RoundedRectangle(cornerRadius: Design.Radius.card)
-                    .strokeBorder(Color.hairline)
-            )
-            .overlay(alignment: .topTrailing) { badge }
+            .opacity(thumbnailOpacity)
+            .overlay { statusOverlay }
             Text(row.name)
                 .font(.meta)
-                .lineLimit(1)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
                 .truncationMode(.middle)
         }
         .frame(width: Design.fileTileWidth)
@@ -127,17 +130,21 @@ private struct FileTile: View {
         }
     }
 
-    @ViewBuilder private var badge: some View {
+    // Centered so status reads on any preview; the material circle
+    // guarantees contrast. 36/24 are one-off display-glyph values per
+    // docs/design-system.md ("One-off display glyphs ... stay inline").
+    @ViewBuilder private var statusOverlay: some View {
         switch row.status {
         case .converting:
             ProgressView()
-                .controlSize(.mini)
-                .padding(2)
+                .frame(width: 36, height: 36)
+                .background(.regularMaterial, in: Circle())
         case .failed:
-            Image(systemName: "exclamationmark.circle.fill")
-                .font(.meta)
-                .foregroundStyle(.white, Color.statusLive)
-                .padding(2)
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 24))
+                .foregroundStyle(Color.statusLive)
+                .frame(width: 36, height: 36)
+                .background(.regularMaterial, in: Circle())
         case .done:
             EmptyView()
         }
