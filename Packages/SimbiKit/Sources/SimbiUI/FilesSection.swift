@@ -43,6 +43,7 @@ struct FilesSection: View {
                     }
                     .padding(.vertical, Design.stripPadding)
                 }
+                .scrollIndicators(.hidden)
                 .fixedSize(horizontal: false, vertical: true)
                 .contentMargins(.horizontal, Design.editorInset, for: .scrollContent)
                 .mask {
