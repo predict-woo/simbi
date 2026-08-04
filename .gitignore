@@ -21,5 +21,9 @@ xcuserdata/
 ## Python
 __pycache__/
 
-## Reference checkouts (external repos, fetched on demand — see references/README.md)
-references/FluidAudio/
+## Local-only folders (kept out of history)
+docs/
+references/
+.agents/
+.claude/
+CLAUDE.md
