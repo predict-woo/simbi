@@ -114,10 +114,12 @@ public final class FileTreeModel {
                 to: renamed.lastPathComponent,
                 in: url.deletingLastPathComponent()
             )
+            // Retarget before refresh(): the folder is already moved, so
+            // refresh() would see the stale selection pointing at a path
+            // that no longer exists and clear it — closing the open note
+            // on every rename of the selected note.
+            retargetSelection(from: url, to: renamed)
             refresh()
-            if selection == url {
-                selection = renamed
-            }
         }
     }
 
