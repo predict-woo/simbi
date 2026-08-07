@@ -73,28 +73,31 @@ struct NoteView: View {
     @State private var splitFraction = FractionHolder(NoteView.initialEditorFraction)
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The glass toolbar draws no bottom border of its own; this is
-            // the rule separating it from the panes.
-            Hairline()
-            // Vendored SplitViewKit (pure SwiftUI), not HSplitView: the
-            // macOS 26 NSSplitView bridge pins the window minimum at a bogus
-            // constant, draws its divider through the glass titlebar, and
-            // detaches from the trailing edge when the window shrinks after
-            // a divider drag. See Sources/SplitViewKit/VENDORED.md. The
-            // GeometryReader converts the pane floors (in points) to the
-            // fractions SplitViewKit expects; the 481 floor keeps the
-            // fractions sane before layout settles.
-            GeometryReader { geo in
-                let width = max(geo.size.width, 481)
-                HSplit(left: { editorPane }, right: { transcriptPane })
-                    .fraction(splitFraction)
-                    .constraints(
-                        minPFraction: Self.editorMinWidth / width,
-                        minSFraction: Self.transcriptMinWidth / width
-                    )
-                    .styling(color: .hairline, inset: 0, visibleThickness: 1, invisibleThickness: 9)
-            }
+        // Vendored SplitViewKit (pure SwiftUI), not HSplitView: the
+        // macOS 26 NSSplitView bridge pins the window minimum at a bogus
+        // constant, draws its divider through the glass titlebar, and
+        // detaches from the trailing edge when the window shrinks after
+        // a divider drag. See Sources/SplitViewKit/VENDORED.md. The
+        // GeometryReader converts the pane floors (in points) to the
+        // fractions SplitViewKit expects; the 481 floor keeps the
+        // fractions sane before layout settles.
+        GeometryReader { geo in
+            let width = max(geo.size.width, 481)
+            HSplit(left: { editorPane }, right: { transcriptPane })
+                .fraction(splitFraction)
+                .constraints(
+                    minPFraction: Self.editorMinWidth / width,
+                    minSFraction: Self.transcriptMinWidth / width
+                )
+                .styling(color: .hairline, inset: 0, visibleThickness: 1, invisibleThickness: 9)
+        }
+        // The rule under the glass toolbar, tucked 1pt up so it coincides
+        // with the titlebar scroll pocket's own bottom hairline. Content at
+        // the top edge keeps that pocket alive; drawing our rule in the
+        // same spot means exactly one 1pt line renders whether the pocket
+        // is present (its line, ours behind the backdrop) or not (ours).
+        .overlay(alignment: .top) {
+            Hairline().offset(y: -1)
         }
         .frame(minWidth: 480)
         .navigationTitle(document.noteFolderURL.lastPathComponent)
