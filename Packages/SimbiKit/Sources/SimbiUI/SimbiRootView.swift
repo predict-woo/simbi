@@ -70,8 +70,11 @@ public struct SimbiRootView: View {
     private var detail: some View {
         if let url = openNoteURL {
             // .id() recreates the document state when the open note changes.
-            NoteView(noteFolderURL: url)
-                .id(url)
+            NoteView(
+                noteFolderURL: url,
+                renameNote: { model.rename(url, to: $0) }
+            )
+            .id(url)
         } else if !FileTreeNode.containsNote(in: model.nodes) {
             WelcomeView(createNote: { model.promptForNewNote() })
         } else {

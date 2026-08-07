@@ -49,13 +49,20 @@ struct NoteView: View {
     @State private var transcript: TranscriptModel
     @State private var files: FilesModel
     @State private var playback: PlaybackController
+    @State private var renameDialogShown = false
+    @State private var renameText = ""
 
-    init(noteFolderURL: URL) {
+    /// Renames the note folder — routed through FileTreeModel so the
+    /// sidebar order and selection follow the folder to its new URL.
+    let renameNote: (String) -> Void
+
+    init(noteFolderURL: URL, renameNote: @escaping (String) -> Void) {
         self._document = State(initialValue: NoteDocument(noteFolderURL: noteFolderURL))
         self._recorder = State(initialValue: RecordingController.shared(noteFolderURL: noteFolderURL))
         self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
         self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
         self._playback = State(initialValue: PlaybackController(noteFolderURL: noteFolderURL))
+        self.renameNote = renameNote
     }
 
     @Environment(\.openWindow) private var openWindow
@@ -101,6 +108,26 @@ struct NoteView: View {
         }
         .frame(minWidth: 480)
         .navigationTitle(document.noteFolderURL.lastPathComponent)
+        // Clicking the toolbar title opens the same rename dialog as the
+        // sidebar's context menu. SwiftUI's binding navigationTitle is
+        // documented to make the title editable but does nothing on macOS,
+        // and replacing the title item wrecks the toolbar's flexible
+        // layout — so an AppKit click hook on the title view it is.
+        .background(
+            ToolbarTitleClickCatcher {
+                renameText = document.noteFolderURL.lastPathComponent
+                renameDialogShown = true
+            }
+        )
+        .alert("Rename", isPresented: $renameDialogShown) {
+            TextField("Name", text: $renameText)
+            Button("Rename") {
+                if !renameText.isEmpty {
+                    renameNote(renameText)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
         .toolbar {
             ToolbarItem {
                 chatButton
@@ -556,5 +583,101 @@ public struct FixerActivityWindow: View {
         case .working: "Reviewing…"
         case .done: "Done: all cues reviewed"
         }
+    }
+}
+
+/// Zero-size background view that fires `onClick` when the window's
+/// toolbar title view is clicked. AppKit-level because SwiftUI offers no
+/// working affordance here on macOS: the binding form of navigationTitle
+/// renders a plain label, and `.toolbar(removing: .title)` plus a custom
+/// title item collapses the toolbar's flexible region so the trailing
+/// action buttons slide against the title. The recognizer lives on the
+/// window's private `NSToolbarTitleView`; lookup is by class name only
+/// and fails soft (no title view found → no click affordance).
+private struct ToolbarTitleClickCatcher: NSViewRepresentable {
+    let onClick: () -> Void
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var onClick: () -> Void = {}
+        private weak var recognizer: NSClickGestureRecognizer?
+        private weak var titleView: NSView?
+
+        @objc private func clicked(_ sender: Any?) {
+            onClick()
+        }
+
+        /// Idempotent: re-resolves the title view only when the current
+        /// recognizer's host left the window (e.g. toolbar rebuilt).
+        func install(in window: NSWindow?) {
+            if let titleView, titleView.window != nil, recognizer != nil { return }
+            guard let root = window?.contentView?.superview,
+                let title = Self.findToolbarTitleView(in: root)
+            else { return }
+            // Sweep recognizers a previous NoteView left behind — SwiftUI
+            // does not dismantle representables when an ancestor `.id`
+            // changes (as every rename does), and the orphaned recognizer
+            // (its target zeroed) sits first in line and eats the click.
+            for existing in title.gestureRecognizers {
+                if let click = existing as? NSClickGestureRecognizer,
+                    click.target == nil || click.target is Coordinator
+                {
+                    title.removeGestureRecognizer(click)
+                }
+            }
+            let click = NSClickGestureRecognizer(target: self, action: #selector(clicked))
+            title.addGestureRecognizer(click)
+            recognizer = click
+            titleView = title
+        }
+
+        func uninstall() {
+            if let recognizer, let titleView {
+                titleView.removeGestureRecognizer(recognizer)
+            }
+            recognizer = nil
+            titleView = nil
+        }
+
+        private static func findToolbarTitleView(in view: NSView) -> NSView? {
+            if String(describing: type(of: view)) == "NSToolbarTitleView" { return view }
+            for subview in view.subviews {
+                if let found = findToolbarTitleView(in: subview) { return found }
+            }
+            return nil
+        }
+    }
+
+    /// Installs on `viewDidMoveToWindow` — the one deterministic moment
+    /// the view has its window. A deferred install from updateNSView is
+    /// not enough: after a rename recreates NoteView, the single update
+    /// runs before the window is attached and never fires again.
+    private final class AttachAwareView: NSView {
+        var onAttach: (NSWindow) -> Void = { _ in }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window {
+                onAttach(window)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSView {
+        let view = AttachAwareView()
+        view.onAttach = { [coordinator = context.coordinator] window in
+            coordinator.install(in: window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onClick = onClick
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.uninstall()
     }
 }
