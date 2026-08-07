@@ -42,6 +42,13 @@ let package = Package(
             exclude: ["LICENSE.txt", "VENDORED.md"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // Vendored stevengharris/SplitView 3.5.3 (MIT) — pure-SwiftUI split
+        // panes; replaces HSplitView, whose macOS 26 NSSplitView bridge is
+        // broken three ways. See Sources/SplitViewKit/VENDORED.md.
+        .target(
+            name: "SplitViewKit",
+            exclude: ["LICENSE.txt", "VENDORED.md"]
+        ),
         // Vendored xiph/opus 1.5.2 (float, portable C — no arch-specific
         // intrinsics, no dnn/). See SPEC.md §3.3 [decided: vendored].
         .target(
@@ -90,6 +97,7 @@ let package = Package(
             dependencies: [
                 "SimbiKit",
                 "OutlineViewKit",
+                "SplitViewKit",
                 "SimbiAudio",
                 "CodexKit",
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),

@@ -4,6 +4,7 @@
 excluded:
   - references            # vendored FluidAudio reference checkout
   - Packages/SimbiKit/Sources/OutlineViewKit   # vendored Sameesunkaria/OutlineView
+  - Packages/SimbiKit/Sources/SplitViewKit     # vendored stevengharris/SplitView
   - docs
   - Packages/SimbiKit/.build
   - Spikes                # one-off experiments

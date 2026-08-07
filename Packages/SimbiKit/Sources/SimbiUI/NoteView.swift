@@ -4,6 +4,7 @@ import Foundation
 import Observation
 import SimbiAudio
 import SimbiKit
+import SplitViewKit
 import SwiftUI
 
 /// Loads and autosaves a note folder's `note.md`.
@@ -59,21 +60,41 @@ struct NoteView: View {
 
     @Environment(\.openWindow) private var openWindow
 
+    /// Pane floors in points (converted to fractions for SplitViewKit) and
+    /// the initial divider position, matching the old 560/380 ideal split.
+    private static let editorMinWidth: CGFloat = 260
+    private static let transcriptMinWidth: CGFloat = 220
+    private static let initialEditorFraction: CGFloat = 0.6
+
+    /// The divider position. Must be @State: SplitViewKit resets its
+    /// internal fraction whenever the holder's value changes between
+    /// renders, so a holder rebuilt in `body` would snap a dragged
+    /// divider back to the initial fraction on every window resize.
+    @State private var splitFraction = FractionHolder(NoteView.initialEditorFraction)
+
     var body: some View {
-        // The GeometryReader is load-bearing: on macOS 26, an HSplitView
-        // nested in a NavigationSplitView detail pins the window minimum
-        // at a bogus constant (~1028 pt) while the sidebar is open. A
-        // GeometryReader accepts any proposal, so the split view's broken
-        // constraint never reaches the window; the frame below reimposes
-        // the real minimum (the sum of the two pane floors).
-        GeometryReader { geo in
-            HSplitView {
-                editorPane
-                    .frame(minWidth: 260, idealWidth: 560)
-                transcriptPane
-                    .frame(minWidth: 220, idealWidth: 380)
+        VStack(spacing: 0) {
+            // The glass toolbar draws no bottom border of its own; this is
+            // the rule separating it from the panes.
+            Hairline()
+            // Vendored SplitViewKit (pure SwiftUI), not HSplitView: the
+            // macOS 26 NSSplitView bridge pins the window minimum at a bogus
+            // constant, draws its divider through the glass titlebar, and
+            // detaches from the trailing edge when the window shrinks after
+            // a divider drag. See Sources/SplitViewKit/VENDORED.md. The
+            // GeometryReader converts the pane floors (in points) to the
+            // fractions SplitViewKit expects; the 481 floor keeps the
+            // fractions sane before layout settles.
+            GeometryReader { geo in
+                let width = max(geo.size.width, 481)
+                HSplit(left: { editorPane }, right: { transcriptPane })
+                    .fraction(splitFraction)
+                    .constraints(
+                        minPFraction: Self.editorMinWidth / width,
+                        minSFraction: Self.transcriptMinWidth / width
+                    )
+                    .styling(color: .hairline, inset: 0, visibleThickness: 1, invisibleThickness: 9)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
         }
         .frame(minWidth: 480)
         .navigationTitle(document.noteFolderURL.lastPathComponent)
