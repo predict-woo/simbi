@@ -86,7 +86,7 @@ public final class RecordingController {
         AudioInputDevices.list()
     }
 
-    /// Fixer status + activity feed for the header button/popover.
+    /// Coarse fixer status (off/watching/working) for the header button.
     let fixerActivity = FixerActivityModel()
 
     /// Whether this note has a fixer thread (saved in state.json, or created
@@ -191,6 +191,15 @@ public final class RecordingController {
             }
             await pipeline.attachFixer(fixer)
             try await pipeline.start()
+            // Refresh right after pipeline.start(): that's where the fixer
+            // thread is (or isn't) created. When codex is unavailable no
+            // thread exists, the status stays .off, and the sparkles button
+            // stays hidden (degraded state, SPEC.md §8).
+            hasFixerThread =
+                ((try? NoteRecordingState.load(noteFolder: noteFolderURL))?.fixerThreadId) != nil
+            if hasFixerThread {
+                fixerActivity.noteRecordingStarted()
+            }
             let capture = MixedCapture()
             self.capture = capture
             // A saved mic that's unplugged degrades to the default device
@@ -209,9 +218,6 @@ public final class RecordingController {
             systemAudioBanner = capture.systemAudioFailure ?? micBanner
             status = .recording
             hasRecording = true
-            hasFixerThread =
-                ((try? NoteRecordingState.load(noteFolder: noteFolderURL))?.fixerThreadId) != nil
-            fixerActivity.noteRecordingStarted()
 
             liveTask = Task { [pipeline] in
                 for await update in await pipeline.liveUpdates() {

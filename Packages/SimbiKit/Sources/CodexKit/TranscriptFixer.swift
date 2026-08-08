@@ -68,7 +68,7 @@ public actor TranscriptFixer {
     /// Weak: the pipeline owns the fixer; the back-reference must not keep
     /// either alive.
     private weak var host: (any TranscriptFixerHost)?
-    /// UI activity feed (fixer button/popover); nil = nobody watching.
+    /// Coarse status events for the header button; nil = nobody watching.
     private var eventSink: (@Sendable (FixerEvent) -> Void)?
 
     public init(
