@@ -86,7 +86,7 @@ public final class RecordingController {
         AudioInputDevices.list()
     }
 
-    /// Coarse fixer status (off/watching/working) for the header button.
+    /// Coarse fixer status (off/waiting/working/done) for the header button.
     let fixerActivity = FixerActivityModel()
 
     /// Whether this note has a fixer thread (saved in state.json, or created
