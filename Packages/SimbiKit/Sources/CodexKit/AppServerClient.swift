@@ -1,9 +1,11 @@
 import Foundation
 
 /// Long-lived `codex app-server` JSON-RPC client (SPEC.md §5.1). One child
-/// process per app session, newline-delimited JSON over stdio; responses
-/// demuxed by id, notifications fanned out to a handler. Restarts the
-/// process on demand if it died (callers re-resume their threads).
+/// process per app session, JSON-RPC over a loopback websocket
+/// (`--listen ws://127.0.0.1:0`); the port also serves viewer terminals
+/// (`endpoint()`); responses demuxed by id, notifications fanned out to a
+/// handler. Restarts the process on demand if it died (callers re-resume
+/// their threads).
 ///
 /// Wire shapes verified in Spikes/AppServerSpike/README.md.
 public actor AppServerClient {
@@ -16,7 +18,8 @@ public actor AppServerClient {
 
     private let installation: CodexInstallation
     private var process: Process?
-    private var stdinPipe: FileHandle?
+    private var socket: URLSessionWebSocketTask?
+    private var boundEndpoint: String?
     private var nextId = 1
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var readerTask: Task<Void, Never>?
@@ -56,11 +59,33 @@ public actor AppServerClient {
         return id
     }
 
-    /// True while the child process is alive and initialized.
-    public var isRunning: Bool { process?.isRunning == true }
+    /// True while the child process is alive and the socket is open.
+    public var isRunning: Bool { process?.isRunning == true && socket != nil }
+
+    /// The server's loopback websocket endpoint (e.g. "ws://127.0.0.1:51859"),
+    /// starting the server if needed. Viewer terminals attach here
+    /// (`codex --remote <endpoint> resume <threadId>`).
+    public func endpoint() async throws -> String {
+        try await ensureRunning()
+        guard let boundEndpoint else {
+            throw ClientError.serverError(code: -1, message: "no endpoint")
+        }
+        return boundEndpoint
+    }
+
+    /// Extracts the websocket endpoint from the server's
+    /// "listening on: ws://127.0.0.1:<port>" startup line.
+    nonisolated static func listenEndpoint(fromLine line: String) -> String? {
+        guard
+            let range = line.range(
+                of: #"ws://127\.0\.0\.1:\d+"#, options: .regularExpression),
+            line.contains("listening on:")
+        else { return nil }
+        return String(line[range])
+    }
 
     private func ensureRunning() async throws {
-        if process?.isRunning == true { return }
+        if process?.isRunning == true, socket != nil { return }
         guard installation.isBinaryInstalled else { throw ClientError.binaryMissing }
 
         // A dead process fails all in-flight requests.
@@ -69,46 +94,90 @@ public actor AppServerClient {
         }
         pending.removeAll()
         readerTask?.cancel()
+        socket?.cancel(with: .goingAway, reason: nil)
+        socket = nil
+        boundEndpoint = nil
+        process?.terminate()
+        process = nil
 
         let child = Process()
         child.executableURL = installation.binaryURL
-        child.arguments = ["app-server"]
+        // Loopback websocket instead of stdio so viewer TUIs can attach as
+        // additional clients of the same server (live-view spec §3).
+        child.arguments = ["app-server", "--listen", "ws://127.0.0.1:0"]
         var environment = ProcessInfo.processInfo.environment
         environment["CODEX_HOME"] = installation.codexHomeURL.path  // mandatory
         child.environment = environment
-        let stdin = Pipe()
-        let stdout = Pipe()
-        child.standardInput = stdin
-        child.standardOutput = stdout
+        child.standardInput = Pipe()  // unused; don't inherit ours
+        child.standardOutput = FileHandle.nullDevice  // prints nothing
+        let stderr = Pipe()
+        child.standardError = stderr
         let stderrLog = FileManager.default.temporaryDirectory
             .appending(path: "simbi-app-server-\(ProcessInfo.processInfo.processIdentifier).log")
         FileManager.default.createFile(atPath: stderrLog.path, contents: nil)
-        child.standardError = try? FileHandle(forWritingTo: stderrLog)
+        let logHandle = try? FileHandle(forWritingTo: stderrLog)
         try child.run()
         process = child
-        stdinPipe = stdin.fileHandleForWriting
 
-        // Blocking availableData loop on the pipe (same transport the M1
-        // spike validated), bridged into the actor line by line.
-        let readHandle = stdout.fileHandleForReading
-        let (lines, continuation) = AsyncStream.makeStream(of: Data.self)
+        // The startup banner ("listening on: ws://127.0.0.1:<port>") goes
+        // to STDERR (verified against codex-cli 0.147.0-alpha.6.5; stdout
+        // prints nothing). Tee every stderr chunk into the diagnostic log
+        // while scanning lines for the bound port.
+        let readHandle = stderr.fileHandleForReading
+        let (lines, continuation) = AsyncStream.makeStream(of: String.self)
         Thread.detachNewThread {
             var buffer = Data()
             while true {
                 let chunk = readHandle.availableData
                 if chunk.isEmpty { break }  // EOF
+                logHandle?.write(chunk)
                 buffer.append(chunk)
                 while let newline = buffer.firstIndex(of: 0x0A) {
-                    continuation.yield(Data(buffer.prefix(upTo: newline)))
+                    if let line = String(
+                        data: Data(buffer.prefix(upTo: newline)), encoding: .utf8)
+                    {
+                        continuation.yield(line)
+                    }
                     buffer.removeSubrange(...newline)
                 }
             }
             continuation.finish()
         }
-        readerTask = Task { [weak self] in
+        let scan = Task {
+            var found: String?
             for await line in lines {
-                await self?.receive(line: line)
+                if found == nil, let endpoint = Self.listenEndpoint(fromLine: line) {
+                    found = endpoint
+                    break
+                }
             }
+            return found
+        }
+        // 10 s cap (live-view spec §3): same degraded state as a failed
+        // stdio spawn today.
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(10))
+            scan.cancel()
+        }
+        guard let endpoint = await scan.value else {
+            timeout.cancel()
+            child.terminate()
+            process = nil
+            throw ClientError.serverError(code: -1, message: "server printed no endpoint")
+        }
+        timeout.cancel()
+        Task { for await _ in lines {} }  // keep consuming; the tee is the log
+
+        let socketTask = URLSession.shared.webSocketTask(
+            with: URLRequest(url: URL(string: endpoint)!))
+        // The server sends multi-MB frames (world state on resume);
+        // URLSession's 1 MB default kills the connection.
+        socketTask.maximumMessageSize = 64 * 1024 * 1024
+        socketTask.resume()
+        socket = socketTask
+        boundEndpoint = endpoint
+        readerTask = Task { [weak self] in
+            await self?.readLoop(socketTask)
         }
 
         _ = try await send(
@@ -116,7 +185,7 @@ public actor AppServerClient {
             params: [
                 "clientInfo": ["name": "simbi", "title": "Simbi", "version": "0.1.0"]
             ])
-        try write(["jsonrpc": "2.0", "method": "initialized"])
+        try await write(["jsonrpc": "2.0", "method": "initialized"])
 
         let auth = try await send(
             method: "getAuthStatus", params: ["includeToken": false, "refreshToken": false])
@@ -124,6 +193,30 @@ public actor AppServerClient {
             (try? JSONSerialization.jsonObject(with: auth) as? [String: Any])?["authMethod"]
                 is String
         else { throw ClientError.notAuthenticated }
+    }
+
+    private func readLoop(_ socketTask: URLSessionWebSocketTask) async {
+        while socket === socketTask {
+            do {
+                switch try await socketTask.receive() {
+                case .string(let text): receive(line: Data(text.utf8))
+                case .data(let data): receive(line: data)
+                @unknown default: break
+                }
+            } catch {
+                if socket === socketTask { disconnected() }
+                return
+            }
+        }
+    }
+
+    private func disconnected() {
+        socket = nil
+        for (_, continuation) in pending {
+            continuation.resume(
+                throwing: ClientError.serverError(code: -1, message: "disconnected"))
+        }
+        pending.removeAll()
     }
 
     private func receive(line: Data) {
@@ -171,34 +264,46 @@ public actor AppServerClient {
     }
 
     private func respond(id: RPCID, result: [String: any Sendable]) {
-        try? write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result])
+        Task { try? await self.write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result]) }
     }
 
     private func respondMethodNotFound(id: RPCID, method: String) {
-        try? write([
-            "jsonrpc": "2.0", "id": id.jsonValue,
-            "error": ["code": -32601, "message": "unhandled server request: \(method)"],
-        ])
+        Task {
+            try? await self.write([
+                "jsonrpc": "2.0", "id": id.jsonValue,
+                "error": ["code": -32601, "message": "unhandled server request: \(method)"],
+            ])
+        }
     }
 
-    private func write(_ object: [String: Any]) throws {
-        var data = try JSONSerialization.data(withJSONObject: object)
-        data.append(0x0A)
-        try stdinPipe?.write(contentsOf: data)
+    private func write(_ object: [String: Any]) async throws {
+        let data = try JSONSerialization.data(withJSONObject: object)
+        guard let socket, let text = String(data: data, encoding: .utf8) else {
+            throw ClientError.serverError(code: -1, message: "not connected")
+        }
+        try await socket.send(.string(text))
     }
 
     private func send(method: String, params: [String: Any]) async throws -> Data {
         let id = nextId
         nextId += 1
+        let payload: [String: Any] = [
+            "id": id, "jsonrpc": "2.0", "method": method, "params": params,
+        ]
+        // Register before writing so a fast response can't race the
+        // continuation; a failed write unwinds it.
         return try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
-            do {
-                try write(["id": id, "jsonrpc": "2.0", "method": method, "params": params])
-            } catch {
-                pending.removeValue(forKey: id)
-                continuation.resume(throwing: error)
+            Task {
+                do { try await self.write(payload) } catch {
+                    await self.failPending(id: id, with: error)
+                }
             }
         }
+    }
+
+    private func failPending(id: Int, with error: Error) {
+        pending.removeValue(forKey: id)?.resume(throwing: error)
     }
 
     /// Public request entry: starts/restarts the server as needed. Returns
