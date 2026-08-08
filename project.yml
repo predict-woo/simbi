@@ -22,16 +22,6 @@ targets:
     platform: macOS
     sources:
       - path: App
-      # Vendored anydoc CLI (built by scripts/fetch-anydoc.sh — see the
-      # pre-build phase) shipped as a helper tool for converter threads.
-      # optional: fresh checkouts don't have it yet at generate time; the
-      # pre-build phase creates it before the copy phase needs it.
-      - path: vendor/anydoc/anydoc
-        optional: true
-        buildPhase:
-          copyFiles:
-            destination: wrapper
-            subpath: Contents/Helpers
     dependencies:
       - package: SimbiKit
         product: SimbiUI
@@ -42,16 +32,32 @@ targets:
         script: '"$SRCROOT/scripts/fetch-anydoc.sh"'
         basedOnDependencyAnalysis: false
     postBuildScripts:
+      # Copies the vendored anydoc CLI (built by scripts/fetch-anydoc.sh —
+      # see the pre-build phase) into the bundle and signs it. The copy
+      # happens here, not in a copy-files phase: Xcode plans copy phases
+      # before the pre-build script runs, so on a fresh checkout an
+      # optional-source copy silently drops the not-yet-built binary.
+      # A missing binary (no Rust toolchain) is skipped — the app treats a
+      # missing helper as a degraded state, and the release workflow's
+      # verify step fails loudly if a release build lacks it.
       # Runs before Xcode's final wrapper signing, so the sealed bundle
       # includes the signed helper. OTHER_CODE_SIGN_FLAGS carries the
       # release workflow's --timestamp (notarization requires a secure
       # timestamp on every nested executable); it is empty in dev builds.
-      - name: Sign anydoc helper
+      - name: Bundle and sign anydoc helper
         script: |
+          vendored="$SRCROOT/vendor/anydoc/anydoc"
+          if [ ! -f "$vendored" ]; then
+            echo "warning: vendor/anydoc/anydoc missing; app will ship without the anydoc helper"
+            exit 0
+          fi
+          helpers="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Helpers"
+          mkdir -p "$helpers"
+          cp -f "$vendored" "$helpers/anydoc"
           # shellcheck disable=SC2086
           codesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:-} \
             --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" \
-            "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Helpers/anydoc"
+            "$helpers/anydoc"
         basedOnDependencyAnalysis: false
     settings:
       base:
