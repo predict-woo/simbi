@@ -90,6 +90,12 @@ jobs:
           p12-file-base64: ${{ secrets.DEV_ID_CERT_P12 }}
           p12-password: ${{ secrets.DEV_ID_CERT_PASSWORD }}
 
+      # The vendored anydoc helper (scripts/fetch-anydoc.sh, run as a
+      # pre-build phase) must be universal in releases; the runner's Rust
+      # toolchain only carries the host target by default.
+      - name: Add Rust x86_64 target
+        run: rustup target add x86_64-apple-darwin
+
       - name: Generate Xcode project
         run: xcodegen generate
 
@@ -121,6 +127,13 @@ jobs:
           # identity or the installer is rejected at update time.
           codesign --verify --strict \
             "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+          # The bundled anydoc helper must be signed and universal, or
+          # notarization fails / Intel Macs silently lose the tool.
+          codesign --verify --strict "$APP/Contents/Helpers/anydoc"
+          lipo -archs "$APP/Contents/Helpers/anydoc" | grep -q x86_64 \
+            || { echo "::error::anydoc helper is not universal"; exit 1; }
+          lipo -archs "$APP/Contents/Helpers/anydoc" | grep -q arm64 \
+            || { echo "::error::anydoc helper is not universal"; exit 1; }
 
       - name: Notarize the app
         env:

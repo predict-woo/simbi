@@ -22,11 +22,37 @@ targets:
     platform: macOS
     sources:
       - path: App
+      # Vendored anydoc CLI (built by scripts/fetch-anydoc.sh — see the
+      # pre-build phase) shipped as a helper tool for converter threads.
+      # optional: fresh checkouts don't have it yet at generate time; the
+      # pre-build phase creates it before the copy phase needs it.
+      - path: vendor/anydoc/anydoc
+        optional: true
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Helpers
     dependencies:
       - package: SimbiKit
         product: SimbiUI
       - package: Sparkle
         product: Sparkle
+    preBuildScripts:
+      - name: Vendor anydoc
+        script: '"$SRCROOT/scripts/fetch-anydoc.sh"'
+        basedOnDependencyAnalysis: false
+    postBuildScripts:
+      # Runs before Xcode's final wrapper signing, so the sealed bundle
+      # includes the signed helper. OTHER_CODE_SIGN_FLAGS carries the
+      # release workflow's --timestamp (notarization requires a secure
+      # timestamp on every nested executable); it is empty in dev builds.
+      - name: Sign anydoc helper
+        script: |
+          # shellcheck disable=SC2086
+          codesign --force --options runtime ${OTHER_CODE_SIGN_FLAGS:-} \
+            --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" \
+            "$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Helpers/anydoc"
+        basedOnDependencyAnalysis: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ac.clap.simbi
@@ -45,6 +71,7 @@ targets:
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_STYLE: Automatic
         DEAD_CODE_STRIPPING: YES
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
     info:
       path: App/Info.plist
       properties:
