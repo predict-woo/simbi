@@ -64,6 +64,9 @@ final class FilesModel {
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: settings.converterModel,
             anydocPath: FileConverter.bundledAnydocPath,
+            shouldArchiveOnJobEnd: { threadId in
+                !(await ThreadViewerManager.shared.isOpen(threadId: threadId))
+            },
             // Read INGEST.md per job so edits apply without a restart.
             instructionsTemplate: {
                 AgentInstructions.ingest.contents(homeRootURL: SimbiHome().rootURL)
@@ -134,6 +137,19 @@ final class FilesModel {
             importError = error.localizedDescription
         }
         refresh()
+    }
+
+    /// Right-click → View Codex Thread: attach a viewer terminal to the
+    /// file's conversion thread (live-view spec §4).
+    func openThreadViewer(_ name: String) {
+        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        guard let threadId = state.conversions[name]?.threadId else { return }
+        ThreadViewerManager.shared.open(
+            threadId: threadId, fileName: name, noteFolderURL: noteFolderURL,
+            isBusy: { [weak self] in
+                guard let self else { return false }
+                return self.activeJobs.contains(name) || self.externalTurns.contains(name)
+            })
     }
 
     func retry(_ name: String) {

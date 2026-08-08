@@ -180,6 +180,9 @@ private struct FileTile: View {
             if case .failed = row.status {
                 Button("Retry Conversion") { model.retry(row.name) }
             }
+            if row.threadId != nil {
+                Button("View Codex Thread") { model.openThreadViewer(row.name) }
+            }
             Divider()
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([fileURL])
