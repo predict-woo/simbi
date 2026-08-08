@@ -145,7 +145,8 @@ final class FilesModel {
         let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
         guard let threadId = state.conversions[name]?.threadId else { return }
         ThreadViewerManager.shared.open(
-            threadId: threadId, fileName: name, noteFolderURL: noteFolderURL,
+            threadId: threadId, title: "Conversion: \(name)", noteFolderURL: noteFolderURL,
+            archivesOnClose: true,
             isBusy: { [weak self] in
                 guard let self else { return false }
                 return self.activeJobs.contains(name) || self.externalTurns.contains(name)

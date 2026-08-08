@@ -20,9 +20,9 @@ enum ThreadViewerServices {
 /// Owns the per-thread viewer windows (live-view spec §4): plain AppKit
 /// windows like ChatWindow (macOS 26 scene machinery is hostile to
 /// terminal windows — see ChatWindowManager's doc comment), one window per
-/// thread, no tab grouping. Handles the archive dance: unarchive before
-/// attach (resume refuses archived threads), archive on close when the
-/// thread is idle.
+/// thread, no tab grouping. Handles the archive dance for threads that
+/// want it: unarchive before attach (resume refuses archived threads),
+/// archive on close when the thread is idle and the caller opted in.
 @MainActor
 public final class ThreadViewerManager {
     public static let shared = ThreadViewerManager()
@@ -38,7 +38,8 @@ public final class ThreadViewerManager {
     }
 
     func open(
-        threadId: String, fileName: String, noteFolderURL: URL,
+        threadId: String, title: String, noteFolderURL: URL,
+        archivesOnClose: Bool,
         isBusy: @escaping @MainActor () -> Bool
     ) {
         if let window = windows[threadId] {
@@ -57,21 +58,24 @@ public final class ThreadViewerManager {
                 method: "thread/unarchive", params: ["threadId": threadId])
             guard let endpoint = try? await CodexServices.appServer.endpoint() else { return }
             let window = ThreadViewerWindow(
-                threadId: threadId, fileName: fileName, noteFolderURL: noteFolderURL,
+                threadId: threadId, title: title, noteFolderURL: noteFolderURL,
                 endpoint: endpoint,
                 onClose: { [weak self] in
-                    self?.viewerClosed(threadId: threadId, isBusy: isBusy)
+                    self?.viewerClosed(
+                        threadId: threadId, archivesOnClose: archivesOnClose, isBusy: isBusy)
                 })
             self.windows[threadId] = window
             window.makeKeyAndOrderFront(nil)
         }
     }
 
-    private func viewerClosed(threadId: String, isBusy: @MainActor () -> Bool) {
+    private func viewerClosed(
+        threadId: String, archivesOnClose: Bool, isBusy: @MainActor () -> Bool
+    ) {
         windows[threadId] = nil
-        // A turn is still running: leave the thread unarchived; the next
-        // settle point archives it (spec §6).
-        guard !isBusy() else { return }
+        // Conversion threads archive on close when idle; fixer threads never
+        // archive (they stay inspectable and resume across sessions).
+        guard archivesOnClose, !isBusy() else { return }
         Task {
             _ = try? await CodexServices.appServer.request(
                 method: "thread/archive", params: ["threadId": threadId])
@@ -87,7 +91,7 @@ final class ThreadViewerWindow: NSWindow, NSWindowDelegate {
     private var terminal: TerminalView?
 
     init(
-        threadId: String, fileName: String, noteFolderURL: URL, endpoint: String,
+        threadId: String, title: String, noteFolderURL: URL, endpoint: String,
         onClose: @escaping () -> Void
     ) {
         self.onClose = onClose
@@ -96,7 +100,7 @@ final class ThreadViewerWindow: NSWindow, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
-        title = "Conversion: \(fileName)"
+        self.title = title
         // The manager keeps the strong reference; never restore viewer
         // windows — a restored viewer would attach to a thread nobody asked
         // to watch.
