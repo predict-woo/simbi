@@ -15,6 +15,11 @@ public actor FileConverter {
     private let client: AppServerClient
     /// Model override for conversion turns (SPEC.md §5.5); nil = default.
     private let model: String?
+    /// Absolute path of the bundled anydoc CLI; nil when running without the
+    /// app bundle (tests, spikes). The template then gets the bare word
+    /// `anydoc`, which fails fast in the sandbox and routes the agent to
+    /// INGEST.md's fallback tools — degraded, never failing.
+    private let anydocPath: String?
     /// Generous ceiling — odd formats can send the agent exploring.
     private let turnTimeout: Duration
     /// INGEST.md's template text, fetched per job so edits apply to the
@@ -33,6 +38,7 @@ public actor FileConverter {
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         turnTimeout: Duration = .seconds(900),
+        anydocPath: String? = nil,
         instructionsTemplate: @escaping @Sendable () -> String = {
             AgentInstructions.ingest.defaultContents
         }
@@ -41,11 +47,29 @@ public actor FileConverter {
         self.client = client
         self.model = model
         self.turnTimeout = turnTimeout
+        self.anydocPath = anydocPath
         self.instructionsTemplate = instructionsTemplate
     }
 
     private func instructions(fileName: String) -> String {
-        AgentInstructions.render(instructionsTemplate(), variables: ["file": fileName])
+        Self.renderInstructions(
+            instructionsTemplate(), fileName: fileName, anydocPath: anydocPath)
+    }
+
+    /// Pure render step, split out for testability.
+    nonisolated static func renderInstructions(
+        _ template: String, fileName: String, anydocPath: String?
+    ) -> String {
+        AgentInstructions.render(
+            template, variables: ["file": fileName, "anydoc": anydocPath ?? "anydoc"])
+    }
+
+    /// The anydoc CLI bundled at Contents/Helpers/anydoc, when running
+    /// inside the app (dev builds in DerivedData and installed releases
+    /// alike); nil headless.
+    public nonisolated static var bundledAnydocPath: String? {
+        let url = Bundle.main.bundleURL.appending(path: "Contents/Helpers/anydoc")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url.path : nil
     }
 
     /// Converts one imported file end-to-end; returns when `context/` holds

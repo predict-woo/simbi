@@ -57,6 +57,7 @@ final class FilesModel {
         self.converter = FileConverter(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: settings.converterModel,
+            anydocPath: FileConverter.bundledAnydocPath,
             // Read INGEST.md per job so edits apply without a restart.
             instructionsTemplate: {
                 AgentInstructions.ingest.contents(homeRootURL: SimbiHome().rootURL)
