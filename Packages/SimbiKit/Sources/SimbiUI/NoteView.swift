@@ -543,33 +543,7 @@ public struct FixerActivityWindow: View {
                     .font(.headline)
                 Spacer()
             }
-            if model.events.isEmpty {
-                Text("No activity yet. The fixer reviews cues as they arrive.")
-                    .font(.meta)
-                    .foregroundStyle(.secondary)
-                Spacer()
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 7) {
-                        ForEach(model.events) { event in
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Image(systemName: event.icon)
-                                    .font(.meta)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 14)
-                                Text(event.text)
-                                    .font(.meta)
-                                    .lineLimit(2)
-                                Spacer(minLength: 8)
-                                Text(event.date, style: .time)
-                                    .font(.meta)
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 4)
-                }
-            }
+            Spacer()
         }
         .padding(12)
         .frame(minWidth: 320, idealWidth: 380, minHeight: 180, idealHeight: 300)

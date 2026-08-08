@@ -13,17 +13,15 @@ public protocol TranscriptFixerHost: AnyObject, Sendable {
     func fixerDidCompletePass() async -> Int
 }
 
-/// Coarse fixer activity for the UI (SPEC.md §6 fixer button/popover):
-/// one event per pass milestone, no streaming detail.
+/// Coarse fixer activity for the UI (the header button's status):
+/// one event per pass milestone, no payloads.
 public enum FixerEvent: Equatable, Sendable {
-    /// A pass began ("Reviewing cues 20–36").
-    case passStarted(summary: String)
-    /// The fixer's own one-line progress/summary message.
-    case message(String)
-    /// A pass ended; `merged` cue edits landed in the live transcript.
-    case passCompleted(merged: Int, failed: Bool)
-    /// The thread was archived (recording stopped, all passes drained).
-    case archived
+    /// A pass began.
+    case passStarted
+    /// A pass ended; any edits were merged into the live transcript.
+    case passCompleted
+    /// Recording stopped and every cue has been reviewed.
+    case done
 }
 
 /// The per-note transcript-fixer thread (SPEC.md §5.2): a Codex worker
@@ -35,7 +33,7 @@ public enum FixerEvent: Equatable, Sendable {
 ///
 /// Ping policy: ping when ≥ 1 new cue has been appended since the last pass
 /// AND the thread has no active turn; pings are coalesced. A final ping
-/// fires at recording stop, after which the thread is archived.
+/// fires at recording stop.
 public actor TranscriptFixer {
     /// The fixer's working directory: holds its refreshed working copy of
     /// transcript.vtt, and nothing else.
@@ -119,18 +117,7 @@ public actor TranscriptFixer {
                 let threadId = params?["threadId"] as? String
                 switch method {
                 case "turn/completed":
-                    let turn = params?["turn"] as? [String: Any]
-                    let failed = (turn?["status"] as? String) == "failed"
-                    Task { await self?.turnCompleted(threadId: threadId, failed: failed) }
-                case "item/completed":
-                    // The fixer's own one-line progress messages feed the
-                    // activity popover; threadId is required so other
-                    // threads' (converter/chat) messages never leak in.
-                    guard let item = params?["item"] as? [String: Any],
-                        (item["type"] as? String) == "agentMessage",
-                        let text = item["text"] as? String, threadId != nil
-                    else { return }
-                    Task { await self?.agentMessaged(threadId: threadId, text: text) }
+                    Task { await self?.turnCompleted(threadId: threadId) }
                 default:
                     break
                 }
@@ -165,7 +152,7 @@ public actor TranscriptFixer {
         _ = try await client.request(
             method: "thread/name/set",
             params: ["threadId": id, "name": "[simbi] fixer: \(noteFolderURL.lastPathComponent)"])
-        try await startTurn(text: instructions, summary: "Reading the note and transcript")
+        try await startTurn(text: instructions)
     }
 
     /// Called when a cue lands in transcript.vtt.
@@ -174,34 +161,27 @@ public actor TranscriptFixer {
         await pingIfIdle()
     }
 
-    /// Final ping at stop; archives once everything is fixed (§5.2).
+    /// Final ping at stop; emits `.done` once everything is fixed.
     public func recordingStopped() async {
         stopping = true
         await pingIfIdle()
         if !turnActive {
-            await archiveIfDone()
+            doneIfDrained()
         }
     }
 
-    private func turnCompleted(threadId: String?, failed: Bool = false) async {
+    private func turnCompleted(threadId: String?) async {
         guard threadId == self.threadId else { return }
         turnActive = false
         // Merge this pass's edits into the live file BEFORE the next pass
         // snapshots it — the next working copy must include them.
-        let merged = await host?.fixerDidCompletePass() ?? 0
-        eventSink?(.passCompleted(merged: merged, failed: failed))
+        await host?.fixerDidCompletePass()
+        eventSink?(.passCompleted)
         if newestCue > lastPingedCue {
             await pingIfIdle()  // coalesced pass over everything new
         } else if stopping {
-            await archiveIfDone()
+            doneIfDrained()
         }
-    }
-
-    private func agentMessaged(threadId: String?, text: String) {
-        guard threadId == self.threadId else { return }
-        // One line, popover-sized.
-        let line = text.split(separator: "\n", maxSplits: 1)[0].prefix(200)
-        eventSink?(.message(String(line)))
     }
 
     private func pingIfIdle() async {
@@ -213,17 +193,16 @@ public actor TranscriptFixer {
             from == to
             ? "Cue \(to) is new — review and fix."
             : "Cues \(from)..\(to) are new — review and fix."
-        let summary = from == to ? "Reviewing cue \(to)" : "Reviewing cues \(from)–\(to)"
-        try? await startTurn(text: text, summary: summary)
+        try? await startTurn(text: text)
     }
 
-    private func startTurn(text: String, summary: String) async throws {
+    private func startTurn(text: String) async throws {
         guard let threadId else { return }
         // Refresh the working copy from the live file before the model
         // looks at it.
         await host?.fixerWillStartPass()
         turnActive = true
-        eventSink?(.passStarted(summary: summary))
+        eventSink?(.passStarted)
         do {
             let input: [[String: any Sendable]] = [
                 ["type": "text", "text": text, "text_elements": [String]()]
@@ -253,9 +232,8 @@ public actor TranscriptFixer {
         }
     }
 
-    private func archiveIfDone() async {
-        guard stopping, let threadId, newestCue <= lastPingedCue else { return }
-        _ = try? await client.request(method: "thread/archive", params: ["threadId": threadId])
-        eventSink?(.archived)
+    private func doneIfDrained() {
+        guard stopping, threadId != nil, newestCue <= lastPingedCue else { return }
+        eventSink?(.done)
     }
 }
