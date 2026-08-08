@@ -13,7 +13,10 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// Transcript-fixer thread instructions. No variables.
     case fixer = "FIXER.md"
     /// File-import conversion instructions. Variables: `{{ file }}` — the
-    /// imported file's name inside `files/`.
+    /// imported file's name inside `files/`; `{{ anydoc }}` — path of the
+    /// bundled anydoc converter CLI (the bare word `anydoc` when the app
+    /// bundle doesn't carry it, so the command fails fast and the agent
+    /// falls back).
     case ingest = "INGEST.md"
     /// The note chat's opening developer message. Variables:
     /// `{{ note_path }}` — the note's home-relative path; `{{ files }}` —
@@ -43,7 +46,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     public var variables: [String] {
         switch self {
         case .fixer, .agents: []
-        case .ingest: ["file"]
+        case .ingest: ["file", "anydoc"]
         case .chat: ["note_path", "files"]
         }
     }
@@ -136,8 +139,15 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         Convert files/{{ file }} to a markdown mirror at context/{{ file }}.md \
         (create the context/ directory if needed).
 
-        Known starting points for reading the format: textutil, mdls, sips, \
-        python3. If none of them fit, find your own way to read the format.
+        Preferred tool: run "{{ anydoc }}" "files/{{ file }}" -o \
+        "context/{{ file }}.md" first — it converts Word, PowerPoint, Excel, \
+        OpenDocument, RTF, EPUB, CSV, and PDF instantly. Then read the output \
+        and verify it against the original; fix or augment it as needed. If \
+        the document has embedded images, rerun it with --assets <a temp \
+        directory> to extract them, then look at each image and describe it \
+        in place in the markdown. If the tool is missing, fails, or does not \
+        support the format, fall back to: textutil, mdls, sips, python3. If \
+        none of them fit, find your own way to read the format.
 
         Hard requirement: NO information loss — prefer verbose fidelity over \
         pretty summarization. Tables stay tables, numbers stay exact, all text \

@@ -87,12 +87,22 @@ struct AgentInstructionsTests {
 
     @Test("every declared variable appears in its default template")
     func defaultsCarryTheirVariables() {
-        #expect(AgentInstructions.ingest.variables == ["file"])
+        #expect(AgentInstructions.ingest.variables == ["file", "anydoc"])
         #expect(AgentInstructions.chat.variables == ["note_path", "files"])
         for file in AgentInstructions.allCases {
             for variable in file.variables {
                 #expect(file.defaultContents.contains("{{ \(variable) }}"))
             }
         }
+    }
+
+    @Test("default ingest template renders a runnable anydoc command")
+    func defaultIngestRendersAnydoc() {
+        let text = AgentInstructions.render(
+            AgentInstructions.ingest.defaultContents,
+            variables: ["file": "deck.pptx", "anydoc": "/Applications/Simbi.app/Contents/Helpers/anydoc"])
+        #expect(text.contains("\"/Applications/Simbi.app/Contents/Helpers/anydoc\" \"files/deck.pptx\""))
+        #expect(text.contains("context/deck.pptx.md"))
+        #expect(!text.contains("{{"))
     }
 }
