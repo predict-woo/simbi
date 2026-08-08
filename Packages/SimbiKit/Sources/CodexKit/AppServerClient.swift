@@ -23,6 +23,7 @@ public actor AppServerClient {
     private var nextId = 1
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var readerTask: Task<Void, Never>?
+    private var startupTask: Task<Void, Error>?
     /// Notification fan-out: method + params (raw JSON of the params
     /// object) — Data is Sendable; handlers parse what they need.
     private var notificationHandlers: [UUID: @Sendable (String, Data) -> Void] = [:]
@@ -86,6 +87,19 @@ public actor AppServerClient {
 
     private func ensureRunning() async throws {
         if process?.isRunning == true, socket != nil { return }
+        // Concurrent cold-start callers (converter + fixer + settings share
+        // one client) join the in-flight startup instead of tearing down
+        // each other's half-spawned child.
+        if let startupTask {
+            return try await startupTask.value
+        }
+        let task = Task { try await self.startServer() }
+        startupTask = task
+        defer { startupTask = nil }
+        try await task.value
+    }
+
+    private func startServer() async throws {
         guard installation.isBinaryInstalled else { throw ClientError.binaryMissing }
 
         // A dead process fails all in-flight requests.
