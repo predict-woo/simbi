@@ -139,15 +139,14 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         Convert files/{{ file }} to a markdown mirror at context/{{ file }}.md \
         (create the context/ directory if needed).
 
-        Preferred tool: run "{{ anydoc }}" "files/{{ file }}" -o \
-        "context/{{ file }}.md" first — it converts Word, PowerPoint, Excel, \
-        OpenDocument, RTF, EPUB, CSV, and PDF instantly. Then read the output \
-        and verify it against the original; fix or augment it as needed. If \
-        the document has embedded images, rerun it with --assets <a temp \
-        directory> to extract them, then look at each image and describe it \
-        in place in the markdown. If the tool is missing, fails, or does not \
-        support the format, fall back to: textutil, mdls, sips, python3. If \
-        none of them fit, find your own way to read the format.
+        If the file is Word, PowerPoint, Excel, OpenDocument, RTF, EPUB, \
+        CSV, or PDF, try "{{ anydoc }}" "files/{{ file }}" -o \
+        "context/{{ file }}.md" first. Then read the output and verify it \
+        against the original; fix or augment it as needed. If the document \
+        has embedded images, rerun it with --assets <a temp directory> to \
+        extract them, then look at each image and describe it in place in \
+        the markdown. If the tool is missing, fails, or does not support \
+        the format, find your own way to read the format.
 
         Hard requirement: NO information loss — prefer verbose fidelity over \
         pretty summarization. Tables stay tables, numbers stay exact, all text \
