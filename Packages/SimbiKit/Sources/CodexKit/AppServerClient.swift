@@ -86,13 +86,14 @@ public actor AppServerClient {
     }
 
     private func ensureRunning() async throws {
-        if process?.isRunning == true, socket != nil { return }
-        // Concurrent cold-start callers (converter + fixer + settings share
-        // one client) join the in-flight startup instead of tearing down
-        // each other's half-spawned child.
+        // Join an in-flight startup FIRST: the socket is connected before
+        // the initialize handshake finishes, so the healthy fast path
+        // alone would let a concurrent caller fire at an un-initialized
+        // server (converter + fixer + settings share one client).
         if let startupTask {
             return try await startupTask.value
         }
+        if process?.isRunning == true, socket != nil { return }
         let task = Task { try await self.startServer() }
         startupTask = task
         defer { startupTask = nil }
@@ -180,7 +181,8 @@ public actor AppServerClient {
             throw ClientError.serverError(code: -1, message: "server printed no endpoint")
         }
         timeout.cancel()
-        Task { for await _ in lines {} }  // keep consuming; the tee is the log
+        // No further stream consumer: dropping scan's iterator terminated
+        // the stream, and the reader thread keeps teeing stderr to the log.
 
         let socketTask = URLSession.shared.webSocketTask(
             with: URLRequest(url: URL(string: endpoint)!))

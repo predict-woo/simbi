@@ -42,6 +42,7 @@ public final class ThreadViewerManager {
         isBusy: @escaping @MainActor () -> Bool
     ) {
         if let window = windows[threadId] {
+            if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
             return
         }
