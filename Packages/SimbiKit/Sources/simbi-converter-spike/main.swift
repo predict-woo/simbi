@@ -54,7 +54,19 @@ let originalBytes = try Data(contentsOf: filesDir.appending(path: "report.docx")
 print("files/report.docx: \(originalBytes.count) bytes")
 
 let client = AppServerClient()
-let converter = FileConverter(noteFolderURL: noteFolder, client: client)
+// Exercise the bundled-tool path when the vendored binary exists (run
+// scripts/fetch-anydoc.sh first); SIMBI_ANYDOC overrides, unset+missing
+// degrades to the fallback tools exactly like an app without the helper.
+let anydocPath: String? = {
+    if let override = ProcessInfo.processInfo.environment["SIMBI_ANYDOC"] {
+        return override
+    }
+    let vendored = URL(filePath: FileManager.default.currentDirectoryPath)
+        .appending(path: "vendor/anydoc/anydoc")
+    return FileManager.default.isExecutableFile(atPath: vendored.path) ? vendored.path : nil
+}()
+if let anydocPath { print("anydoc: \(anydocPath)") } else { print("anydoc: not found — fallback path") }
+let converter = FileConverter(noteFolderURL: noteFolder, client: client, anydocPath: anydocPath)
 
 print("converting via real app-server (up to 15 min)…")
 do {
