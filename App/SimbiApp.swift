@@ -31,15 +31,6 @@ struct SimbiApp: App {
                 CheckForUpdatesCommand()
             }
         }
-        // Per-note fixer activity window, opened from the recording
-        // header's sparkles button (one window per note URL).
-        WindowGroup("Transcript Fixer", id: FixerActivityWindow.windowId, for: URL.self) { $url in
-            if let url {
-                FixerActivityWindow(noteFolderURL: url)
-            }
-        }
-        .windowResizability(.contentSize)
-        .defaultSize(width: 380, height: 300)
         // The per-note chat windows (docs/SPEC.md §5.4) are NOT here on
         // purpose: they are AppKit windows owned by ChatWindowManager
         // (SimbiUI). See its doc comment for why they must not be a

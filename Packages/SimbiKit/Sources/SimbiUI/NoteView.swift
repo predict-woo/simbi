@@ -352,9 +352,9 @@ struct RecordingHeader: View {
             }
 
             // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
-            // pass runs; the popover shows the coarse one-line feed. Hidden
+            // pass runs; clicking opens the live thread viewer. Hidden
             // until a fixer has ever existed for this note.
-            if recorder.fixerActivity.status != .off || Design.uiPreview {
+            if recorder.hasFixerThread || recorder.fixerActivity.status != .off || Design.uiPreview {
                 fixerButton
             }
 
@@ -375,8 +375,7 @@ struct RecordingHeader: View {
 
     private var fixerButton: some View {
         Button {
-            // One activity window per note; reopening focuses it.
-            openWindow(id: FixerActivityWindow.windowId, value: recorder.noteFolderURL)
+            recorder.openFixerViewer()
         } label: {
             Image(systemName: "sparkles")
                 .foregroundStyle(
@@ -510,52 +509,6 @@ struct RecordingHeader: View {
             Text("Listening…")
                 .font(.meta)
                 .foregroundStyle(.tertiary)
-        }
-    }
-}
-
-/// The per-note fixer activity window (SPEC.md §5.2): coarse status
-/// headline over the one-line event feed. A glance at what the fixer is
-/// doing, not a log. The app shell declares the matching
-/// `WindowGroup(id: windowId, for: URL.self)` scene.
-public struct FixerActivityWindow: View {
-    public static let windowId = "fixer-activity"
-
-    private let recorder: RecordingController
-    private let noteName: String
-
-    public init(noteFolderURL: URL) {
-        self.recorder = RecordingController.shared(noteFolderURL: noteFolderURL)
-        self.noteName = noteFolderURL.lastPathComponent
-    }
-
-    public var body: some View {
-        let model = recorder.fixerActivity
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(
-                        model.status == .working
-                            ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
-                    )
-                    .modifier(PulseEffect(active: model.status == .working))
-                Text(headline(model.status))
-                    .font(.headline)
-                Spacer()
-            }
-            Spacer()
-        }
-        .padding(12)
-        .frame(minWidth: 320, idealWidth: 380, minHeight: 180, idealHeight: 300)
-        .navigationTitle("Fixer: \(noteName)")
-    }
-
-    private func headline(_ status: FixerActivityModel.Status) -> String {
-        switch status {
-        case .off: "Transcript Fixer"
-        case .waiting: "Waiting for new cues"
-        case .working: "Reviewing…"
-        case .done: "Done: all cues reviewed"
         }
     }
 }

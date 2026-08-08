@@ -147,7 +147,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
-        .testTarget(name: "SimbiUITests", dependencies: ["SimbiUI"]),
+        .testTarget(name: "SimbiUITests", dependencies: ["SimbiUI", "CodexKit"]),
         .testTarget(
             name: "OutlineViewKitTests",
             dependencies: ["OutlineViewKit"],

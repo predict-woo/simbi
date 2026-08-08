@@ -89,8 +89,12 @@ public final class RecordingController {
     /// Fixer status + activity feed for the header button/popover.
     let fixerActivity = FixerActivityModel()
 
-    /// Exposed so the header's fixer button can open the note's activity
-    /// window (keyed by this URL).
+    /// Whether this note has a fixer thread (saved in state.json, or created
+    /// this session). Drives the header button's visibility across relaunches.
+    private(set) var hasFixerThread: Bool
+
+    /// Exposed so the header's buttons can open per-note windows keyed by
+    /// this URL.
     let noteFolderURL: URL
     private let pipeline: RecordingPipeline
     private var capture: MixedCapture?
@@ -105,6 +109,7 @@ public final class RecordingController {
             diarizer: SortformerStream())
         let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
         self.hasRecording = state.sessionCount > 0 || state.activeSession != nil
+        self.hasFixerThread = state.fixerThreadId != nil
         self.elapsed = TimeInterval(state.totalSamples) / 16000
         let settings =
             (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
@@ -126,6 +131,20 @@ public final class RecordingController {
     /// itself is private to the controller).
     public func inspectorUpdates() async -> AsyncStream<InspectorUpdate> {
         await pipeline.inspectorUpdates()
+    }
+
+    /// The header's sparkles button: open the note's fixer thread in the
+    /// live thread viewer. Fixer viewers never archive on close; the thread
+    /// stays resumable with full context (spec 2026-08-09).
+    func openFixerViewer() {
+        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        guard let threadId = state.fixerThreadId else { return }
+        ThreadViewerManager.shared.open(
+            threadId: threadId,
+            title: "Fixer: \(noteFolderURL.lastPathComponent)",
+            noteFolderURL: noteFolderURL,
+            archivesOnClose: false,
+            isBusy: { [weak self] in self?.fixerActivity.status == .working })
     }
 
     public func toggle() {
@@ -190,6 +209,8 @@ public final class RecordingController {
             systemAudioBanner = capture.systemAudioFailure ?? micBanner
             status = .recording
             hasRecording = true
+            hasFixerThread =
+                ((try? NoteRecordingState.load(noteFolder: noteFolderURL))?.fixerThreadId) != nil
             fixerActivity.noteRecordingStarted()
 
             liveTask = Task { [pipeline] in
