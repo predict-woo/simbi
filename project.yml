@@ -37,9 +37,8 @@ targets:
       # happens here, not in a copy-files phase: Xcode plans copy phases
       # before the pre-build script runs, so on a fresh checkout an
       # optional-source copy silently drops the not-yet-built binary.
-      # A missing binary (no Rust toolchain) is skipped — the app treats a
-      # missing helper as a degraded state, and the release workflow's
-      # verify step fails loudly if a release build lacks it.
+      # A missing binary fails the build: every app bundle must carry the
+      # helper (building it needs a Rust toolchain — see CLAUDE.md).
       # Runs before Xcode's final wrapper signing, so the sealed bundle
       # includes the signed helper. OTHER_CODE_SIGN_FLAGS carries the
       # release workflow's --timestamp (notarization requires a secure
@@ -48,8 +47,8 @@ targets:
         script: |
           vendored="$SRCROOT/vendor/anydoc/anydoc"
           if [ ! -f "$vendored" ]; then
-            echo "warning: vendor/anydoc/anydoc missing; app will ship without the anydoc helper"
-            exit 0
+            echo "error: vendor/anydoc/anydoc missing — scripts/fetch-anydoc.sh must build it (Rust toolchain required)"
+            exit 1
           fi
           helpers="$BUILT_PRODUCTS_DIR/$CONTENTS_FOLDER_PATH/Helpers"
           mkdir -p "$helpers"
