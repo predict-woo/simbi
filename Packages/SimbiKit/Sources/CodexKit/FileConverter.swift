@@ -20,6 +20,10 @@ public actor FileConverter {
     /// `anydoc`, which fails fast in the sandbox and routes the agent to
     /// INGEST.md's fallback tools — degraded, never failing.
     private let anydocPath: String?
+    /// Consulted when a job ends: false leaves the thread unarchived
+    /// (a viewer window holds it open — its close handler archives
+    /// instead; live-view spec §6).
+    private let shouldArchiveOnJobEnd: @Sendable (String) async -> Bool
     /// Generous ceiling — odd formats can send the agent exploring.
     private let turnTimeout: Duration
     /// INGEST.md's template text, fetched per job so edits apply to the
@@ -39,6 +43,7 @@ public actor FileConverter {
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         turnTimeout: Duration = .seconds(900),
         anydocPath: String? = nil,
+        shouldArchiveOnJobEnd: @escaping @Sendable (String) async -> Bool = { _ in true },
         instructionsTemplate: @escaping @Sendable () -> String = {
             AgentInstructions.ingest.defaultContents
         }
@@ -48,6 +53,7 @@ public actor FileConverter {
         self.model = model
         self.turnTimeout = turnTimeout
         self.anydocPath = anydocPath
+        self.shouldArchiveOnJobEnd = shouldArchiveOnJobEnd
         self.instructionsTemplate = instructionsTemplate
     }
 
@@ -107,8 +113,10 @@ public actor FileConverter {
         defer {
             activeThreads.remove(threadId)
             completedTurns.remove(threadId)
-            // Archived when the job ends (§5.3) — success or failure.
-            Task { [client] in
+            // Archived when the job ends (§5.3) — success or failure —
+            // unless a viewer window holds the thread open.
+            Task { [client, shouldArchiveOnJobEnd] in
+                guard await shouldArchiveOnJobEnd(threadId) else { return }
                 _ = try? await client.request(
                     method: "thread/archive", params: ["threadId": threadId])
             }
