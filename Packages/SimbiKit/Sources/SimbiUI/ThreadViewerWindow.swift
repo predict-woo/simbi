@@ -28,8 +28,14 @@ public final class ThreadViewerManager {
     public static let shared = ThreadViewerManager()
 
     private var windows: [String: ThreadViewerWindow] = [:]
+    /// Threads whose window is being created (the unarchive/endpoint awaits
+    /// leave a gap a second click could slip through): counted as open so
+    /// neither a double-click nor a job-end archive races the attach.
+    private var opening: Set<String> = []
 
-    public func isOpen(threadId: String) -> Bool { windows[threadId] != nil }
+    public func isOpen(threadId: String) -> Bool {
+        windows[threadId] != nil || opening.contains(threadId)
+    }
 
     func open(
         threadId: String, fileName: String, noteFolderURL: URL,
@@ -39,7 +45,10 @@ public final class ThreadViewerManager {
             window.makeKeyAndOrderFront(nil)
             return
         }
+        guard !opening.contains(threadId) else { return }
+        opening.insert(threadId)
         Task { @MainActor in
+            defer { self.opening.remove(threadId) }
             // Cosmetic bookkeeping: errors ignored (already unarchived, or
             // degraded server — resume errors then show inside the
             // terminal, which is the error UI).
