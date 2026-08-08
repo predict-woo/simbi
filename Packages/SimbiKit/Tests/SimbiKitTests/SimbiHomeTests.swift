@@ -11,7 +11,7 @@ struct SimbiHomeTests {
         return SimbiHome(rootURL: root)
     }
 
-    @Test("bootstrap creates root, AGENTS.md, and default settings")
+    @Test("bootstrap creates root, instruction files, and default settings")
     func bootstrapCreatesWorld() throws {
         let home = try makeTempHome()
         defer { try? FileManager.default.removeItem(at: home.rootURL) }
@@ -19,7 +19,10 @@ struct SimbiHomeTests {
         try home.bootstrap()
 
         #expect(FileManager.default.fileExists(atPath: home.rootURL.path))
-        #expect(FileManager.default.fileExists(atPath: home.agentsFileURL.path))
+        for file in AgentInstructions.allCases {
+            let url = file.url(homeRootURL: home.rootURL)
+            #expect(try String(contentsOf: url, encoding: .utf8) == file.defaultContents)
+        }
         let settings = try SimbiSettings.load(from: home.settingsFileURL)
         #expect(settings == .default)
     }

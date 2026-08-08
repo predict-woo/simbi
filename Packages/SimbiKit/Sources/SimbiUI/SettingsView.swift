@@ -12,6 +12,8 @@ public struct SettingsView: View {
         (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
     @State private var models: [String] = []
     @State private var modelsUnavailable = false
+    /// Instruction file awaiting reset confirmation (nil = no dialog).
+    @State private var resetTarget: AgentInstructions?
     @Bindable private var updates = UpdateModel.shared
 
     public init() {}
@@ -25,6 +27,11 @@ public struct SettingsView: View {
                     Text("Model list unavailable. Is the ChatGPT app installed?")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+            }
+            Section("Agent instructions") {
+                ForEach(AgentInstructions.allCases) { file in
+                    instructionsRow(file)
                 }
             }
             Section("Recording") {
@@ -84,6 +91,21 @@ public struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+        .alert(
+            "Reset to default?",
+            isPresented: Binding(
+                get: { resetTarget != nil },
+                set: { if !$0 { resetTarget = nil } }
+            ),
+            presenting: resetTarget
+        ) { file in
+            Button("Reset", role: .destructive) {
+                InstructionsEditorWindowManager.shared.reset(file)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { file in
+            Text("This replaces \(file.fileName) with the default instructions. Your edits will be lost.")
+        }
         .onChange(of: settings) {
             try? settings.save(to: SimbiHome().settingsFileURL)
         }
@@ -143,6 +165,31 @@ public struct SettingsView: View {
             case .device(let uid):
                 settings.micEnabled = true
                 settings.micDeviceUID = uid
+            }
+        }
+    }
+
+    /// One editable instruction file (SPEC.md §2.1): its role, a "…" menu
+    /// with the file actions, and the editor button.
+    private func instructionsRow(_ file: AgentInstructions) -> some View {
+        LabeledContent(file.title) {
+            HStack(spacing: 8) {
+                Menu {
+                    Button("Reveal in Finder") {
+                        InstructionsEditorWindowManager.shared.revealInFinder(file)
+                    }
+                    Button("Reset to Default…", role: .destructive) {
+                        resetTarget = file
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                Button("Edit") {
+                    InstructionsEditorWindowManager.shared.open(file)
+                }
             }
         }
     }

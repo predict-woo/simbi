@@ -149,17 +149,23 @@ public final class RecordingController {
         }
         do {
             // Fixer (SPEC.md §5.2): reuses the note's saved thread if any.
-            // A thread created under older instructions is retired — a
+            // A thread created under older instructions — a contract
+            // version bump or a user edit to FIXER.md — is retired; a
             // fresh thread with the current prompt starts instead.
             let noteState = try? NoteRecordingState.load(noteFolder: noteFolderURL)
+            let fixerInstructions = AgentInstructions.fixer.resolve(
+                homeRootURL: SimbiHome().rootURL)
             let savedThreadId =
                 noteState?.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
+                    && noteState?.fixerInstructionsHash
+                        == AgentInstructions.fingerprint(fixerInstructions)
                 ? noteState?.fixerThreadId : nil
             let settings =
                 (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
             let fixer = TranscriptFixer(
                 noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                savedThreadId: savedThreadId, model: settings.fixerModel)
+                savedThreadId: savedThreadId, model: settings.fixerModel,
+                instructions: fixerInstructions)
             let activity = fixerActivity
             await fixer.setEventSink { event in
                 Task { @MainActor in activity.handle(event) }

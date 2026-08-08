@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// SimbiUI's shared design language. `docs/design-system.md` is the
@@ -38,6 +39,16 @@ enum Design {
 
     /// The note editor's base point size (document canvas, not UI chrome).
     static let editorFontSize: CGFloat = 15
+
+    // MARK: Variable tokens (instructions editor, AppKit attribute layer)
+
+    /// Ink for `{{ variable }}` chips. System accent on purpose — the app
+    /// has no custom accent, and the chip must read as "interactive-ish
+    /// token", not a status hue.
+    static let variableInk = NSColor.controlAccentColor
+    /// Chip fill behind a variable, same 0.12 soft-tint convention as
+    /// `speakerTint`.
+    static let variableTint = NSColor.controlAccentColor.withAlphaComponent(0.12)
 
     // MARK: Geometry
 

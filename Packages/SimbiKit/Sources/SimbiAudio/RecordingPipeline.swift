@@ -183,12 +183,15 @@ public actor RecordingPipeline: TranscriptFixerHost {
 
         if let fixer {
             try? await fixer.recordingStarted()
+            let fingerprint = await fixer.instructionsFingerprint
             if let threadId = await fixer.threadId,
                 threadId != state.fixerThreadId
                     || state.fixerInstructionsVersion != TranscriptFixer.instructionsVersion
+                    || state.fixerInstructionsHash != fingerprint
             {
                 state.fixerThreadId = threadId
                 state.fixerInstructionsVersion = TranscriptFixer.instructionsVersion
+                state.fixerInstructionsHash = fingerprint
                 try? state.saveRecording(noteFolder: noteFolderURL)
             }
         }

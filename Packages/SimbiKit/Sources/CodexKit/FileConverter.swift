@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Runs the per-file converter jobs for one note (SPEC.md §5.3): each
 /// imported file gets its own Codex thread (cwd = note folder,
@@ -16,6 +17,10 @@ public actor FileConverter {
     private let model: String?
     /// Generous ceiling — odd formats can send the agent exploring.
     private let turnTimeout: Duration
+    /// INGEST.md's template text, fetched per job so edits apply to the
+    /// next conversion without an app restart. `{{ file }}` is the
+    /// imported file's name.
+    private let instructionsTemplate: @Sendable () -> String
 
     private var bound = false
     private var waiting: [String: CheckedContinuation<Void, any Error>] = [:]
@@ -27,29 +32,20 @@ public actor FileConverter {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
-        turnTimeout: Duration = .seconds(900)
+        turnTimeout: Duration = .seconds(900),
+        instructionsTemplate: @escaping @Sendable () -> String = {
+            AgentInstructions.ingest.defaultContents
+        }
     ) {
         self.noteFolderURL = noteFolderURL
         self.client = client
         self.model = model
         self.turnTimeout = turnTimeout
+        self.instructionsTemplate = instructionsTemplate
     }
 
     private func instructions(fileName: String) -> String {
-        """
-        Convert files/\(fileName) to a markdown mirror at context/\(fileName).md \
-        (create the context/ directory if needed).
-
-        Known starting points for reading the format: textutil, mdls, sips, \
-        python3. If none of them fit, find your own way to read the format.
-
-        Hard requirement: NO information loss — prefer verbose fidelity over \
-        pretty summarization. Tables stay tables, numbers stay exact, all text \
-        content is carried over. Describe images/figures in place.
-
-        Never modify files/\(fileName) or anything outside context/. Reply with \
-        one line: DONE, or FAILED: <reason>.
-        """
+        AgentInstructions.render(instructionsTemplate(), variables: ["file": fileName])
     }
 
     /// Converts one imported file end-to-end; returns when `context/` holds

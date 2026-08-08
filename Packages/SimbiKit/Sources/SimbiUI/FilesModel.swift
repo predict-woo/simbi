@@ -56,7 +56,11 @@ final class FilesModel {
             (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
         self.converter = FileConverter(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-            model: settings.converterModel)
+            model: settings.converterModel,
+            // Read INGEST.md per job so edits apply without a restart.
+            instructionsTemplate: {
+                AgentInstructions.ingest.contents(homeRootURL: SimbiHome().rootURL)
+            })
         refresh()
         // Watch the note folder so external drops into files/ and converter
         // output in context/ show up live — same pattern as TranscriptModel.

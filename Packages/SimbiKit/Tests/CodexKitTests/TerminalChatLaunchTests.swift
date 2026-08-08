@@ -82,6 +82,17 @@ struct TerminalChatLaunchTests {
         #expect(text.contains("files/slides.pdf"))
     }
 
+    @Test("a CHAT.md at the home root replaces the default template")
+    func instructionsUseUserTemplate() throws {
+        let temp = try makeNote(files: ["note.md": "hi"])
+        defer { temp.cleanup() }
+        try "You are helping with `{{ note_path }}`. {{ files }}".write(
+            to: temp.home.appending(path: "CHAT.md"), atomically: true, encoding: .utf8)
+        let text = TerminalChatLaunch.developerInstructions(
+            noteFolderURL: temp.note, homeRootURL: temp.home)
+        #expect(text == "You are helping with `Work/Standup`. The note currently contains: `note.md`.")
+    }
+
     @Test("instructions say so when the note has no files yet")
     func instructionsEmptyNote() throws {
         let temp = try makeNote(files: [:])

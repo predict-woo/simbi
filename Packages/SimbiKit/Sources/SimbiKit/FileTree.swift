@@ -62,9 +62,11 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
 public enum FileTreeScanner {
     public static let noteMarkerName = "note.md"
 
-    /// App-managed files that never show in the sidebar (SPEC.md §2.1's
-    /// `AGENTS.md` is written by bootstrap, not the user).
-    static let reservedNames: Set<String> = ["AGENTS.md"]
+    /// App-managed files that never show in the sidebar: the agent
+    /// instruction files bootstrap writes to the home root (SPEC.md §2.1).
+    /// Edited from Settings, not the note list.
+    static let reservedNames: Set<String> = Set(
+        AgentInstructions.allCases.map(\.fileName))
 
     public static func isNoteFolder(_ url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.appending(path: noteMarkerName).path)

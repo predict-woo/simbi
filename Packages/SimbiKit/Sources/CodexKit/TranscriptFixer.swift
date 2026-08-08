@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Host hooks around each fixer pass. The pipeline implements these: it
 /// refreshes the fixer's worktree copy of the transcript before a turn and
@@ -42,10 +43,12 @@ public actor TranscriptFixer {
         noteFolder.appending(path: ".simbi/fixer-worktree", directoryHint: .isDirectory)
     }
 
-    /// Bumped whenever `instructions` (or the thread's cwd contract)
-    /// changes incompatibly. A note's saved thread carries the
-    /// instructions it was created with, so threads from an older version
-    /// are retired and recreated instead of resumed. History: 1 =
+    /// Bumped whenever the thread's *contract* (worktree cwd, merge
+    /// behavior, ping protocol) changes incompatibly. A note's saved
+    /// thread carries the instructions it was created with, so threads
+    /// from an older version are retired and recreated instead of
+    /// resumed; the instruction *text* (user-editable FIXER.md) is
+    /// tracked separately via `instructionsFingerprint`. History: 1 =
     /// snapshot-and-replay worktree, 2 = per-cue speaker-attribution fixes.
     public static let instructionsVersion = 2
 
@@ -53,6 +56,9 @@ public actor TranscriptFixer {
     private let client: AppServerClient
     /// Model override for fixer turns (SPEC.md §5.5); nil = thread default.
     private let model: String?
+    /// The thread's opening instructions — FIXER.md's resolved text,
+    /// injected by the caller; defaults to the built-in prompt.
+    private let instructions: String
     /// Persisted by the caller in .simbi/state.json across app restarts.
     public private(set) var threadId: String?
     private let savedThreadId: String?
@@ -69,48 +75,22 @@ public actor TranscriptFixer {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, savedThreadId: String?,
-        model: String? = nil
+        model: String? = nil,
+        instructions: String = AgentInstructions.fixer.defaultContents
     ) {
         self.noteFolderURL = noteFolderURL
         self.client = client
         self.savedThreadId = savedThreadId
         self.threadId = savedThreadId
         self.model = model
+        self.instructions = instructions
     }
 
-    private static let instructions = """
-        You are the transcript fixer for this note. The file transcript.vtt in your \
-        working directory is YOUR WORKING COPY of the note's live WebVTT transcript — \
-        it is refreshed from the live file before every ping, and after each of your \
-        turns I diff your copy against what you were given and merge the changed cue \
-        payloads into the live transcript myself. Never write outside your working \
-        directory. The note's own files are read-only ground truth for names and \
-        jargon: ../../note.md, and ../../context/*.md if present.
-
-        On each of my pings, review the cues I name (plus earlier ones if needed for \
-        consistency) and fix ASR errors in their text: spelling of names and jargon, \
-        punctuation, and obvious mis-hearings. Rules you must never break:
-        - Edit ONLY cue text and `<v Name>` speaker tags. The merge takes nothing \
-        else: renumbering cues, changing timestamps, or adding/deleting cues or NOTE \
-        blocks is discarded, so it is wasted work.
-        - Speaker diarization is imperfect: when the conversation makes it pretty \
-        certain a cue is attributed to the wrong speaker (e.g. a reply credited to \
-        the person who just asked the question, or a sentence obviously continuing \
-        the other speaker's thought), fix that cue's `<v>` tag — copy the correct \
-        speaker's tag exactly as it appears on their other cues. When in doubt, \
-        leave the attribution alone.
-        - Renaming a speaker's identity is different from fixing attribution: rename \
-        ONLY when the transcript makes the identity unambiguous (e.g. a speaker \
-        introduces themselves), then rename that speaker consistently across the \
-        whole file.
-        - `NOTE session` blocks mark stop/resume boundaries. Speaker slot numbering may \
-        reshuffle across them ("Speaker 1" in session 2 may be a different person than \
-        in session 1) — unify names across sessions only when identity is clear from \
-        the content.
-        - Keep your copy valid WebVTT — a copy that fails to parse contributes nothing.
-
-        Reply with a one-line summary of what you changed (or "no changes").
-        """
+    /// Persisted next to the thread id so a FIXER.md edit retires the
+    /// saved thread (see `NoteRecordingState.fixerInstructionsHash`).
+    public var instructionsFingerprint: String {
+        AgentInstructions.fingerprint(instructions)
+    }
 
     /// The pipeline registers itself as host before recording starts.
     public func setHost(_ host: any TranscriptFixerHost) {
@@ -185,7 +165,7 @@ public actor TranscriptFixer {
         _ = try await client.request(
             method: "thread/name/set",
             params: ["threadId": id, "name": "[simbi] fixer: \(noteFolderURL.lastPathComponent)"])
-        try await startTurn(text: Self.instructions, summary: "Reading the note and transcript")
+        try await startTurn(text: instructions, summary: "Reading the note and transcript")
     }
 
     /// Called when a cue lands in transcript.vtt.

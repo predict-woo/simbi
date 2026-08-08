@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Launch spec for the per-note chat terminal: the embedded Ghostty surface
 /// runs the packaged codex TUI directly, so codex owns the whole
@@ -48,35 +49,24 @@ public struct TerminalChatLaunch: Sendable, Equatable {
         ])
     }
 
-    /// The developer message codex starts with: what this folder is and
-    /// which files it currently holds — names only, never contents. Codex
-    /// reads what it needs itself, which also keeps long transcripts from
-    /// pre-eating the context window the way the old inline-attachment
-    /// prompt did.
+    /// The developer message codex starts with: CHAT.md's template (user
+    /// file at the home root, or the built-in default) with
+    /// `{{ note_path }}` and `{{ files }}` filled in. The inventory names
+    /// files only, never contents — codex reads what it needs itself,
+    /// which also keeps long transcripts from pre-eating the context
+    /// window the way the old inline-attachment prompt did.
     static func developerInstructions(noteFolderURL: URL, homeRootURL: URL) -> String {
         let notePath = CodexChat.notePath(
             noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
         let files = inventory(noteFolderURL: noteFolderURL)
-        let layout = """
-            This session is attached to the Simbi note at `\(notePath)` (your working \
-            directory). Simbi notes keep a fixed layout: `note.md` is the user's note, \
-            `transcript.vtt` is the meeting transcript with speaker labels, `context/` \
-            holds markdown conversions of attached files, and `files/` holds the \
-            original attachments.
-            """
         let contents =
             files.isEmpty
             ? "The note has no files yet."
             : "The note currently contains: " + files.map { "`\($0)`" }.joined(separator: ", ")
                 + "."
-        return """
-            \(layout)
-
-            \(contents)
-
-            Read whichever files are relevant before answering, and when the user asks \
-            for changes, edit the files on disk.
-            """
+        return AgentInstructions.chat.resolve(
+            homeRootURL: homeRootURL,
+            variables: ["note_path": notePath, "files": contents])
     }
 
     /// Top-level note files plus one level of `context/` and `files/`,

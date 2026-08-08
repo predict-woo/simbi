@@ -55,10 +55,12 @@ struct FileTreeScannerTests {
         }
     }
 
-    @Test("reserved app-managed files (AGENTS.md) never appear")
+    @Test("reserved app-managed files (the instruction files) never appear")
     func reservedNamesAreHidden() throws {
         try withTempRoot { root in
-            try Data().write(to: root.appending(path: "AGENTS.md"))
+            for file in AgentInstructions.allCases {
+                try Data().write(to: root.appending(path: file.fileName))
+            }
             try Data().write(to: root.appending(path: "notes.md"))
 
             let names = FileTreeScanner.scan(root: root).map(\.name)
