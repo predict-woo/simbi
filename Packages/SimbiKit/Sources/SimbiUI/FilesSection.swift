@@ -174,7 +174,9 @@ private struct FileTile: View {
             Button("Open") { NSWorkspace.shared.open(fileURL) }
             if case .done = row.status {
                 Button("Open Context") {
-                    NSWorkspace.shared.open(model.contextURL(for: row.name))
+                    ContextEditorWindowManager.shared.open(
+                        fileURL: model.contextURL(for: row.name),
+                        title: "Context: \(row.name)")
                 }
             }
             if case .failed = row.status {
