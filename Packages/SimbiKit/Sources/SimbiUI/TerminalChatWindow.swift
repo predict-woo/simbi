@@ -114,6 +114,9 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
 
         if CodexInstallation.standard.isBinaryInstalled {
             let terminal = TerminalView(frame: contentRect(forFrameRect: frame))
+            // Pre-trust the note folder so the TUI opens on the composer
+            // instead of the per-directory trust prompt.
+            CodexTrust.ensureTrusted(directory: noteFolderURL)
             let launch = TerminalChatLaunch.forNote(
                 noteFolderURL: noteFolderURL, homeRootURL: SimbiHome().rootURL)
             terminal.delegate = self
