@@ -22,6 +22,7 @@ xcuserdata/
 __pycache__/
 
 ## Local-only folders (kept out of history)
+vendor/
 docs/
 references/
 .agents/

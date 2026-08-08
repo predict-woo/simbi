@@ -45,6 +45,12 @@ xcodegen generate
 open Simbi.xcodeproj        # or: xcodebuild -scheme Simbi build
 ```
 
+Building the app also vendors the [anydoc](https://github.com/firecrawl/anydoc)
+converter CLI from its pinned crate (`scripts/fetch-anydoc.sh`, run
+automatically as a build phase), which needs a Rust toolchain
+([rustup.rs](https://rustup.rs)) the first time; add the
+`x86_64-apple-darwin` target for universal builds.
+
 Formatting is enforced with the toolchain-bundled formatter:
 
 ```bash
