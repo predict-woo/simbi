@@ -43,7 +43,7 @@ cd "$SRC/anydoc-$VERSION"
 # converter's existing non-anydoc fallback, so missing x86_64 is a warning.
 SLICES=""
 for TARGET in aarch64-apple-darwin x86_64-apple-darwin; do
-    if cargo build --release --example convert --target "$TARGET" \
+    if cargo build --locked --release --example convert --target "$TARGET" \
         >"$OUT/build-$TARGET.log" 2>&1; then
         SLICES="$SLICES target/$TARGET/release/examples/convert"
     else
