@@ -1,5 +1,105 @@
 import Foundation
 
+/// Ties the websocket server child's lifetime to the app's. The old stdio
+/// transport got this for free (the child exited on stdin EOF); `--listen`
+/// mode ignores stdin EOF (verified against codex-cli 0.147.0-alpha.6.5),
+/// so a killed or crashed Simbi leaves the server running. An orphaned
+/// server keeps every loaded thread's rollout open as its writer, and the
+/// next app session's `thread/resume` on those threads fails with
+/// "already has an active writer". Two nets, neither perfect alone: an
+/// `atexit` hook on normal quits SIGTERMs this session's children and
+/// sweeps orphans, and `reapOrphans` kills servers whose Simbi is already
+/// gone (crashes, SIGKILL) before a new one spawns.
+final class AppServerJanitor: @unchecked Sendable {
+    static let shared = AppServerJanitor()
+
+    private let lock = NSLock()
+    private var pids: [pid_t] = []
+    private var binaryPath: String?
+
+    /// Called at client init: remembers the server binary and arms the
+    /// exit hook, so a quit kills every running server — this session's
+    /// children and older sessions' orphans — even when this session
+    /// never spawned one. (The hook runs on normal exits only; a
+    /// SIGKILLed Simbi still leaks its child until the next reap.)
+    func prepare(binaryPath: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        if self.binaryPath == nil {
+            atexit { AppServerJanitor.shared.terminateAll() }
+        }
+        self.binaryPath = binaryPath
+    }
+
+    func register(_ pid: pid_t) {
+        lock.lock()
+        defer { lock.unlock() }
+        pids.append(pid)
+    }
+
+    /// Forget a child that was terminated deliberately — a stale pid could
+    /// be reused by an unrelated process before the exit hook fires.
+    func unregister(_ pid: pid_t) {
+        lock.lock()
+        defer { lock.unlock() }
+        pids.removeAll { $0 == pid }
+    }
+
+    fileprivate func terminateAll() {
+        lock.lock()
+        let doomed = pids
+        let path = binaryPath
+        pids.removeAll()
+        lock.unlock()
+        for pid in doomed { kill(pid, SIGTERM) }
+        // Quit leaves no server running anywhere: sweep older sessions'
+        // orphans too, not just this session's children.
+        if let path { sweepOrphans(binaryPath: path) }
+    }
+
+    /// Kills leftover servers from dead Simbi sessions: processes running
+    /// exactly our spawn command whose parent is launchd (a live session's
+    /// child has that session as its parent and never matches).
+    func reapOrphans(binaryPath: String) {
+        lock.lock()
+        self.binaryPath = binaryPath
+        lock.unlock()
+        sweepOrphans(binaryPath: binaryPath)
+    }
+
+    private func sweepOrphans(binaryPath: String) {
+        let ps = Process()
+        ps.executableURL = URL(fileURLWithPath: "/bin/ps")
+        ps.arguments = ["-axo", "pid=,ppid=,args="]
+        let out = Pipe()
+        ps.standardOutput = out
+        ps.standardError = FileHandle.nullDevice
+        guard (try? ps.run()) != nil else { return }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        ps.waitUntilExit()
+        guard let listing = String(data: data, encoding: .utf8) else { return }
+        for pid in Self.orphanPIDs(inPSListing: listing, binaryPath: binaryPath) {
+            kill(pid, SIGTERM)
+        }
+    }
+
+    /// `ps -axo pid=,ppid=,args=` lines → pids of orphaned servers.
+    static func orphanPIDs(inPSListing listing: String, binaryPath: String) -> [pid_t] {
+        let signature = "\(binaryPath) app-server --listen ws://127.0.0.1:0"
+        var pids: [pid_t] = []
+        for line in listing.split(separator: "\n") {
+            let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard fields.count == 3,
+                let pid = pid_t(fields[0]), let ppid = pid_t(fields[1]),
+                ppid == 1,
+                fields[2].trimmingCharacters(in: .whitespaces) == signature
+            else { continue }
+            pids.append(pid)
+        }
+        return pids
+    }
+}
+
 /// Long-lived `codex app-server` JSON-RPC client (SPEC.md §5.1). One child
 /// process per app session, JSON-RPC over a loopback websocket
 /// (`--listen ws://127.0.0.1:0`); the port also serves viewer terminals
@@ -40,6 +140,7 @@ public actor AppServerClient {
 
     public init(installation: CodexInstallation = .standard) {
         self.installation = installation
+        AppServerJanitor.shared.prepare(binaryPath: installation.binaryURL.path)
     }
 
     @discardableResult
@@ -112,8 +213,15 @@ public actor AppServerClient {
         socket?.cancel(with: .goingAway, reason: nil)
         socket = nil
         boundEndpoint = nil
-        process?.terminate()
+        if let old = process {
+            AppServerJanitor.shared.unregister(old.processIdentifier)
+            old.terminate()
+        }
         process = nil
+
+        // A previous session's server may still hold rollout writers for
+        // this note's threads — resume would fail against a live orphan.
+        AppServerJanitor.shared.reapOrphans(binaryPath: installation.binaryURL.path)
 
         let child = Process()
         child.executableURL = installation.binaryURL
@@ -133,6 +241,7 @@ public actor AppServerClient {
         let logHandle = try? FileHandle(forWritingTo: stderrLog)
         try child.run()
         process = child
+        AppServerJanitor.shared.register(child.processIdentifier)
 
         // The startup banner ("listening on: ws://127.0.0.1:<port>") goes
         // to STDERR (verified against codex-cli 0.147.0-alpha.6.5; stdout
@@ -176,6 +285,7 @@ public actor AppServerClient {
         }
         guard let endpoint = await scan.value else {
             timeout.cancel()
+            AppServerJanitor.shared.unregister(child.processIdentifier)
             child.terminate()
             process = nil
             throw ClientError.serverError(code: -1, message: "server printed no endpoint")

@@ -38,6 +38,11 @@ public struct SimbiRootView: View {
                 .keyboardShortcut("n", modifiers: .command)
             }
         }
+        // Creating the shared client at launch arms AppServerJanitor's
+        // quit cleanup: quitting must kill every running codex server —
+        // including older sessions' orphans — even if this session never
+        // talks to codex. (No server is spawned by this; that stays lazy.)
+        .task { _ = CodexServices.appServer }
         // Decouple opening a note from clicking it: building NoteView (five
         // models, file reads, the markdown parse) is the expensive part, so
         // it runs a beat after the selection change. The short sleep lets the
