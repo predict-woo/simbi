@@ -300,76 +300,109 @@ struct RecordingHeader: View {
         }
     }
 
+    /// Everything on one line when it fits; in a narrow pane the live
+    /// status items (speaker chip, fixer, inspector) wrap to a second
+    /// trailing row — recording adds items and the transcript pane can
+    /// be squeezed well below their combined width.
     private var controls: some View {
-        HStack(spacing: 12) {
-            // Idle: neutral button, red dot icon (ready). Recording: filled
-            // red Stop — red means "live", not "will be live".
-            Button {
-                recorder.toggle()
-            } label: {
-                if isRecording {
-                    Label("Stop", systemImage: "stop.fill")
-                } else {
-                    switch recorder.status {
-                    case .idle, .failed:
-                        Label {
-                            Text(recorder.hasRecording ? "Resume" : "Record")
-                        } icon: {
-                            Image(systemName: "record.circle.fill")
-                                .foregroundStyle(Color.statusLive)
-                        }
-                    case .preparing:
-                        Label("Preparing…", systemImage: "record.circle")
-                    case .recording, .stopping:
-                        Label("Stopping…", systemImage: "stop.circle")
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                // The record cluster stretches (leading-aligned) instead
+                // of a Spacer pushing right: HStack splits a width
+                // deficit between flexible siblings, so a filler next to
+                // the truncatable Record label shrinks the button while
+                // the gap stays wide. Nested, the cluster is the single
+                // most-flexible child, laid out last with the whole
+                // remainder — the gap collapses to the plain 12pt row
+                // spacing before any text truncates.
+                HStack(spacing: 12) {
+                    recordButton
+                    elapsedTimer
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                statusItems
+                sourcesMenu
+            }
+            VStack(spacing: Design.innerGap) {
+                HStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        recordButton
+                        elapsedTimer
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    sourcesMenu
+                }
+                HStack(spacing: 12) {
+                    statusItems
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+
+    // Idle: neutral button, red dot icon (ready). Recording: filled
+    // red Stop — red means "live", not "will be live".
+    private var recordButton: some View {
+        Button {
+            recorder.toggle()
+        } label: {
+            if isRecording {
+                Label("Stop", systemImage: "stop.fill")
+            } else {
+                switch recorder.status {
+                case .idle, .failed:
+                    Label {
+                        Text(recorder.hasRecording ? "Resume" : "Record")
+                    } icon: {
+                        Image(systemName: "record.circle.fill")
+                            .foregroundStyle(Color.statusLive)
+                    }
+                case .preparing:
+                    Label("Preparing…", systemImage: "record.circle")
+                case .recording, .stopping:
+                    Label("Stopping…", systemImage: "stop.circle")
                 }
             }
-            .buttonStyle(.bordered)
-            .tint(isRecording ? .statusLive : nil)
-            .disabled(recorder.status == .preparing || recorder.status == .stopping)
+        }
+        .buttonStyle(.bordered)
+        .tint(isRecording ? .statusLive : nil)
+        .disabled(recorder.status == .preparing || recorder.status == .stopping)
+    }
 
-            HStack(spacing: Design.iconGap) {
-                if isRecording {
-                    StatusDot(color: .statusLive)
-                        .modifier(PulseEffect())
-                }
-                Text(Design.time(recorder.elapsed))
-                    .font(.body.monospacedDigit())
-                    .foregroundStyle(isRecording ? .primary : .secondary)
-            }
-
-            Spacer()
-
+    private var elapsedTimer: some View {
+        HStack(spacing: Design.iconGap) {
             if isRecording {
-                liveIndicator
+                StatusDot(color: .statusLive)
+                    .modifier(PulseEffect())
             }
-            if case .failed(let message) = recorder.status {
-                Text(message)
-                    .font(.meta)
-                    .foregroundStyle(Color.statusLive)
-                    .lineLimit(2)
-            }
+            Text(Design.time(recorder.elapsed))
+                .font(.body.monospacedDigit())
+                .foregroundStyle(isRecording ? .primary : .secondary)
+        }
+    }
 
-            // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
-            // pass runs; clicking opens the live thread viewer. Hidden
-            // until a fixer has ever existed for this note.
-            if recorder.hasFixerThread || recorder.fixerActivity.status != .off || Design.uiPreview {
-                fixerButton
-            }
+    @ViewBuilder private var statusItems: some View {
+        if isRecording {
+            liveIndicator
+        }
+        if case .failed(let message) = recorder.status {
+            Text(message)
+                .font(.meta)
+                .foregroundStyle(Color.statusLive)
+                .lineLimit(2)
+        }
 
-            // Pipeline Inspector: live view of the recording pipeline's
-            // internals. Only meaningful mid-session, so recording-only.
-            if isRecording {
-                inspectorButton
-            }
+        // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
+        // pass runs; clicking opens the live thread viewer. Hidden
+        // until a fixer has ever existed for this note.
+        if recorder.hasFixerThread || recorder.fixerActivity.status != .off || Design.uiPreview {
+            fixerButton
+        }
 
-            // Source menu (SPEC.md §3.1: mic device and system audio are
-            // chosen independently; either can be off, never both). Locked
-            // while recording — the mix can't change mid-session. Quiet
-            // icons: the symbols carry the state so they don't compete
-            // with Record.
-            sourcesMenu
+        // Pipeline Inspector: live view of the recording pipeline's
+        // internals. Only meaningful mid-session, so recording-only.
+        if isRecording {
+            inspectorButton
         }
     }
 
@@ -409,6 +442,10 @@ struct RecordingHeader: View {
         }
     }
 
+    // Source menu (SPEC.md §3.1: mic device and system audio are chosen
+    // independently; either can be off, never both). Locked while
+    // recording — the mix can't change mid-session. Quiet icons: the
+    // symbols carry the state so they don't compete with Record.
     private var sourcesMenu: some View {
         Menu {
             Section("Microphone") {
