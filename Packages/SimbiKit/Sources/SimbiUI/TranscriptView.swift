@@ -148,20 +148,24 @@ struct TranscriptView: View {
                         }
                     }
                     // Citation flash: center the cited cue and tint it
-                    // briefly. Cleared by id so overlapping requests never
-                    // cut a newer flash short.
+                    // briefly. The clear timer is keyed to the flash id via
+                    // .task(id:), so a newer flash (fresh CueFlash id even
+                    // for the same row) cancels the old timer mid-sleep —
+                    // Task.sleep throws on cancellation, so a superseded
+                    // timer never reaches the clear line and can't cut the
+                    // newer flash short.
                     .onChange(of: flash) { _, flash in
                         guard let flash else { return }
                         withAnimation(Design.Anim.standard) {
                             proxy.scrollTo(flash.row, anchor: .center)
                         }
                         flashedRow = flash.row
-                        Task {
-                            try? await Task.sleep(for: .seconds(1.5))
-                            if self.flash?.id == flash.id {
-                                flashedRow = nil
-                            }
-                        }
+                    }
+                    .task(id: flash) {
+                        guard flash != nil else { return }
+                        try? await Task.sleep(for: .seconds(1.5))
+                        guard !Task.isCancelled else { return }
+                        flashedRow = nil
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
                         if model.isInvalid {
