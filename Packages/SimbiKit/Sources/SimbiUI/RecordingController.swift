@@ -89,6 +89,11 @@ public final class RecordingController {
     /// Coarse fixer status (off/waiting/working/done) for the header button.
     let fixerActivity = FixerActivityModel()
 
+    /// Fired after a clean stop (status back to .idle) so the summary
+    /// controller can generate AI notes (AI Notes spec §3). Assigned by
+    /// the note view; both controllers are app-lifetime singletons.
+    var onRecordingStopped: (() -> Void)?
+
     /// Whether this note has a fixer thread (saved in state.json, or created
     /// this session). Drives the header button's visibility across relaunches.
     private(set) var hasFixerThread: Bool
@@ -260,6 +265,7 @@ public final class RecordingController {
             try await pipeline.stop()
             status = .idle
             tentativeSpeaker = nil
+            onRecordingStopped?()
         } catch {
             status = .failed("Could not stop cleanly: \(error)")
         }

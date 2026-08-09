@@ -12,17 +12,19 @@ import SwiftUI
 @Observable
 final class NoteDocument {
     let noteFolderURL: URL
+    let fileName: String
     var text: String
 
     private var saveTask: Task<Void, Never>?
 
     var fileURL: URL {
-        noteFolderURL.appending(path: FileTreeScanner.noteMarkerName)
+        noteFolderURL.appending(path: fileName)
     }
 
-    init(noteFolderURL: URL) {
+    init(noteFolderURL: URL, fileName: String = FileTreeScanner.noteMarkerName) {
         self.noteFolderURL = noteFolderURL
-        let fileURL = noteFolderURL.appending(path: FileTreeScanner.noteMarkerName)
+        let fileURL = noteFolderURL.appending(path: fileName)
+        self.fileName = fileName
         self.text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
     }
 
