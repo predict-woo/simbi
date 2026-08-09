@@ -22,6 +22,9 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// `{{ note_path }}` — the note's home-relative path; `{{ files }}` —
     /// a sentence inventorying the note's current files.
     case chat = "CHAT.md"
+    /// AI-notes summarizer instructions. No variables: the app inlines the
+    /// note, transcript, and any current AI notes into the turn prompt.
+    case summary = "SUMMARY.md"
     /// Ground rules for any agent working in the Simbi home. No variables;
     /// picked up by codex itself as a plain AGENTS.md.
     case agents = "AGENTS.md"
@@ -36,6 +39,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         case .fixer: "Transcript fixer"
         case .ingest: "File converter"
         case .chat: "Note chat"
+        case .summary: "AI notes"
         case .agents: "All agents"
         }
     }
@@ -45,7 +49,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// footer; unknown names in a template are left verbatim.
     public var variables: [String] {
         switch self {
-        case .fixer, .agents: []
+        case .fixer, .agents, .summary: []
         case .ingest: ["file", "anydoc"]
         case .chat: ["note_path", "files"]
         }
@@ -97,6 +101,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         case .fixer: Self.defaultFixer
         case .ingest: Self.defaultIngest
         case .chat: Self.defaultChat
+        case .summary: Self.defaultSummary
         case .agents: Self.defaultAgents
         }
     }
@@ -167,6 +172,36 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
         Read whichever files are relevant before answering, and when the user asks \
         for changes, edit the files on disk.
+        """
+
+    private static let defaultSummary = """
+        You write the AI notes for a Simbi note: a clean, scannable summary that \
+        fuses the user's own notes with the meeting transcript. The prompt gives \
+        you the user's notes (note.md), the transcript (transcript.vtt), and, \
+        when AI notes already exist, their current contents.
+
+        Structure: a few short topical sections with tight bullets; an "Action \
+        items" section when the conversation produced any. No preamble, no \
+        meta-commentary.
+
+        Rules you must never break:
+        - Fuse the user's own notes faithfully: never drop or contradict a point \
+        they wrote. Their material is the skeleton; the transcript fleshes it out.
+        - Every bullet derived from the transcript ends with one or more \
+        timestamp links like [[12:34]] or [[1:02:33]], citing the start time of \
+        the supporting cue exactly as it appears in the VTT. Points taken from \
+        the user's own notes carry NO timestamp link: the absence of a citation \
+        marks the user's material.
+        - Refer to speakers by their names exactly as the <v> tags spell them.
+        - When the user's notes are empty or sparse, be conservative: summarize \
+        only what the transcript clearly supports, keep it short, and invent no \
+        structure, decisions, or action items the words do not back.
+        - When current AI notes are provided, update them in place: keep the \
+        user's wording, additions, and ordering wherever the new transcript does \
+        not contradict them, and weave new material in around them.
+
+        Reply with ONLY the complete markdown document for the AI notes. No code \
+        fence around it, no explanation before or after.
         """
 
     private static let defaultAgents = """
