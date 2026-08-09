@@ -57,4 +57,12 @@ struct NoteSummarizerTests {
         let inner = "# N\n```swift\nlet x = 1\n```"
         #expect(NoteSummarizer.normalize(inner) == inner)
     }
+
+    @Test("a document bracketed by two distinct content fences round-trips unchanged")
+    func normalizationDeclinesWhenInteriorFencesExist() {
+        // Starts with one code block and ends with another: the outer lines
+        // look like a wrapping fence but are content. Must not be stripped.
+        let doc = "```swift\nx\n```\ntext\n```py\ny\n```"
+        #expect(NoteSummarizer.normalize(doc) == doc)
+    }
 }

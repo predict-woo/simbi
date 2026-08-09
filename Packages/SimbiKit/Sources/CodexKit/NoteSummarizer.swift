@@ -77,12 +77,17 @@ public actor NoteSummarizer {
 
     /// Models sometimes wrap the whole reply in a code fence despite the
     /// instructions; strip exactly one wrapping fence (any info string).
+    /// If any INTERIOR line also opens a fence, the outer lines may be two
+    /// distinct content fences (e.g. a doc that starts with one code block
+    /// and ends with another) — decline to strip, so the failure mode
+    /// degrades to "left wrapped" instead of corrupting the document.
     nonisolated static func normalize(_ output: String) -> String {
         let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         var lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
         guard lines.count >= 2,
             lines.first?.hasPrefix("```") == true,
-            lines.last?.trimmingCharacters(in: .whitespaces) == "```"
+            lines.last?.trimmingCharacters(in: .whitespaces) == "```",
+            !lines.dropFirst().dropLast().contains(where: { $0.hasPrefix("```") })
         else { return trimmed }
         lines.removeFirst()
         lines.removeLast()
