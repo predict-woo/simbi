@@ -22,11 +22,18 @@ public struct MarkdownEditor: View {
     /// unique per note so switching notes never mixes histories.
     let documentId: String
     let flavor: Flavor
+    /// Wiki-link clicks deliver the link's target string (`[[12:34]]` →
+    /// "12:34"); nil leaves clicks inert, as before.
+    let onLinkClick: ((String) -> Void)?
 
-    public init(text: Binding<String>, documentId: String = "default", flavor: Flavor = .note) {
+    public init(
+        text: Binding<String>, documentId: String = "default", flavor: Flavor = .note,
+        onLinkClick: ((String) -> Void)? = nil
+    ) {
         self._text = text
         self.documentId = documentId
         self.flavor = flavor
+        self.onLinkClick = onLinkClick
     }
 
     /// One highlighter/LaTeX bridge pair for the whole app: both cache
@@ -76,6 +83,7 @@ public struct MarkdownEditor: View {
             configuration: configuration,
             fontSize: Design.editorFontSize,
             documentId: documentId,
+            onLinkClick: onLinkClick,
             placeholder: Self.placeholder
         )
     }

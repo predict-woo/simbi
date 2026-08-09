@@ -51,6 +51,18 @@ final class TranscriptModel {
     }
 }
 
+/// One externally requested "look here" flash (AI Notes spec §6): a fresh
+/// id per request so citing the same cue twice still re-fires.
+public struct CueFlash: Equatable {
+    let row: Int
+    let id: UUID
+
+    public init(row: Int) {
+        self.row = row
+        self.id = UUID()
+    }
+}
+
 /// Renders the live transcript: cues with per-speaker colors, gap and
 /// session markers, click-to-seek playback and speaker rename (SPEC.md §6).
 struct TranscriptView: View {
@@ -63,7 +75,10 @@ struct TranscriptView: View {
     var onSeek: ((TimeInterval) -> Void)?
     /// Rename a speaker across the whole file (old name, new name).
     var onRenameSpeaker: ((String, String) -> Void)?
+    /// Externally requested scroll-and-flash of one cue row (nil = none).
+    var flash: CueFlash? = nil
 
+    @State private var flashedRow: Int?
     @State private var renameTarget: RenameTarget?
     @State private var renameText = ""
     @FocusState private var renameFieldFocused: Bool
@@ -130,6 +145,22 @@ struct TranscriptView: View {
                         guard let row else { return }
                         withAnimation(Design.Anim.standard) {
                             proxy.scrollTo(row, anchor: .center)
+                        }
+                    }
+                    // Citation flash: center the cited cue and tint it
+                    // briefly. Cleared by id so overlapping requests never
+                    // cut a newer flash short.
+                    .onChange(of: flash) { _, flash in
+                        guard let flash else { return }
+                        withAnimation(Design.Anim.standard) {
+                            proxy.scrollTo(flash.row, anchor: .center)
+                        }
+                        flashedRow = flash.row
+                        Task {
+                            try? await Task.sleep(for: .seconds(1.5))
+                            if self.flash?.id == flash.id {
+                                flashedRow = nil
+                            }
                         }
                     }
                     .safeAreaInset(edge: .top, spacing: 0) {
@@ -236,7 +267,7 @@ struct TranscriptView: View {
             // Playing-now highlight in the cue's speaker color, bleeding
             // slightly past the row bounds without affecting layout.
             .background {
-                if isActive {
+                if isActive || row == flashedRow {
                     RoundedRectangle(cornerRadius: Design.Radius.row)
                         .fill(Design.speakerTint(speaker))
                         .padding(.horizontal, -8)
