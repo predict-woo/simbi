@@ -40,6 +40,11 @@ final class NoteDocument {
     }
 
     func saveNow() {
+        // Never materialize a missing file for empty content: the AI Notes
+        // document saves on close like note.md does, but summary.md's mere
+        // existence is state (it makes the tab strip appear), so a note
+        // that never had AI notes must not gain an empty file.
+        if text.isEmpty && !FileManager.default.fileExists(atPath: fileURL.path) { return }
         try? text.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 }
