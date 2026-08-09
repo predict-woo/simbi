@@ -11,6 +11,13 @@ enum Design {
     /// Inert in normal launches.
     static let uiPreview = ProcessInfo.processInfo.environment["SIMBI_UI_PREVIEW"] == "1"
 
+    /// SIMBI_UI_PREVIEW_SUMMARY=loading forces the AI Notes first-generation
+    /// placeholder for design review.
+    static var uiPreviewSummaryLoading: Bool {
+        uiPreview
+            && ProcessInfo.processInfo.environment["SIMBI_UI_PREVIEW_SUMMARY"] == "loading"
+    }
+
     // MARK: Spacing — 4pt grid
 
     /// Pane content inset (transcript, files, banners, chrome strips).
@@ -36,6 +43,8 @@ enum Design {
     static let fileTileWidth: CGFloat = 88
     /// Files-shelf thumbnail box height.
     static let fileThumbHeight: CGFloat = 64
+    /// Active-tab underline in the editor tab strip.
+    static let tabUnderlineHeight: CGFloat = 2
 
     /// The note editor's base point size (document canvas, not UI chrome).
     static let editorFontSize: CGFloat = 15

@@ -7,7 +7,8 @@ import SimbiKit
 import SplitViewKit
 import SwiftUI
 
-/// Loads and autosaves a note folder's `note.md`.
+/// Loads and autosaves one named markdown file in a note folder
+/// (`note.md` by default; the AI Notes tab loads `summary.md`).
 @MainActor
 @Observable
 final class NoteDocument {
@@ -51,6 +52,10 @@ struct NoteView: View {
     @State private var transcript: TranscriptModel
     @State private var files: FilesModel
     @State private var playback: PlaybackController
+    @State private var summary: SummaryController
+    @State private var aiDocument: NoteDocument
+    @State private var selectedTab: EditorTab = .myNotes
+    @State private var transcriptFlash: CueFlash?
     @State private var renameDialogShown = false
     @State private var renameText = ""
 
@@ -64,6 +69,9 @@ struct NoteView: View {
         self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
         self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
         self._playback = State(initialValue: PlaybackController(noteFolderURL: noteFolderURL))
+        self._summary = State(initialValue: SummaryController.shared(noteFolderURL: noteFolderURL))
+        self._aiDocument = State(
+            initialValue: NoteDocument(noteFolderURL: noteFolderURL, fileName: "summary.md"))
         self.renameNote = renameNote
     }
 
@@ -138,26 +146,159 @@ struct NoteView: View {
         .onChange(of: document.text) {
             document.scheduleAutosave()
         }
-        // Starting a recording silences playback (speakers → mic feedback).
+        .onChange(of: aiDocument.text) {
+            aiDocument.scheduleAutosave()
+        }
+        .onAppear {
+            // Both controllers are app-lifetime; reassigning is idempotent.
+            recorder.onRecordingStopped = { [weak summary] in
+                summary?.recordingDidStop()
+            }
+            // Opening a note that already has AI notes lands on them
+            // (spec §4) — unless a recording is underway.
+            if summary.summaryExists && recorder.status == .idle {
+                selectedTab = .aiNotes
+            }
+        }
+        // Starting a recording silences playback (speakers → mic feedback)
+        // and forces My Notes — that's where live note-taking happens.
         .onChange(of: recorder.status) { _, status in
             if status != .idle {
                 playback.pause()
             }
+            if status == .recording {
+                selectedTab = .myNotes
+            }
+        }
+        // A generation starting pulls the AI Notes tab forward (spec §4).
+        .onChange(of: summary.status) { _, status in
+            if status == .working {
+                selectedTab = .aiNotes
+            }
+        }
+        .onChange(of: summary.generationCount) {
+            // The controller just rewrote summary.md; refresh the open
+            // editor. Safe: the editor is hit-disabled while working.
+            aiDocument.text =
+                (try? String(contentsOf: aiDocument.fileURL, encoding: .utf8)) ?? ""
         }
         // Recording deliberately continues if the view goes away (the
         // controller is shared per note); only the Stop button ends it.
         // Playback is view-local and does stop.
         .onDisappear {
             document.saveNow()
+            aiDocument.saveNow()
+            summary.clearFailureOnClose()
             playback.stop()
         }
     }
 
+    /// Spec §4: the strip exists once AI notes exist, are being generated,
+    /// or the last attempt failed; never before.
+    private var tabStripVisible: Bool {
+        Design.uiPreview || summary.summaryExists || summary.status != .idle
+    }
+
     private var editorPane: some View {
         VStack(spacing: 0) {
-            MarkdownEditor(text: $document.text, documentId: document.fileURL.path)
+            if tabStripVisible {
+                EditorTabStrip(
+                    selected: $selectedTab,
+                    showRegenerate: recorder.status == .idle,
+                    regenerateEnabled: summary.codexAvailable,
+                    isWorking: summary.status == .working,
+                    regenerateHelp: regenerateHelp,
+                    onRegenerate: { summary.regenerate() })
+                Hairline()
+            }
+            if tabStripVisible && selectedTab == .aiNotes {
+                aiNotesPane
+            } else {
+                MarkdownEditor(
+                    text: $document.text, documentId: document.fileURL.path,
+                    onLinkClick: handleLinkClick)
+            }
             Divider()
             FilesSection(model: files)
+        }
+    }
+
+    private var regenerateHelp: String {
+        if summary.status == .working { return "Updating AI notes" }
+        if !summary.codexAvailable {
+            return "AI notes need the ChatGPT app. See the sidebar footer."
+        }
+        return "Update AI notes from the latest recording"
+    }
+
+    /// The AI Notes tab's states (spec §5): a failed banner with retry, the
+    /// first-generation placeholder, or the summary editor — read-only
+    /// while an update is in flight (`allowsHitTesting(false)` is the whole
+    /// read-only mechanism: the completion write may replace the text, so
+    /// typing must be off).
+    @ViewBuilder private var aiNotesPane: some View {
+        if case .failed = summary.status {
+            StatusBanner(
+                message: "AI notes couldn't be updated.",
+                actionTitle: "Try Again"
+            ) {
+                summary.regenerate()
+            }
+        }
+        if (summary.status == .working && !summary.summaryExists) || Design.uiPreviewSummaryLoading {
+            firstGenerationPlaceholder
+        } else {
+            MarkdownEditor(
+                text: Design.uiPreview && !summary.summaryExists
+                    ? .constant(Self.previewSummary) : $aiDocument.text,
+                documentId: aiDocument.fileURL.path,
+                onLinkClick: handleLinkClick
+            )
+            .allowsHitTesting(summary.status != .working)
+            .opacity(summary.status == .working ? 0.6 : 1)
+        }
+    }
+
+    private var firstGenerationPlaceholder: some View {
+        VStack(spacing: Design.rowGap) {
+            Spacer()
+            ProgressView()
+            VStack(spacing: Design.innerGap) {
+                Text("Writing your AI notes.")
+                    .foregroundStyle(.secondary)
+                Text("Simbi is reading the transcript and your notes to build a clean summary.")
+                    .foregroundStyle(.tertiary)
+            }
+            .font(.body)
+            .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Sample AI notes for `SIMBI_UI_PREVIEW=1` when no summary.md exists.
+    private static let previewSummary = """
+        # Weekly sync
+
+        ## Launch
+        - Launch slips to Friday; QA needs the extra days [[12:34]]
+        - Sam owns the rollback plan [[18:02]]
+
+        ## Action items
+        - Dana files the status update today
+        """
+
+    /// Timestamp-shaped wiki-link targets seek and flash; anything else is
+    /// reserved for future note links and ignored (AI Notes spec §6).
+    private func handleLinkClick(_ target: String) {
+        guard let seconds = TimestampLink.parse(target) else { return }
+        if let entries = transcript.document?.entries,
+            let row = TimestampLink.cueEntryIndex(for: seconds, in: entries)
+        {
+            transcriptFlash = CueFlash(row: row)
+        }
+        if recorder.status == .idle && playback.hasAudio {
+            playback.play(from: seconds)
         }
     }
 
@@ -212,7 +353,8 @@ struct NoteView: View {
                 onRenameSpeaker: { from, to in
                     try? SpeakerRename.renameInFile(
                         noteFolder: document.noteFolderURL, from: from, to: to)
-                }
+                },
+                flash: transcriptFlash
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
