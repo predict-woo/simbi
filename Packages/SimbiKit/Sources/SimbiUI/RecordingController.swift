@@ -32,6 +32,13 @@ public final class RecordingController {
         controllers.values.contains { $0.status.isCapturing }
     }
 
+    /// True while THIS note is capturing. Read-only — never creates a
+    /// controller as a side effect. The summary controller uses it to
+    /// refuse generation triggers mid-recording (AI Notes spec §3).
+    static func isCapturing(noteFolderURL: URL) -> Bool {
+        controllers[noteFolderURL]?.status.isCapturing ?? false
+    }
+
     public enum Status: Equatable {
         case idle
         /// Requesting mic permission. Models come preloaded from

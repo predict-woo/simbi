@@ -43,6 +43,13 @@ public final class SummaryController {
 
     var summaryFileURL: URL { noteFolderURL.appending(path: "summary.md") }
 
+    /// Flushes any pending debounced editor autosaves so `generate()`
+    /// reads current note.md/summary.md from disk (and the completion
+    /// write can't clobber the last ~500 ms of typing). Assigned by the
+    /// note view, which owns the documents; nil when the note is closed —
+    /// that path already flushed both documents in onDisappear.
+    var flushEditorsBeforeGenerate: (() -> Void)?
+
     var summaryExists: Bool {
         FileManager.default.fileExists(atPath: summaryFileURL.path)
     }
@@ -54,11 +61,13 @@ public final class SummaryController {
     }
 
     /// Degraded or empty recordings never auto-generate (spec §3); a run
-    /// already in flight is never doubled.
+    /// already in flight is never doubled; an active recording never
+    /// triggers (spec §3: no trigger while recording).
     nonisolated static func shouldAutoGenerate(
-        transcriptHasCues: Bool, codexAvailable: Bool, alreadyWorking: Bool
+        transcriptHasCues: Bool, codexAvailable: Bool, alreadyWorking: Bool,
+        recordingActive: Bool
     ) -> Bool {
-        transcriptHasCues && codexAvailable && !alreadyWorking
+        transcriptHasCues && codexAvailable && !alreadyWorking && !recordingActive
     }
 
     /// The recording controller's clean-stop hook.
@@ -67,14 +76,19 @@ public final class SummaryController {
         guard
             Self.shouldAutoGenerate(
                 transcriptHasCues: hasCues, codexAvailable: codexAvailable,
-                alreadyWorking: status == .working)
+                alreadyWorking: status == .working,
+                recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
         else { return }
         generate()
     }
 
-    /// The tab strip's regenerate button.
+    /// The tab strip's regenerate button and the failed banner's Try
+    /// Again. Refuses while this note is recording (spec §3) — the view
+    /// gates its buttons too, but the guard here holds regardless.
     func regenerate() {
-        guard status != .working, codexAvailable else { return }
+        guard status != .working, codexAvailable,
+            !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
+        else { return }
         generate()
     }
 
@@ -99,6 +113,9 @@ public final class SummaryController {
     }
 
     private func generate() {
+        // The open note's debounced autosaves must land before the reads
+        // below (and before the completion write replaces summary.md).
+        flushEditorsBeforeGenerate?()
         status = .working
         let myNotes =
             (try? String(

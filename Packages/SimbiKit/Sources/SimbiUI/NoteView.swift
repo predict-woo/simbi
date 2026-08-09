@@ -159,6 +159,15 @@ struct NoteView: View {
             recorder.onRecordingStopped = { [weak summary] in
                 summary?.recordingDidStop()
             }
+            // Whatever triggers a generation (stop hook, regenerate, Try
+            // Again), the controller flushes this view's debounced
+            // autosaves before reading disk. Weak: once the view is gone
+            // its documents were flushed by onDisappear, and the next
+            // NoteView reassigns the hook with its own documents.
+            summary.flushEditorsBeforeGenerate = { [weak document, weak aiDocument] in
+                document?.saveNow()
+                aiDocument?.saveNow()
+            }
             // Opening a note that already has AI notes lands on them
             // (spec §4) — unless a recording is underway.
             if summary.summaryExists && recorder.status == .idle {
@@ -243,12 +252,14 @@ struct NoteView: View {
     /// typing must be off).
     @ViewBuilder private var aiNotesPane: some View {
         if case .failed = summary.status {
+            // Try Again disappears while a recording runs (spec §3: no
+            // trigger while recording); the banner itself stays so the
+            // failure remains explained.
             StatusBanner(
                 message: "AI notes couldn't be updated.",
-                actionTitle: "Try Again"
-            ) {
-                summary.regenerate()
-            }
+                actionTitle: recorder.status == .idle ? "Try Again" : nil,
+                action: recorder.status == .idle ? { summary.regenerate() } : nil
+            )
         }
         if (summary.status == .working && !summary.summaryExists) || Design.uiPreviewSummaryLoading {
             firstGenerationPlaceholder
