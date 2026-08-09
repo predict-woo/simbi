@@ -19,7 +19,7 @@ struct EditorTabStrip: View {
     @Namespace private var underline
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: Design.paneInset) {
             tab("AI Notes", .aiNotes)
             tab("My Notes", .myNotes)
             Spacer()

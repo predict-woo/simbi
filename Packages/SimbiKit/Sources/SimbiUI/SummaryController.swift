@@ -50,6 +50,13 @@ public final class SummaryController {
     /// that path already flushed both documents in onDisappear.
     var flushEditorsBeforeGenerate: (() -> Void)?
 
+    /// Observability caveat: this is a computed FileManager check, so
+    /// @Observable cannot track it — views re-evaluate it only when a
+    /// coincident observed write (`status`, `generationCount`) re-renders
+    /// them, which is exactly what every in-app generation does. A
+    /// summary.md created or deleted externally (Finder, git, a chat
+    /// thread) therefore won't change strip visibility until the note is
+    /// reopened or the next generation bumps those properties.
     var summaryExists: Bool {
         FileManager.default.fileExists(atPath: summaryFileURL.path)
     }
@@ -134,6 +141,9 @@ public final class SummaryController {
                 generationCount += 1
                 status = .idle
             } catch {
+                // The banner shows a fixed message; keep the real error
+                // visible in the console for diagnosis.
+                print("SummaryController: generation failed for \(noteFolderURL.path): \(error)")
                 status = .failed("AI notes couldn't be updated.")
             }
         }
