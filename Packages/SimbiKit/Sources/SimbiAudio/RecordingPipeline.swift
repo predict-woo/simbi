@@ -110,6 +110,12 @@ public actor RecordingPipeline: TranscriptFixerHost {
 
     public var isRecording: Bool { recording }
     public var canResume: Bool { state.sessionCount > 0 }
+    /// Read-only observation for stop-time consumers (the AI-notes
+    /// trigger): true once every reserved transcript entry has been
+    /// rendered to transcript.vtt — no cue still awaits its
+    /// transcription. Never drains while uploads are paused (degraded
+    /// auth), so callers must bound their wait.
+    public var isTranscriptDrained: Bool { outbox.isDrained }
     public var fixerThreadId: String? { state.fixerThreadId }
 
     /// Attaches the note's fixer before `start()`.

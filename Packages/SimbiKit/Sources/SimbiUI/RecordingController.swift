@@ -265,9 +265,27 @@ public final class RecordingController {
             try await pipeline.stop()
             status = .idle
             tentativeSpeaker = nil
-            onRecordingStopped?()
+            notifyStoppedAfterTranscriptDrain()
         } catch {
             status = .failed("Could not stop cleanly: \(error)")
+        }
+    }
+
+    /// Fires `onRecordingStopped` only after the pending-upload queue has
+    /// drained (bounded — AI Notes spec §3): `pipeline.stop()` returns
+    /// while the final cues' transcriptions are still in flight, and the
+    /// summary must not be generated from a transcript missing its last
+    /// utterances. Degraded recordings never drain; when the bound
+    /// expires the trigger fires with whatever transcript exists (an
+    /// empty one is skipped quietly downstream). A recording restarted
+    /// during the wait swallows the trigger: no trigger while recording.
+    private func notifyStoppedAfterTranscriptDrain() {
+        Task { [pipeline] in
+            _ = await TranscriptDrainWait.wait {
+                await pipeline.isTranscriptDrained
+            }
+            guard status == .idle else { return }
+            onRecordingStopped?()
         }
     }
 
