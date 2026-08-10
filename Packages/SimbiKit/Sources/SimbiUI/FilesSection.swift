@@ -14,23 +14,30 @@ struct FilesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionLabel(title: "Files")
-                Spacer()
-                addButton
-            }
-            // Leading matches the editor's text inset; trailing matches the strip's
-            // vertical rhythm so the add button sits square in the corner.
-            .padding(.leading, Design.editorInset)
-            .padding(.trailing, Design.stripPadding)
             if model.rows.isEmpty {
-                Text("Drop files here. Codex turns them into note context.")
-                    .font(.meta)
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, Design.editorInset)
+                // Empty state is one quiet row: label, hint, and the same add
+                // button — no dedicated shelf height until there are files.
+                HStack {
+                    SectionLabel(title: "Files")
+                    Text("Add files. Codex turns them into note context.")
+                        .font(.meta)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    Spacer()
+                    addButton
+                }
+                .padding(.leading, Design.editorInset)
+                .padding(.trailing, Design.stripPadding)
             } else {
+                HStack {
+                    SectionLabel(title: "Files")
+                    Spacer()
+                    addButton
+                }
+                // Leading matches the editor's text inset; trailing matches the strip's
+                // vertical rhythm so the add button sits square in the corner.
+                .padding(.leading, Design.editorInset)
+                .padding(.trailing, Design.stripPadding)
                 ScrollView(.horizontal) {
                     LazyHStack(alignment: .top, spacing: Design.rowGap) {
                         ForEach(model.rows) { row in

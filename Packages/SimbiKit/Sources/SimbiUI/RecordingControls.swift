@@ -29,33 +29,50 @@ struct RecordingBar: View {
         .padding(.bottom, Design.rowGap)
     }
 
-    // Idle: neutral button, red dot icon (ready). Recording: filled
-    // red Stop — red means "live", not "will be live".
+    // Idle: red dot (ready). Recording: filled red Stop — red means
+    // "live", not "will be live". Icon-only: the capsule already reads
+    // as a recorder, so the glyph carries the state and the tooltip
+    // keeps the words. 18pt is a one-off display glyph
+    // (docs/design-system.md).
     private var recordButton: some View {
         Button {
             recorder.toggle()
         } label: {
-            if isRecording {
-                Label("Stop", systemImage: "stop.fill")
-            } else {
-                switch recorder.status {
-                case .idle, .failed:
-                    Label {
-                        Text(recorder.hasRecording ? "Resume" : "Record")
-                    } icon: {
+            Group {
+                if isRecording {
+                    Image(systemName: "stop.fill")
+                } else {
+                    switch recorder.status {
+                    case .idle, .failed:
                         Image(systemName: "record.circle.fill")
                             .foregroundStyle(Color.statusLive)
+                    case .preparing:
+                        Image(systemName: "record.circle")
+                    case .recording, .stopping:
+                        Image(systemName: "stop.circle")
                     }
-                case .preparing:
-                    Label("Preparing…", systemImage: "record.circle")
-                case .recording, .stopping:
-                    Label("Stopping…", systemImage: "stop.circle")
                 }
             }
+            .font(.system(size: 18))
         }
         .buttonStyle(.bordered)
         .tint(isRecording ? .statusLive : nil)
         .disabled(recorder.status == .preparing || recorder.status == .stopping)
+        .help(recordHelp)
+        .accessibilityLabel(recordHelp)
+    }
+
+    /// The old button labels, demoted to tooltip + accessibility text.
+    private var recordHelp: String {
+        if isRecording { return "Stop" }
+        switch recorder.status {
+        case .idle, .failed:
+            return recorder.hasRecording ? "Resume" : "Record"
+        case .preparing:
+            return "Preparing…"
+        case .recording, .stopping:
+            return "Stopping…"
+        }
     }
 
     private var elapsedTimer: some View {
@@ -158,8 +175,8 @@ struct RecordingBar: View {
 
 /// Live status above the transcript: tentative speaker, failure text,
 /// fixer and inspector affordances. Renders nothing at all (no strip,
-/// no divider) when idle with no fixer history — the transcript then
-/// gets the full pane height.
+/// no divider) when idle without a failure — the transcript then gets
+/// the full pane height.
 struct RecordingStatusStrip: View {
     @Bindable var recorder: RecordingController
     @Environment(\.openWindow) private var openWindow
@@ -177,8 +194,7 @@ struct RecordingStatusStrip: View {
     }
 
     private var hasContent: Bool {
-        isRecording || isFailed || recorder.hasFixerThread
-            || recorder.fixerActivity.status != .off || Design.uiPreview
+        isRecording || isFailed || Design.uiPreview
     }
 
     var body: some View {
@@ -204,10 +220,13 @@ struct RecordingStatusStrip: View {
                 .lineLimit(2)
         }
 
-        // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
-        // pass runs; clicking opens the live thread viewer. Hidden
-        // until a fixer has ever existed for this note.
-        if recorder.hasFixerThread || recorder.fixerActivity.status != .off || Design.uiPreview {
+        // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a pass
+        // runs; clicking opens the live thread viewer. Recording-only: outside
+        // a session the icon was the strip's lone occupant, and keeping the
+        // strip up for it wasn't worth the row.
+        if (isRecording && (recorder.hasFixerThread || recorder.fixerActivity.status != .off))
+            || Design.uiPreview
+        {
             fixerButton
         }
 
