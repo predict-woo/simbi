@@ -49,11 +49,16 @@ struct PulseEffect: ViewModifier {
 /// toolbar hover treatment in content views, so the hover state is
 /// tracked explicitly.
 struct HoverCircleButtonStyle: ButtonStyle {
+    /// Hover-circle padding around the icon. The default suits toolbar-tier
+    /// buttons; compact contexts (the editor tab strip) pass `Design.iconGap`
+    /// so the button's height matches neighboring text rows.
+    var inset: CGFloat = Design.stripPadding
+
     @State private var isHovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .padding(Design.stripPadding)
+            .padding(inset)
             .contentShape(Circle())
             .background {
                 Circle()

@@ -23,18 +23,22 @@ struct EditorTabStrip: View {
             tab("AI Notes", .aiNotes)
             tab("My Notes", .myNotes)
             Spacer()
-            if showRegenerate {
-                Button(action: onRegenerate) {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundStyle(
-                            isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
-                        )
-                        .modifier(PulseEffect(active: isWorking))
-                }
-                .buttonStyle(HoverCircleButtonStyle())
-                .disabled(!regenerateEnabled || isWorking)
-                .help(regenerateHelp)
+            // Always in the layout, hidden when not applicable: an appearing
+            // button would grow the row and visibly shift the tabs. Meta-tier
+            // icon + compact inset keep its height at the labels' height.
+            Button(action: onRegenerate) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.meta)
+                    .foregroundStyle(
+                        isWorking ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
+                    )
+                    .modifier(PulseEffect(active: isWorking))
             }
+            .buttonStyle(HoverCircleButtonStyle(inset: Design.iconGap))
+            .disabled(!showRegenerate || !regenerateEnabled || isWorking)
+            .opacity(showRegenerate ? 1 : 0)
+            .accessibilityHidden(!showRegenerate)
+            .help(showRegenerate ? regenerateHelp : "")
         }
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, Design.stripPadding)
