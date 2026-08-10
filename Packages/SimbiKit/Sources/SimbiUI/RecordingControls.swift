@@ -41,6 +41,7 @@ struct RecordingBar: View {
             Group {
                 if isRecording {
                     Image(systemName: "stop.fill")
+                        .foregroundStyle(Color.statusLive)
                 } else {
                     switch recorder.status {
                     case .idle, .failed:
@@ -55,8 +56,7 @@ struct RecordingBar: View {
             }
             .font(.system(size: 18))
         }
-        .buttonStyle(.bordered)
-        .tint(isRecording ? .statusLive : nil)
+        .buttonStyle(HoverCircleButtonStyle())
         .disabled(recorder.status == .preparing || recorder.status == .stopping)
         .help(recordHelp)
         .accessibilityLabel(recordHelp)

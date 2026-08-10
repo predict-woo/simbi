@@ -17,8 +17,13 @@ struct FilesSection: View {
             if model.rows.isEmpty {
                 // Empty state is one quiet row: label, hint, and the same add
                 // button — no dedicated shelf height until there are files.
-                HStack {
-                    SectionLabel(title: "Files")
+                HStack(spacing: Design.rowGap) {
+                    // Deliberately a tier above `SectionLabel` (13pt .body vs
+                    // the label's smaller tier) so the row reads as the section
+                    // header it replaces; same secondary color.
+                    Text("Files")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     Text("Add files. Codex turns them into note context.")
                         .font(.meta)
                         .foregroundStyle(.tertiary)
