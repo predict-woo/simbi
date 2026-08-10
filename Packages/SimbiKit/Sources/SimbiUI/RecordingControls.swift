@@ -19,7 +19,13 @@ struct RecordingBar: View {
             elapsedTimer
             sourcesMenu
         }
-        .padding(.horizontal, Design.paneInset)
+        // Concentric end caps: an end element whose inset from the cap
+        // equals its vertical slack has its hover shape centered on the
+        // cap's circle center. The record button's hover circle is the
+        // tallest child (slack = stripPadding); the sources menu's hover
+        // capsule is shorter, its slack lands on rowGap.
+        .padding(.leading, Design.stripPadding)
+        .padding(.trailing, Design.rowGap)
         .padding(.vertical, Design.stripPadding)
         .floatingChrome(in: Capsule())
         // Outer margin so the capsule keeps daylight from the pane edges
