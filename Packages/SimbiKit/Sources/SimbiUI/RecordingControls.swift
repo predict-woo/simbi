@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Recording controls for the transcript pane, split out of `NoteView`
 /// in the 2026-08-10 floating-bar redesign: `RecordingBar` floats over
-/// the transcript's bottom edge, `RecordingStatusStrip` sits above it
-/// only while there is live status to show.
+/// the transcript's bottom edge, `RecordingStatusStrip` over its top
+/// edge only while there is live status to show.
 
 /// Floating capture bar: Record/Stop, elapsed timer, and the source
 /// menu in a glass capsule the transcript scrolls under. Reads like a
@@ -82,15 +82,9 @@ struct RecordingBar: View {
     }
 
     private var elapsedTimer: some View {
-        HStack(spacing: Design.iconGap) {
-            if isRecording {
-                StatusDot(color: .statusLive)
-                    .modifier(PulseEffect())
-            }
-            Text(Design.time(recorder.elapsed))
-                .font(.body.monospacedDigit())
-                .foregroundStyle(isRecording ? .primary : .secondary)
-        }
+        Text(Design.time(recorder.elapsed))
+            .font(.body.monospacedDigit())
+            .foregroundStyle(isRecording ? .primary : .secondary)
     }
 
     // Source menu (SPEC.md §3.1: mic device and system audio are chosen
@@ -179,10 +173,10 @@ struct RecordingBar: View {
     }
 }
 
-/// Live status above the transcript: tentative speaker, failure text,
-/// fixer and inspector affordances. Renders nothing at all (no strip,
-/// no divider) when idle without a failure — the transcript then gets
-/// the full pane height.
+/// Live status pill floating over the transcript's top edge: tentative
+/// speaker, failure text, fixer and inspector affordances. Renders
+/// nothing at all when idle without a failure — the transcript then
+/// gets the full pane height.
 struct RecordingStatusStrip: View {
     @Bindable var recorder: RecordingController
     @Environment(\.openWindow) private var openWindow
@@ -208,10 +202,11 @@ struct RecordingStatusStrip: View {
             HStack(spacing: Design.rowGap) {
                 statusItems
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.horizontal, Design.paneInset)
-            .padding(.vertical, Design.stripPadding)
-            Divider()
+            .padding(.horizontal, Design.rowGap)
+            .padding(.vertical, Design.footerStripPadding)
+            .floatingChrome(in: Capsule())
+            .padding(.horizontal, Design.rowGap)
+            .padding(.top, Design.rowGap)
         }
     }
 
@@ -302,17 +297,17 @@ struct RecordingStatusStrip: View {
 }
 
 extension View {
-    /// Bottom-bar availability fork: `safeAreaBar` (native scroll-edge
-    /// blur under the bar) where the OS has it; `safeAreaInset` further
-    /// back — identical layout semantics (content scrolls under, the
-    /// last cue can always scroll clear), just without the edge blur.
-    @ViewBuilder func bottomFloatingBar(
-        @ViewBuilder _ bar: () -> some View
+    /// Floating-bar availability fork: `safeAreaBar` (native
+    /// scroll-edge blur under the bar) where the OS has it;
+    /// `safeAreaInset` further back — identical layout semantics,
+    /// just without the edge blur.
+    @ViewBuilder func floatingBar(
+        edge: VerticalEdge, @ViewBuilder _ bar: () -> some View
     ) -> some View {
         if #available(macOS 26.0, *) {
-            self.safeAreaBar(edge: .bottom) { bar() }
+            self.safeAreaBar(edge: edge) { bar() }
         } else {
-            self.safeAreaInset(edge: .bottom) { bar() }
+            self.safeAreaInset(edge: edge) { bar() }
         }
     }
 }
