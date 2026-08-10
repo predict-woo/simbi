@@ -191,8 +191,9 @@ struct NoteView: View {
             }
         }
         .onChange(of: summary.generationCount) {
-            // The controller just rewrote summary.md; refresh the open
-            // editor. Safe: the editor is hit-disabled while working.
+            // The summarizer thread just rewrote summary.md on disk;
+            // refresh the open editor. Safe: the editor is hit-disabled
+            // while working.
             aiDocument.text =
                 (try? String(contentsOf: aiDocument.fileURL, encoding: .utf8)) ?? ""
         }

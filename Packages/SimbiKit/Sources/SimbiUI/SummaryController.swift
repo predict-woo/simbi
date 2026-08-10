@@ -4,8 +4,10 @@ import Observation
 import SimbiKit
 
 /// Owns AI-notes generation for one note (AI Notes spec §3): triggers the
-/// NoteSummarizer, writes summary.md (the app is the file's only writer),
-/// and exposes tab-strip state. Shared per note like RecordingController
+/// NoteSummarizer and exposes tab-strip state. summary.md is written by
+/// the summarizer thread directly (deliberate, for extensibility; user
+/// decision 2026-08-10) — the app only reads it, reloading the open
+/// editor via generationCount. Shared per note like RecordingController
 /// so a generation survives view recreation.
 @MainActor
 @Observable
@@ -28,8 +30,9 @@ public final class SummaryController {
     }
 
     private(set) var status: Status = .idle
-    /// Bumps after each successful summary.md write; the note view reloads
-    /// the AI Notes document when it changes.
+    /// Bumps after each successful generation; the note view reloads the
+    /// AI Notes document (rewritten on disk by the summarizer thread)
+    /// when it changes.
     private(set) var generationCount = 0
 
     let noteFolderURL: URL
@@ -43,9 +46,8 @@ public final class SummaryController {
 
     var summaryFileURL: URL { noteFolderURL.appending(path: "summary.md") }
 
-    /// Flushes any pending debounced editor autosaves so `generate()`
-    /// reads current note.md/summary.md from disk (and the completion
-    /// write can't clobber the last ~500 ms of typing). Assigned by the
+    /// Flushes any pending debounced editor autosaves so the summarizer
+    /// thread reads current note.md/summary.md from disk. Assigned by the
     /// note view, which owns the documents; nil when the note is closed —
     /// that path already flushed both documents in onDisappear.
     var flushEditorsBeforeGenerate: (() -> Void)?
@@ -120,30 +122,27 @@ public final class SummaryController {
     }
 
     private func generate() {
-        // The open note's debounced autosaves must land before the reads
-        // below (and before the completion write replaces summary.md).
+        // The open note's debounced autosaves must land on disk before
+        // the turn starts: the thread reads note.md and summary.md there.
         flushEditorsBeforeGenerate?()
         status = .working
-        let myNotes =
-            (try? String(
-                contentsOf: noteFolderURL.appending(path: FileTreeScanner.noteMarkerName),
-                encoding: .utf8)) ?? ""
-        let transcript =
-            (try? String(
-                contentsOf: noteFolderURL.appending(path: "transcript.vtt"),
-                encoding: .utf8)) ?? ""
-        let current = try? String(contentsOf: summaryFileURL, encoding: .utf8)
         Task {
             do {
-                let document = try await summarizer.generate(
-                    myNotes: myNotes, transcript: transcript, currentSummary: current)
-                try document.write(to: summaryFileURL, atomically: true, encoding: .utf8)
+                try await summarizer.generate()
                 generationCount += 1
                 status = .idle
             } catch {
                 // The banner shows a fixed message; keep the real error
-                // visible in the console for diagnosis.
-                print("SummaryController: generation failed for \(noteFolderURL.path): \(error)")
+                // (including a thread-reported FAILED reason) visible in
+                // the console for diagnosis.
+                if case NoteSummarizer.SummarizerError.reportedFailure(let reason) = error {
+                    print(
+                        "SummaryController: summarizer reported failure for "
+                            + "\(noteFolderURL.path): \(reason)")
+                } else {
+                    print(
+                        "SummaryController: generation failed for \(noteFolderURL.path): \(error)")
+                }
                 status = .failed("AI notes couldn't be updated.")
             }
         }

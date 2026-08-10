@@ -2,15 +2,19 @@ import Foundation
 import SimbiKit
 
 /// Generates a note's AI notes (AI Notes spec §3): one fresh thread per
-/// generation (cwd = note folder, read-only sandbox), one turn whose prompt
-/// inlines SUMMARY.md instructions, note.md, transcript.vtt, and any
-/// current summary.md; the deliverable is the agent's final message text.
-/// The caller writes summary.md — the thread writes nothing.
+/// generation (cwd = note folder, workspace-write sandbox), one turn whose
+/// input is the SUMMARY.md instructions. The thread reads note.md,
+/// transcript.vtt, context/*.md, and any current summary.md from its own
+/// cwd and writes summary.md itself by design (user decision 2026-08-10),
+/// converter-style; its final message is only a DONE/FAILED status reply.
 public actor NoteSummarizer {
     public enum SummarizerError: Error {
         case noOutput
         case timeout
         case malformedResponse
+        /// The thread replied "FAILED: <reason>"; carries the trimmed
+        /// first line of that reply.
+        case reportedFailure(String)
     }
 
     private let noteFolderURL: URL
@@ -26,7 +30,8 @@ public actor NoteSummarizer {
     private var activeThreads: Set<String> = []
     private var completedTurns: Set<String> = []
     /// Last agentMessage text seen per active thread; the final one when
-    /// the turn completes is the document.
+    /// the turn completes is the DONE/FAILED status reply — never file
+    /// content (the thread writes summary.md itself).
     private var messages: [String: String] = [:]
 
     public init(
@@ -43,24 +48,6 @@ public actor NoteSummarizer {
         self.instructionsProvider = instructionsProvider
     }
 
-    /// Pure prompt assembly, split out for testability (spec §3).
-    nonisolated static func prompt(
-        instructions: String, myNotes: String, transcript: String, currentSummary: String?
-    ) -> String {
-        let notes = myNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        var sections = [
-            instructions,
-            "## The user's own notes (note.md)\n\n"
-                + (notes.isEmpty ? "(the user has not written any notes)" : notes),
-            "## The transcript (transcript.vtt)\n\n" + transcript,
-        ]
-        if let currentSummary {
-            sections.append(
-                "## Current AI notes (summary.md): update these in place\n\n" + currentSummary)
-        }
-        return sections.joined(separator: "\n\n")
-    }
-
     /// `item/completed` → (threadId, text) when the item is the agent's
     /// message; nil for every other item type or shape.
     nonisolated static func agentMessage(
@@ -75,30 +62,20 @@ public actor NoteSummarizer {
         return (threadId, text)
     }
 
-    /// Models sometimes wrap the whole reply in a code fence despite the
-    /// instructions; strip exactly one wrapping fence (any info string).
-    /// If any INTERIOR line also opens a fence, the outer lines may be two
-    /// distinct content fences (e.g. a doc that starts with one code block
-    /// and ends with another) — decline to strip, so the failure mode
-    /// degrades to "left wrapped" instead of corrupting the document.
-    nonisolated static func normalize(_ output: String) -> String {
-        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        var lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
-        guard lines.count >= 2,
-            lines.first?.hasPrefix("```") == true,
-            lines.last?.trimmingCharacters(in: .whitespaces) == "```",
-            !lines.dropFirst().dropLast().contains(where: { $0.hasPrefix("```") })
-        else { return trimmed }
-        lines.removeFirst()
-        lines.removeLast()
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    /// The trimmed first line of the reply when it starts with "FAILED"
+    /// (case-insensitive) — the instruction contract's failure shape —
+    /// nil otherwise.
+    nonisolated static func reportedFailure(in message: String) -> String? {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.lowercased().hasPrefix("failed") else { return nil }
+        return String(trimmed.prefix(while: { !$0.isNewline }))
+            .trimmingCharacters(in: .whitespaces)
     }
 
-    /// Runs one generation end-to-end and returns the normalized document.
-    /// The thread is archived on the way out, success or failure.
-    public func generate(
-        myNotes: String, transcript: String, currentSummary: String?
-    ) async throws -> String {
+    /// Runs one generation end-to-end; the thread has written summary.md
+    /// when this returns. The thread is archived on the way out, success
+    /// or failure.
+    public func generate() async throws {
         if !bound {
             bound = true
             await client.addNotificationHandler { [weak self] method, paramsData in
@@ -123,7 +100,7 @@ public actor NoteSummarizer {
             params: [
                 "cwd": noteFolderURL.path,
                 "approvalPolicy": "never",
-                "sandbox": "read-only",
+                "sandbox": "workspace-write",
             ])
         let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
         guard let thread = result?["thread"] as? [String: Any],
@@ -149,28 +126,23 @@ public actor NoteSummarizer {
                 "name": "[simbi] summary: \(noteFolderURL.lastPathComponent)",
             ])
 
-        let prompt = Self.prompt(
-            instructions: instructionsProvider(), myNotes: myNotes,
-            transcript: transcript, currentSummary: currentSummary)
         let input: [[String: any Sendable]] = [
-            ["type": "text", "text": prompt, "text_elements": [String]()]
+            ["type": "text", "text": instructionsProvider(), "text_elements": [String]()]
+        ]
+        // Same sandbox shape as the converter: the thread writes summary.md
+        // in the note folder itself by design (user decision 2026-08-10).
+        let sandboxPolicy: [String: any Sendable] = [
+            "type": "workspaceWrite",
+            "writableRoots": [noteFolderURL.path],
+            "networkAccess": false,
+            "excludeTmpdirEnvVar": false,
+            "excludeSlashTmp": false,
         ]
         var turnParams: [String: any Sendable] = [
             "threadId": threadId,
             "input": input,
             "approvalPolicy": "never",
-            // Wire-shape contingency: `readOnly` follows the app-server
-            // protocol's camelCase convention (references/codex-remote-tui/
-            // README.md documents the method names), but no existing Simbi
-            // worker exercises it. If hand-testing rejects `turn/start`,
-            // fall back to the converter's proven shape with nothing
-            // writable: ["type": "workspaceWrite", "writableRoots":
-            // [String](), "networkAccess": false, "excludeTmpdirEnvVar":
-            // false, "excludeSlashTmp": false]. Likewise, if generation
-            // ends in `noOutput`, inspect one real `item/completed`
-            // payload (temporary print in the notification handler) and
-            // adjust `agentMessage(fromItemCompleted:)`.
-            "sandboxPolicy": ["type": "readOnly"] as [String: any Sendable],
+            "sandboxPolicy": sandboxPolicy,
         ]
         if let model {
             turnParams["model"] = model
@@ -178,10 +150,13 @@ public actor NoteSummarizer {
         _ = try await client.request(method: "turn/start", params: turnParams)
         try await awaitTurnCompletion(threadId: threadId)
 
-        guard let text = messages[threadId] else { throw SummarizerError.noOutput }
-        let document = Self.normalize(text)
-        guard !document.isEmpty else { throw SummarizerError.noOutput }
-        return document
+        if let text = messages[threadId], let reason = Self.reportedFailure(in: text) {
+            throw SummarizerError.reportedFailure(reason)
+        }
+        let output = noteFolderURL.appending(path: "summary.md")
+        let size =
+            (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int) ?? 0
+        guard size > 0 else { throw SummarizerError.noOutput }
     }
 
     private func record(text: String, threadId: String) {
