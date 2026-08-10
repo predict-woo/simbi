@@ -22,8 +22,9 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// `{{ note_path }}` — the note's home-relative path; `{{ files }}` —
     /// a sentence inventorying the note's current files.
     case chat = "CHAT.md"
-    /// AI-notes summarizer instructions. No variables: the app inlines the
-    /// note, transcript, and any current AI notes into the turn prompt.
+    /// AI-notes summarizer instructions. No variables: the thread runs
+    /// with the note folder as cwd, reads the note, transcript, and any
+    /// current AI notes itself, and writes summary.md itself.
     case summary = "SUMMARY.md"
     /// Ground rules for any agent working in the Simbi home. No variables;
     /// picked up by codex itself as a plain AGENTS.md.
@@ -176,9 +177,15 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
     private static let defaultSummary = """
         You write the AI notes for a Simbi note: a clean, scannable summary that \
-        fuses the user's own notes with the meeting transcript. The prompt gives \
-        you the user's notes (note.md), the transcript (transcript.vtt), and, \
-        when AI notes already exist, their current contents.
+        fuses the user's own notes with the meeting transcript. Your working \
+        directory is the note folder. Read note.md (the user's own notes), \
+        transcript.vtt (the speaker-labeled WebVTT transcript), and context/*.md \
+        if present.
+
+        Write the AI notes to summary.md in this folder yourself: create it if \
+        it is missing. If it already exists, update it in place: keep the user's \
+        wording, additions, and ordering wherever the new transcript does not \
+        contradict them, and weave new material in around them.
 
         Structure: a few short topical sections with tight bullets; an "Action \
         items" section when the conversation produced any. No preamble, no \
@@ -196,12 +203,11 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         - When the user's notes are empty or sparse, be conservative: summarize \
         only what the transcript clearly supports, keep it short, and invent no \
         structure, decisions, or action items the words do not back.
-        - When current AI notes are provided, update them in place: keep the \
-        user's wording, additions, and ordering wherever the new transcript does \
-        not contradict them, and weave new material in around them.
+        - Never modify note.md, transcript.vtt, audio.webm, files/, context/, \
+        or .simbi/.
 
-        Reply with ONLY the complete markdown document for the AI notes. No code \
-        fence around it, no explanation before or after.
+        Reply with one line: DONE, or FAILED: <reason>. No code fences, no other \
+        output.
         """
 
     private static let defaultAgents = """
