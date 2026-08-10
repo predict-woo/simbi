@@ -86,11 +86,15 @@ struct NoteView: View {
     private static let transcriptMinWidth: CGFloat = 220
     private static let initialEditorFraction: CGFloat = 0.6
 
-    /// The divider position. Must be @State: SplitViewKit resets its
-    /// internal fraction whenever the holder's value changes between
-    /// renders, so a holder rebuilt in `body` would snap a dragged
-    /// divider back to the initial fraction on every window resize.
-    @State private var splitFraction = FractionHolder(NoteView.initialEditorFraction)
+    /// The divider position, shared by every NoteView for the app
+    /// session so the ratio survives note switches (spec
+    /// 2026-08-11-shared-split-ratio). One stable instance is also what
+    /// SplitViewKit needs: it resets its internal fraction whenever the
+    /// holder's value changes between renders, so a holder rebuilt per
+    /// view (the old @State) snapped the divider back to 0.6 on every
+    /// note switch. Session-only by design — never persisted.
+    @MainActor private static let sharedSplitFraction = FractionHolder(
+        NoteView.initialEditorFraction)
 
     var body: some View {
         // Vendored SplitViewKit (pure SwiftUI), not HSplitView: the
@@ -104,7 +108,7 @@ struct NoteView: View {
         GeometryReader { geo in
             let width = max(geo.size.width, 481)
             HSplit(left: { editorPane }, right: { transcriptPane })
-                .fraction(splitFraction)
+                .fraction(Self.sharedSplitFraction)
                 .constraints(
                     minPFraction: Self.editorMinWidth / width,
                     minSFraction: Self.transcriptMinWidth / width
