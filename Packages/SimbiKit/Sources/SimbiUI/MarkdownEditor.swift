@@ -2,6 +2,7 @@ import AppKit
 import MarkdownEngine
 import MarkdownEngineCodeBlocks
 import MarkdownEngineLatex
+import SimbiKit
 import SwiftUI
 
 /// The note editor: MarkdownEngine's TextKit 2 view with live styling
@@ -48,6 +49,13 @@ public struct MarkdownEditor: View {
         var config = MarkdownEditorConfiguration()
         config.services.syntaxHighlighter = sharedHighlighter
         config.services.latex = sharedLatex
+        // Timestamp wiki links must resolve as existing: the styler only
+        // attaches the clickable `.link` attribute (routing clicks to
+        // `onLinkClick` → seek) when the resolver says so; unresolved names
+        // render as dead links. The resolver's one call site is styling —
+        // it never rewrites `[[12:34]]` into the `[[Name|<id>]]` storage
+        // form (verified against the pinned engine, 2026-08-10).
+        config.services.wikiLinks = TimestampWikiLinkResolver()
         config.extensions = [HighlightExtension(), StrikethroughExtension()] + extraExtensions
         config.textInsets = TextInsets(horizontal: Design.editorInset, vertical: 20)
         // The engine auto-pairs [ ( { but has no type-through of the closing
@@ -61,6 +69,18 @@ public struct MarkdownEditor: View {
     private static let noteConfiguration = makeConfiguration()
     private static let instructionsConfiguration = makeConfiguration(
         extraExtensions: [TemplateVariableExtension()])
+
+    /// Resolves timestamp-shaped wiki-link names ([[12:34]], [[1:02:33]])
+    /// as existing so they read and click like real links; anything else
+    /// stays unresolved (no note-linking feature yet, so other names render
+    /// as dead links). The id is the display name itself: it is what the
+    /// click handler receives and feeds to `TimestampLink.parse`.
+    private struct TimestampWikiLinkResolver: WikiLinkResolver {
+        func resolve(displayName: String, range: NSRange) -> WikiLinkResolution? {
+            guard TimestampLink.parse(displayName) != nil else { return nil }
+            return WikiLinkResolution(id: displayName, exists: true)
+        }
+    }
 
     private var configuration: MarkdownEditorConfiguration {
         switch flavor {
