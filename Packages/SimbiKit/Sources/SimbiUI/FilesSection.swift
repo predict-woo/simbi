@@ -206,27 +206,15 @@ private struct FileTile: View {
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 36, height: 36)
-                .statusCircleChrome()
+                .floatingChrome(in: Circle())
         case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 18))
                 .foregroundStyle(Color.statusLive)
                 .frame(width: 36, height: 36)
-                .statusCircleChrome()
+                .floatingChrome(in: Circle())
         case .done:
             EmptyView()
-        }
-    }
-}
-
-extension View {
-    /// Status-circle chrome: Liquid Glass where the OS has it (macOS 26),
-    /// the closest material further back.
-    @ViewBuilder fileprivate func statusCircleChrome() -> some View {
-        if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: Circle())
-        } else {
-            self.background(.regularMaterial, in: Circle())
         }
     }
 }

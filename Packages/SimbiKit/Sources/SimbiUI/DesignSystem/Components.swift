@@ -109,3 +109,22 @@ struct MeterBar: View {
         .frame(height: height)
     }
 }
+
+extension View {
+    /// Floating-element chrome (docs/design-system.md § Components):
+    /// Liquid Glass where the OS has it (macOS 26); further back, the
+    /// closest material plus a hairline stroke and a soft drop shadow so
+    /// the element still separates from content scrolling beneath it.
+    @ViewBuilder func floatingChrome(in shape: some InsettableShape) -> some View {
+        if #available(macOS 26.0, *) {
+            self.glassEffect(.regular, in: shape)
+        } else {
+            self.background {
+                shape
+                    .fill(.regularMaterial)
+                    .shadow(color: .black.opacity(0.12), radius: 6, y: 1)
+                shape.strokeBorder(Color.hairline)
+            }
+        }
+    }
+}
