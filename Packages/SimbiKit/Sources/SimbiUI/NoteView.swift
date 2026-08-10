@@ -217,14 +217,16 @@ struct NoteView: View {
     private var editorPane: some View {
         VStack(spacing: 0) {
             if tabStripVisible {
+                // No hairline below: the strip reads as part of the document,
+                // not separate chrome (user call, 2026-08-10). Regenerate
+                // belongs to the AI Notes tab only.
                 EditorTabStrip(
                     selected: $selectedTab,
-                    showRegenerate: recorder.status == .idle,
+                    showRegenerate: recorder.status == .idle && selectedTab == .aiNotes,
                     regenerateEnabled: summary.codexAvailable,
                     isWorking: summary.status == .working,
                     regenerateHelp: regenerateHelp,
                     onRegenerate: { summary.regenerate() })
-                Hairline()
             }
             if tabStripVisible && selectedTab == .aiNotes {
                 aiNotesPane

@@ -195,10 +195,13 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         - Fuse the user's own notes faithfully: never drop or contradict a point \
         they wrote. Their material is the skeleton; the transcript fleshes it out.
         - Every bullet derived from the transcript ends with one or more \
-        timestamp links like [[12:34]] or [[1:02:33]], citing the start time of \
-        the supporting cue exactly as it appears in the VTT. Points taken from \
-        the user's own notes carry NO timestamp link: the absence of a citation \
-        marks the user's material.
+        timestamp links citing the supporting cue's start time, rounded down to \
+        whole seconds and written as minutes:seconds, like [[0:00]], [[7:05]], \
+        or [[12:34]] (use hours:minutes:seconds like [[1:02:33]] only past an \
+        hour). NEVER copy the VTT's own timestamp format: no milliseconds, no \
+        zero-padded hours (a VTT cue at 00:01:10.640 is cited as [[1:10]]). \
+        Points taken from the user's own notes carry NO timestamp link: the \
+        absence of a citation marks the user's material.
         - Refer to speakers by their names exactly as the <v> tags spell them.
         - When the user's notes are empty or sparse, be conservative: summarize \
         only what the transcript clearly supports, keep it short, and invent no \
