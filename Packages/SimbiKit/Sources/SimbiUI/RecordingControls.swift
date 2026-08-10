@@ -22,6 +22,10 @@ struct RecordingBar: View {
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, Design.stripPadding)
         .floatingChrome(in: Capsule())
+        // Outer margin so the capsule keeps daylight from the pane edges
+        // even at the transcript's minimum width — flush edges would stop
+        // reading as "floating."
+        .padding(.horizontal, Design.rowGap)
         .padding(.bottom, Design.rowGap)
     }
 

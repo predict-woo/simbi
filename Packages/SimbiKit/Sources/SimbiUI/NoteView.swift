@@ -80,8 +80,6 @@ struct NoteView: View {
         self.renameNote = renameNote
     }
 
-    @Environment(\.openWindow) private var openWindow
-
     /// Pane floors in points (converted to fractions for SplitViewKit) and
     /// the initial divider position, matching the old 560/380 ideal split.
     private static let editorMinWidth: CGFloat = 260
