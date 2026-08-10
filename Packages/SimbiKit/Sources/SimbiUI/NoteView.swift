@@ -368,6 +368,7 @@ struct NoteView: View {
                 }
                 Divider()
             }
+            RecordingStatusStrip(recorder: recorder)
             // The player bar lives above the transcript whenever the note
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
@@ -389,12 +390,9 @@ struct NoteView: View {
                 flash: transcriptFlash
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // The live-status pill floats the same way, only while
-            // there's status to show.
-            .floatingBar(edge: .top) { RecordingStatusStrip(recorder: recorder) }
             // The capture bar floats over the transcript (and over the
             // empty state — it's the pane's one always-present control).
-            .floatingBar(edge: .bottom) { RecordingBar(recorder: recorder) }
+            .bottomFloatingBar { RecordingBar(recorder: recorder) }
         }
         .background(.background.secondary)
     }
