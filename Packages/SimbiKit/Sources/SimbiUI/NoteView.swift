@@ -353,8 +353,24 @@ struct NoteView: View {
                 StatusBanner(message: degraded)
                 Divider()
             }
-            RecordingHeader(recorder: recorder)
-            Divider()
+            // System-audio-denied banner (previously inside RecordingHeader):
+            // banners are banners — they all stack at the top of the pane.
+            if let banner = systemAudioBanner {
+                StatusBanner(
+                    message: banner,
+                    icon: "speaker.slash.fill",
+                    actionTitle: "Open System Settings"
+                ) {
+                    if let url = URL(
+                        string:
+                            "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
+                    ) {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                Divider()
+            }
+            RecordingStatusStrip(recorder: recorder)
             // The player bar lives above the transcript whenever the note
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
@@ -376,8 +392,18 @@ struct NoteView: View {
                 flash: transcriptFlash
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // The capture bar floats over the transcript (and over the
+            // empty state — it's the pane's one always-present control).
+            .bottomFloatingBar { RecordingBar(recorder: recorder) }
         }
         .background(.background.secondary)
+    }
+
+    /// Preview pins the denied state so the banner can be screenshotted.
+    private var systemAudioBanner: String? {
+        Design.uiPreview
+            ? "System audio capture was denied. Recording the mic only."
+            : recorder.systemAudioBanner
     }
 }
 
@@ -421,295 +447,6 @@ struct PlaybackBar: View {
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, Design.stripPadding)
         .onAppear { playback.refreshDuration() }
-    }
-}
-
-/// Record/Stop button with live elapsed time and the tentative speaker
-/// indicator. Reads like a recorder: red affordance, pulsing dot while
-/// live, monospaced timer.
-struct RecordingHeader: View {
-    @Bindable var recorder: RecordingController
-    @Environment(\.openWindow) private var openWindow
-
-    private var isRecording: Bool { recorder.status == .recording || Design.uiPreview }
-
-    /// Live-speaker slot; the preview flag pins one so the chip is visible.
-    private var tentativeSpeaker: Int? {
-        Design.uiPreview ? 1 : recorder.tentativeSpeaker
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            controls
-                .padding(.horizontal, Design.paneInset)
-                .padding(.vertical, Design.stripPadding)
-            let banner =
-                Design.uiPreview
-                ? "System audio capture was denied. Recording the mic only." : recorder.systemAudioBanner
-            if let banner {
-                StatusBanner(
-                    message: banner,
-                    icon: "speaker.slash.fill",
-                    actionTitle: "Open System Settings"
-                ) {
-                    if let url = URL(
-                        string:
-                            "x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture"
-                    ) {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-            }
-        }
-    }
-
-    /// Everything on one line when it fits; in a narrow pane the live
-    /// status items (speaker chip, fixer, inspector) wrap to a second
-    /// trailing row — recording adds items and the transcript pane can
-    /// be squeezed well below their combined width.
-    private var controls: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
-                // The record cluster stretches (leading-aligned) instead
-                // of a Spacer pushing right: HStack splits a width
-                // deficit between flexible siblings, so a filler next to
-                // the truncatable Record label shrinks the button while
-                // the gap stays wide. Nested, the cluster is the single
-                // most-flexible child, laid out last with the whole
-                // remainder — the gap collapses to the plain 12pt row
-                // spacing before any text truncates.
-                HStack(spacing: 12) {
-                    recordButton
-                    elapsedTimer
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                statusItems
-                sourcesMenu
-            }
-            VStack(spacing: Design.innerGap) {
-                HStack(spacing: 12) {
-                    HStack(spacing: 12) {
-                        recordButton
-                        elapsedTimer
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    sourcesMenu
-                }
-                HStack(spacing: 12) {
-                    statusItems
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-    }
-
-    // Idle: neutral button, red dot icon (ready). Recording: filled
-    // red Stop — red means "live", not "will be live".
-    private var recordButton: some View {
-        Button {
-            recorder.toggle()
-        } label: {
-            if isRecording {
-                Label("Stop", systemImage: "stop.fill")
-            } else {
-                switch recorder.status {
-                case .idle, .failed:
-                    Label {
-                        Text(recorder.hasRecording ? "Resume" : "Record")
-                    } icon: {
-                        Image(systemName: "record.circle.fill")
-                            .foregroundStyle(Color.statusLive)
-                    }
-                case .preparing:
-                    Label("Preparing…", systemImage: "record.circle")
-                case .recording, .stopping:
-                    Label("Stopping…", systemImage: "stop.circle")
-                }
-            }
-        }
-        .buttonStyle(.bordered)
-        .tint(isRecording ? .statusLive : nil)
-        .disabled(recorder.status == .preparing || recorder.status == .stopping)
-    }
-
-    private var elapsedTimer: some View {
-        HStack(spacing: Design.iconGap) {
-            if isRecording {
-                StatusDot(color: .statusLive)
-                    .modifier(PulseEffect())
-            }
-            Text(Design.time(recorder.elapsed))
-                .font(.body.monospacedDigit())
-                .foregroundStyle(isRecording ? .primary : .secondary)
-        }
-    }
-
-    @ViewBuilder private var statusItems: some View {
-        if isRecording {
-            liveIndicator
-        }
-        if case .failed(let message) = recorder.status {
-            Text(message)
-                .font(.meta)
-                .foregroundStyle(Color.statusLive)
-                .lineLimit(2)
-        }
-
-        // Fixer status/activity (SPEC.md §5.2): sparkles pulse while a
-        // pass runs; clicking opens the live thread viewer. Hidden
-        // until a fixer has ever existed for this note.
-        if recorder.hasFixerThread || recorder.fixerActivity.status != .off || Design.uiPreview {
-            fixerButton
-        }
-
-        // Pipeline Inspector: live view of the recording pipeline's
-        // internals. Only meaningful mid-session, so recording-only.
-        if isRecording {
-            inspectorButton
-        }
-    }
-
-    private var fixerButton: some View {
-        Button {
-            recorder.openFixerViewer()
-        } label: {
-            Image(systemName: "sparkles")
-                .foregroundStyle(
-                    recorder.fixerActivity.status == .working
-                        ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary)
-                )
-                .modifier(PulseEffect(active: recorder.fixerActivity.status == .working))
-        }
-        .buttonStyle(HoverCircleButtonStyle())
-        .help(fixerHelp)
-    }
-
-    private var inspectorButton: some View {
-        Button {
-            // One inspector window per note; reopening focuses it.
-            openWindow(id: PipelineInspectorWindow.windowId, value: recorder.noteFolderURL)
-        } label: {
-            Image(systemName: "waveform.path.ecg")
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(HoverCircleButtonStyle())
-        .help("Pipeline Inspector: watch the recording pipeline work")
-    }
-
-    private var fixerHelp: String {
-        switch recorder.fixerActivity.status {
-        case .off: "Transcript fixer"
-        case .waiting: "Transcript fixer: waiting for new cues"
-        case .working: "Transcript fixer: reviewing"
-        case .done: "Transcript fixer: done"
-        }
-    }
-
-    // Source menu (SPEC.md §3.1: mic device and system audio are chosen
-    // independently; either can be off, never both). Locked while
-    // recording — the mix can't change mid-session. Quiet icons: the
-    // symbols carry the state so they don't compete with Record.
-    private var sourcesMenu: some View {
-        Menu {
-            Section("Microphone") {
-                micOption("Off", selected: !recorder.micEnabled) {
-                    recorder.micEnabled = false
-                }
-                // Turning the mic off with system audio off would leave
-                // nothing to record.
-                .disabled(!recorder.systemAudioEnabled)
-                micOption(
-                    "System default",
-                    selected: recorder.micEnabled && recorder.micDeviceUID == nil
-                ) {
-                    recorder.micEnabled = true
-                    recorder.micDeviceUID = nil
-                }
-                let mics = recorder.availableMicrophones
-                ForEach(mics) { mic in
-                    micOption(
-                        mic.name,
-                        selected: recorder.micEnabled && recorder.micDeviceUID == mic.id
-                    ) {
-                        recorder.micEnabled = true
-                        recorder.micDeviceUID = mic.id
-                    }
-                }
-                // Keep a saved-but-unplugged mic visible so the selection
-                // isn't silently misrepresented.
-                if recorder.micEnabled, let uid = recorder.micDeviceUID,
-                    !mics.contains(where: { $0.id == uid })
-                {
-                    micOption("Saved microphone (not connected)", selected: true) {}
-                }
-            }
-            Section("System audio") {
-                Toggle("Capture system audio", isOn: $recorder.systemAudioEnabled)
-                    // Same guard from the other side: last source stays on.
-                    .disabled(!recorder.micEnabled)
-            }
-        } label: {
-            HStack(spacing: Design.iconGap) {
-                Image(systemName: recorder.micEnabled ? "mic.fill" : "mic.slash")
-                    .foregroundStyle(
-                        recorder.micEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                Image(
-                    systemName: recorder.systemAudioEnabled ? "speaker.wave.2" : "speaker.slash"
-                )
-                .foregroundStyle(
-                    recorder.systemAudioEnabled ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .padding(Design.footerStripPadding)
-        .hoverFill(Capsule())
-        .disabled(recorder.status != .idle)
-        .help(sourcesSummary)
-    }
-
-    private func micOption(
-        _ title: String, selected: Bool, action: @escaping () -> Void
-    ) -> some View {
-        // Toggle rows get the native menu checkmark on the active option.
-        Toggle(title, isOn: .init(get: { selected }, set: { _ in action() }))
-    }
-
-    /// Tooltip summary, e.g. "Recording: MacBook Pro Microphone + system audio".
-    private var sourcesSummary: String {
-        var parts: [String] = []
-        if recorder.micEnabled {
-            let name =
-                recorder.availableMicrophones
-                .first { $0.id == recorder.micDeviceUID }?.name
-            parts.append(name ?? "default microphone")
-        }
-        if recorder.systemAudioEnabled {
-            parts.append("system audio")
-        }
-        return "Recording: " + parts.joined(separator: " + ")
-    }
-
-    /// Who the diarizer currently hears, in the same chip language as the
-    /// transcript rows — header and transcript read as one system.
-    @ViewBuilder
-    private var liveIndicator: some View {
-        if let slot = tentativeSpeaker {
-            let name = "Speaker \(slot + 1)"
-            HStack(spacing: Design.iconGap) {
-                Image(systemName: "waveform")
-                    .font(.meta)
-                SpeakerChip(name: name)
-            }
-            .foregroundStyle(Design.speakerColor(name))
-            .padding(.horizontal, 8)
-            .padding(.vertical, Design.innerGap)
-            .background(Design.speakerTint(name), in: Capsule())
-        } else {
-            Text("Listening…")
-                .font(.meta)
-                .foregroundStyle(.tertiary)
-        }
     }
 }
 

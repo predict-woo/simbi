@@ -104,12 +104,6 @@ struct TranscriptView: View {
         var id: String { "\(row):\(name)" }
     }
 
-    /// Kept as the public color entry point (RecordingHeader uses it);
-    /// routed through the shared design-system palette.
-    static func color(forSpeaker name: String) -> Color {
-        Design.speakerColor(name)
-    }
-
     var body: some View {
         Group {
             if let document = model.document, !document.entries.isEmpty {
