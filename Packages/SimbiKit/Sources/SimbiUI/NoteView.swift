@@ -261,7 +261,7 @@ struct NoteView: View {
             StatusBanner(
                 message: "AI notes couldn't be updated.",
                 actionTitle: recorder.status == .idle ? "Try Again" : nil,
-                action: recorder.status == .idle ? { summary.regenerate() } : nil
+                action: recorder.status == .idle ? { summary.retry() } : nil
             )
         }
         if (summary.status == .working && !summary.summaryExists) || Design.uiPreviewSummaryLoading {

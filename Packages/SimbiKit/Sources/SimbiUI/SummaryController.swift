@@ -94,7 +94,20 @@ public final class SummaryController {
     /// The tab strip's regenerate button and the failed banner's Try
     /// Again. Refuses while this note is recording (spec §3) — the view
     /// gates its buttons too, but the guard here holds regardless.
+    ///
+    /// Manual regeneration starts over (user decision 2026-08-10): the old
+    /// summary.md is deleted so the thread writes from scratch, discarding
+    /// any hand edits. Only the recording-stop trigger updates in place.
     func regenerate() {
+        guard status != .working, codexAvailable,
+            !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
+        else { return }
+        generate(fresh: true)
+    }
+
+    /// The failed banner's Try Again: repeats the attempt without deleting
+    /// anything, so a failed in-place update stays an in-place update.
+    func retry() {
         guard status != .working, codexAvailable,
             !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
         else { return }
@@ -121,10 +134,17 @@ public final class SummaryController {
         }
     }
 
-    private func generate() {
+    private func generate(fresh: Bool = false) {
         // The open note's debounced autosaves must land on disk before
         // the turn starts: the thread reads note.md and summary.md there.
         flushEditorsBeforeGenerate?()
+        // Fresh mode deletes AFTER the flush so a just-flushed editor write
+        // can't resurrect the file; the open editor keeps the old text in
+        // memory, so a failed run is recoverable by editing or closing the
+        // note (both save the held text back to disk).
+        if fresh {
+            try? FileManager.default.removeItem(at: summaryFileURL)
+        }
         status = .working
         Task {
             do {
