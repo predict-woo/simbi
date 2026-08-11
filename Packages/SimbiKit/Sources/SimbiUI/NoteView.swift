@@ -149,6 +149,16 @@ struct NoteView: View {
             ToolbarItem {
                 chatButton
             }
+            ToolbarItem {
+                // Opening the folder itself (not selecting it in its
+                // parent) lands Finder inside the note's contents. Lives
+                // here, not in the root toolbar, so it exists only while
+                // a note is open (same as the chat button).
+                Button("Show in Finder", systemImage: "folder") {
+                    NSWorkspace.shared.open(document.noteFolderURL)
+                }
+                .help("Show this note's files in Finder")
+            }
         }
         .onChange(of: document.text) {
             document.scheduleAutosave()
