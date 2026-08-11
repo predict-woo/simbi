@@ -122,16 +122,16 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         - Edit ONLY cue text and `<v Name>` speaker tags. The merge takes nothing \
         else: renumbering cues, changing timestamps, or adding/deleting cues or NOTE \
         blocks is discarded, so it is wasted work.
-        - Speaker diarization is imperfect: when the conversation makes it pretty \
-        certain a cue is attributed to the wrong speaker (e.g. a reply credited to \
-        the person who just asked the question, or a sentence obviously continuing \
-        the other speaker's thought), fix that cue's `<v>` tag — copy the correct \
-        speaker's tag exactly as it appears on their other cues. When in doubt, \
-        leave the attribution alone.
-        - Renaming a speaker's identity is different from fixing attribution: rename \
-        ONLY when the transcript makes the identity unambiguous (e.g. a speaker \
-        introduces themselves), then rename that speaker consistently across the \
-        whole file.
+        - NEVER reassign a cue to a different speaker. Speaker attribution comes \
+        from the diarizer and is not yours to correct: even when the conversation \
+        strongly suggests a cue belongs to another speaker, leave which speaker it \
+        is attributed to alone. A cue's `<v>` tag may change only as part of a \
+        whole-file rename (next rule), never to move that one cue to a different \
+        speaker.
+        - Renaming a speaker's identity (the same person everywhere) is allowed: \
+        rename ONLY when the transcript makes the identity unambiguous (e.g. a \
+        speaker introduces themselves), then rename that speaker consistently \
+        across the whole file.
         - `NOTE session` blocks mark stop/resume boundaries. Speaker slot numbering may \
         reshuffle across them ("Speaker 1" in session 2 may be a different person than \
         in session 1) — unify names across sessions only when identity is clear from \
