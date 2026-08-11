@@ -15,8 +15,15 @@ struct DiarizerPresetTests {
         #expect(DiarizerPreset.frameSamples == 1280)
     }
 
-    @Test("fastV2_1 output latency is ~1.04 s")
+    @Test("balancedV2_1 output latency is ~1.04 s")
     func outputLatency() {
         #expect(abs(DiarizerPreset.outputLatency - 1.04) < 0.0001)
+    }
+
+    @Test("balancedV2_1 keeps fastV2_1's chunk geometry (engine constants derive from it)")
+    func chunkGeometry() {
+        #expect(DiarizerPreset.config.chunkLen == 6)
+        #expect(DiarizerPreset.config.chunkLeftContext == 1)
+        #expect(DiarizerPreset.config.chunkRightContext == 7)
     }
 }

@@ -20,7 +20,7 @@ public protocol DiarizerStream: AnyObject, Sendable {
     func finalizeSession() throws -> DiarizerChunkResult?
 }
 
-/// Production wrapper: SortformerDiarizer, fastV2_1, guide-recommended
+/// Production wrapper: SortformerDiarizer, balancedV2_1, guide-recommended
 /// timeline config (§0: library timeline used only for the tentative
 /// live-UI; the cut engine consumes raw finalized predictions).
 /// @unchecked: SortformerDiarizer serializes access with an internal lock
@@ -30,7 +30,7 @@ public final class SortformerStream: DiarizerStream, @unchecked Sendable {
 
     public init() {
         diarizer = SortformerDiarizer(
-            config: .fastV2_1,
+            config: DiarizerPreset.config,
             timelineConfig: DiarizerTimelineConfig(
                 numSpeakers: 4,
                 frameDurationSeconds: Float(DiarizerPreset.frameDuration),

@@ -62,7 +62,7 @@ swift format --in-place --recursive App Packages/SimbiKit/Sources Packages/Simbi
 | Concern | Choice | Notes |
 |---|---|---|
 | UI | Swift 6 + SwiftUI, macOS 14+ | system-audio capture path needs 14.4+ |
-| Diarization | [FluidAudio](https://github.com/FluidInference/FluidAudio) `0.15.5` (exact pin) | streaming Sortformer `fastV2_1`, CoreML/ANE |
+| Diarization | [FluidAudio](https://github.com/FluidInference/FluidAudio) `0.15.5` (exact pin) | streaming Sortformer `balancedV2_1`, CoreML/ANE |
 | Markdown editor | [STTextView](https://github.com/krzyzanowskim/STTextView) + Neon (tree-sitter-markdown) | via STTextView-Plugin-Neon for the spike; to be vendored against upstream Neon before release |
 | Markdown preview | MarkdownUI 2.4.x (planned, M5+) | successor Textual needs macOS 15 — adopt when the floor rises |
 | Audio format | WebM/Opus everywhere, vendored libopus + libwebm (M1) | codex-native; no raw audio on disk |

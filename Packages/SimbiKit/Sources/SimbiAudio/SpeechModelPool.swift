@@ -72,7 +72,7 @@ public final class SpeechModelPool: @unchecked Sendable {
     private func sortformerLoadLocked() -> Task<Checkout, Error> {
         if let load = sortformerLoad { return load }
         let load = Task {
-            Checkout(models: try await SortformerModels.loadFromHuggingFace(config: .fastV2_1))
+            Checkout(models: try await SortformerModels.loadFromHuggingFace(config: DiarizerPreset.config))
         }
         sortformerLoad = load
         return load
