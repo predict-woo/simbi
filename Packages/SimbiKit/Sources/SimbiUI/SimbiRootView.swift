@@ -32,6 +32,17 @@ public struct SimbiRootView: View {
         }
         .toolbar {
             ToolbarItem {
+                // Opening the folder itself (not selecting it in its
+                // parent) lands Finder inside the note's contents.
+                Button("Show in Finder", systemImage: "folder") {
+                    if let url = openNoteURL {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .disabled(openNoteURL == nil)
+                .help("Show this note's files in Finder")
+            }
+            ToolbarItem {
                 Button("New Note", systemImage: "square.and.pencil") {
                     model.promptForNewNote()
                 }
