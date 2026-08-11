@@ -40,8 +40,11 @@ public final class SummaryController {
 
     init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
+        let settings =
+            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
         self.summarizer = NoteSummarizer(
-            noteFolderURL: noteFolderURL, client: CodexServices.appServer)
+            noteFolderURL: noteFolderURL, client: CodexServices.appServer,
+            model: settings.summaryModel)
     }
 
     var summaryFileURL: URL { noteFolderURL.appending(path: "summary.md") }
