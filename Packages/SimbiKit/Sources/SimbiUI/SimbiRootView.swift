@@ -123,17 +123,24 @@ private struct CodexStatusFooter: View {
 
     var body: some View {
         let available = installation.isBinaryInstalled && installation.loadAuth() != nil
-        HStack(spacing: Design.iconGap) {
-            StatusDot(color: available ? .statusOK : .statusWarning)
-            Text(available ? "Codex connected" : "Codex unavailable: transcription off")
-                .font(.meta)
-                .foregroundStyle(
-                    available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
-                )
-                .lineLimit(1)
+        Button {
+            CodexStatusWindowManager.shared.open()
+        } label: {
+            HStack(spacing: Design.iconGap) {
+                StatusDot(color: available ? .statusOK : .statusWarning)
+                Text(available ? "Codex connected" : "Codex unavailable: transcription off")
+                    .font(.meta)
+                    .foregroundStyle(
+                        available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
+                    )
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Design.footerInset)
+            .padding(.vertical, Design.stripPadding)
+            .contentShape(.rect)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, Design.footerInset)
-        .padding(.vertical, Design.stripPadding)
+        .buttonStyle(.plain)
+        .help("Show Codex account status and usage")
     }
 }
