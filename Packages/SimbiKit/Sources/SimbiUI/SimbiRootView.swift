@@ -15,14 +15,27 @@ public struct SimbiRootView: View {
 
     public var body: some View {
         NavigationSplitView {
-            SidebarView(model: model)
-                .navigationSplitViewColumnWidth(min: 160, ideal: 240)
-                .safeAreaInset(edge: .bottom) {
-                    VStack(spacing: 0) {
-                        UpdatePill(model: UpdateModel.shared)
-                        CodexStatusFooter()
+            // A plain stack, not a safeAreaInset: the inset's default
+            // spacing made the gap above the footer text visibly larger
+            // than the one below it.
+            VStack(spacing: 0) {
+                SidebarView(model: model)
+                    // Rows fade out above the footer instead of clipping
+                    // mid-glyph at a hard edge.
+                    .mask {
+                        VStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(
+                                colors: [.black, .clear],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: Design.paneInset)
+                        }
                     }
-                }
+                UpdatePill(model: UpdateModel.shared)
+                CodexStatusFooter()
+            }
+            .navigationSplitViewColumnWidth(min: 160, ideal: 240)
         } detail: {
             // Same floor as NoteView's split so the window minimum doesn't
             // change with selection (the no-note placeholder has no
@@ -122,6 +135,5 @@ private struct CodexStatusFooter: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Design.footerInset)
         .padding(.vertical, Design.stripPadding)
-        .background(.bar)
     }
 }
