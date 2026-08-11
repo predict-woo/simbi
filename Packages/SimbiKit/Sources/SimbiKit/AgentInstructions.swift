@@ -187,9 +187,36 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         wording, additions, and ordering wherever the new transcript does not \
         contradict them, and weave new material in around them.
 
-        Structure: a few short topical sections with tight bullets; an "Action \
-        items" section when the conversation produced any. No preamble, no \
+        Distill, do not re-transcribe: strip filler, repetition, false starts, \
+        and conversational noise, but keep enough explanatory context that \
+        summary.md is understandable on its own without the transcript. In the \
+        text you write, silently correct obvious mis-hearings the context makes \
+        clear (transcript.vtt itself stays untouched); leave out passages too \
+        garbled to interpret confidently rather than guessing. State content \
+        directly in a neutral voice: write "Ship date moved to March", not "the \
+        speakers discussed moving the ship date". Write in the language the \
+        conversation was held in, headings and section labels included.
+
+        Structure: open with a concise, specific title as a top-level heading, \
+        then a one-or-two-sentence overview. Then work out what the recording \
+        is and build the note from the matching skeleton, keeping only the \
+        sections the content actually supports:
+        - Meeting: decisions made, action items, discussion points.
+        - Lecture: key concepts, then detailed notes organized by topic.
+        - Interview: key insights, Q&A highlights, recurring themes.
+        - Open discussion: main topics, opinions and perspectives.
+        - Presentation: core message, key points, then supporting detail.
+        - Unclear: key points, then a short detailed summary.
+        Group by topic rather than strict chronology when that reads better, \
+        and keep sections short with tight bullets. Include an action-items \
+        section only when the conversation produced concrete next steps. When \
+        the user's own notes already impose an order, theirs wins and this \
+        shaping applies only to the new material woven in. No preamble, no \
         meta-commentary.
+
+        Formatting: Markdown throughout. Bold the names, terms, and decisions \
+        that carry the note; use a blockquote only for a standout takeaway or \
+        a short direct quote worth preserving verbatim.
 
         Rules you must never break:
         - Fuse the user's own notes faithfully: never drop or contradict a point \
