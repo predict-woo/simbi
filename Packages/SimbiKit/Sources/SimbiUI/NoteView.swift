@@ -377,7 +377,7 @@ struct NoteView: View {
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
             if (recorder.status == .idle && playback.hasAudio) || Design.uiPreview {
-                PlaybackBar(playback: playback)
+                PlaybackBar(playback: playback, noteFolderURL: document.noteFolderURL)
                 Divider()
             }
             TranscriptView(
@@ -413,8 +413,11 @@ struct NoteView: View {
 /// whenever the note has audio and isn't recording (SPEC.md §6).
 struct PlaybackBar: View {
     let playback: PlaybackController
+    let noteFolderURL: URL
     /// Non-nil while the user drags the scrubber; committed on release.
     @State private var scrubPosition: TimeInterval?
+    /// True for a beat after a successful copy (checkmark feedback).
+    @State private var copiedTranscript = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -445,10 +448,37 @@ struct PlaybackBar: View {
             Text(Design.time(playback.duration))
                 .font(.metaMono)
                 .foregroundStyle(.tertiary)
+            Button {
+                copyTranscript()
+            } label: {
+                Image(systemName: copiedTranscript ? "checkmark" : "doc.on.doc")
+                    .frame(width: 14)
+            }
+            .buttonStyle(HoverCircleButtonStyle())
+            .help("Copy transcript")
+            .disabled(!FileManager.default.fileExists(atPath: transcriptURL.path))
         }
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, Design.stripPadding)
         .onAppear { playback.refreshDuration() }
+    }
+
+    private var transcriptURL: URL {
+        noteFolderURL.appending(path: "transcript.vtt")
+    }
+
+    /// Reads transcript.vtt from disk at click time (the file is the
+    /// source of truth, so this includes any fixer edits).
+    private func copyTranscript() {
+        guard let text = try? String(contentsOf: transcriptURL, encoding: .utf8) else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        copiedTranscript = true
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            copiedTranscript = false
+        }
     }
 }
 
@@ -470,6 +500,18 @@ private struct ToolbarTitleClickCatcher: NSViewRepresentable {
         private weak var titleView: NSView?
 
         @objc private func clicked(_ sender: Any?) {
+            // Only the title text counts, not the toolbar's whole flexible
+            // region. Fail-soft: with no text field found (AppKit internals
+            // moved), fire anywhere — rename must stay reachable.
+            if let recognizer = sender as? NSClickGestureRecognizer,
+                let titleView,
+                let text = Self.findTextField(in: titleView),
+                let textSuperview = text.superview
+            {
+                let point = recognizer.location(in: titleView)
+                let textFrame = titleView.convert(text.frame, from: textSuperview)
+                guard textFrame.contains(point) else { return }
+            }
             onClick()
         }
 
@@ -509,6 +551,14 @@ private struct ToolbarTitleClickCatcher: NSViewRepresentable {
             if String(describing: type(of: view)) == "NSToolbarTitleView" { return view }
             for subview in view.subviews {
                 if let found = findToolbarTitleView(in: subview) { return found }
+            }
+            return nil
+        }
+
+        private static func findTextField(in view: NSView) -> NSTextField? {
+            if let field = view as? NSTextField { return field }
+            for subview in view.subviews {
+                if let found = findTextField(in: subview) { return found }
             }
             return nil
         }
