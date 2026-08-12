@@ -24,37 +24,62 @@ struct WelcomeView: View {
                 .foregroundStyle(.secondary)
             CodexSetupCard(state: setup.state)
                 .padding(.top, Design.rowGap)
-            Button("Create Your First Note", action: createNote)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+            createButton
                 .padding(.top, Design.rowGap)
-            Text("then press Record")
-                .font(.meta)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: 420)
         .padding(Design.paneInset)
         .task { await setup.poll() }
     }
+
+    /// The pane's one prominent action swaps with setup state: while the
+    /// card still needs the user, its button carries the weight and this
+    /// one steps back.
+    @ViewBuilder
+    private var createButton: some View {
+        if setup.state == .connected {
+            Button("Create Your First Note", action: createNote)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+        } else {
+            Button("Create Your First Note", action: createNote)
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+        }
+    }
 }
 
-/// The live three-step connection card: not installed → signed out →
-/// connected, advancing on its own as the model polls.
+/// The live connection card, centered like the rest of the pane. While
+/// setup is unfinished it wears the StatusBanner tint (the one warning
+/// treatment, applied to the card shape) and carries the pane's prominent
+/// action; connected, it collapses to a neutral one-line confirmation.
 private struct CodexSetupCard: View {
     let state: CodexSetupState
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            StatusDot(color: state == .connected ? .statusOK : .statusWarning)
-                .padding(.top, 4)
-            VStack(alignment: .leading, spacing: Design.innerGap) {
-                Text(message)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                actionButton
+        Group {
+            if state == .connected {
+                HStack(spacing: Design.iconGap) {
+                    StatusDot(color: .statusOK)
+                    Text(message)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(Design.paneInset)
+                .frame(maxWidth: .infinity)
+                .card()
+            } else {
+                VStack(spacing: Design.rowGap) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color.statusWarning)
+                    Text(message)
+                        .multilineTextAlignment(.center)
+                    actionButton
+                }
+                .padding(Design.paneInset)
+                .frame(maxWidth: .infinity)
+                .card(fill: Color.statusWarning.opacity(0.1))
             }
         }
-        .padding(Design.paneInset)
-        .card()
         .animation(.default, value: state)
     }
 
@@ -76,14 +101,12 @@ private struct CodexSetupCard: View {
             Button("Get ChatGPT") {
                 NSWorkspace.shared.open(URL(string: "https://chatgpt.com/download")!)
             }
-            .buttonStyle(.link)
-            .font(.metaSemibold)
+            .buttonStyle(.borderedProminent)
         case .signedOut:
             Button("Open ChatGPT") {
                 NSWorkspace.shared.open(URL(filePath: "/Applications/ChatGPT.app"))
             }
-            .buttonStyle(.link)
-            .font(.metaSemibold)
+            .buttonStyle(.borderedProminent)
         case .connected:
             EmptyView()
         }
