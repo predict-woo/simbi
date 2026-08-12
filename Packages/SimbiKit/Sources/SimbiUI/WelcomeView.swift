@@ -26,6 +26,7 @@ struct WelcomeView: View {
                 .padding(.top, Design.rowGap)
             createButton
                 .padding(.top, Design.rowGap)
+                .animation(Design.Anim.standard, value: setup.state)
         }
         .frame(maxWidth: 420)
         .padding(Design.paneInset)
@@ -80,7 +81,7 @@ private struct CodexSetupCard: View {
                 .card(fill: Color.statusWarning.opacity(0.1))
             }
         }
-        .animation(.default, value: state)
+        .animation(Design.Anim.standard, value: state)
     }
 
     private var message: String {
