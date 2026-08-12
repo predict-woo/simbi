@@ -93,7 +93,7 @@ public struct SimbiRootView: View {
                 renameNote: { model.rename(url, to: $0) }
             )
             .id(url)
-        } else if !FileTreeNode.containsNote(in: model.nodes) {
+        } else if !FileTreeNode.containsNote(in: model.nodes) || Flags.uiPreviewWelcome {
             WelcomeView(createNote: { model.promptForNewNote() })
         } else {
             ContentUnavailableView(

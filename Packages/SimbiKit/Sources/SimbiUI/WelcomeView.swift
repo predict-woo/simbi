@@ -7,6 +7,8 @@ import SwiftUI
 /// has zero notes (spec: 2026-07-23-first-run-onboarding-design.md).
 /// No stored state — it disappears the moment a note exists and returns
 /// only if the library is ever empty again.
+/// `SIMBI_UI_PREVIEW=1 SIMBI_UI_PREVIEW_WELCOME=1` forces it for design
+/// review regardless of library contents (see SimbiKit's `Flags`).
 struct WelcomeView: View {
     @State private var setup = CodexSetupModel()
     let createNote: () -> Void
