@@ -1,6 +1,7 @@
 import CodexKit
 import Foundation
 import Observation
+import SimbiKit
 
 /// Live Codex-connection state for the welcome pane's setup card.
 /// Polls two cheap file checks (the bundled binary and `~/.codex/auth.json`)
@@ -60,9 +61,7 @@ final class CodexSetupModel {
     /// `SIMBI_UI_PREVIEW_CODEX=notInstalled|signedOut|connected` forces a
     /// card state without touching the real ChatGPT install.
     private static func previewState() -> CodexSetupState? {
-        guard Design.uiPreview,
-            let raw = ProcessInfo.processInfo.environment["SIMBI_UI_PREVIEW_CODEX"]
-        else { return nil }
+        guard let raw = Flags.uiPreviewCodex else { return nil }
         return CodexSetupState(rawValue: raw)
     }
 }

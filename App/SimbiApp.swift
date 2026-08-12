@@ -1,3 +1,4 @@
+import SimbiKit
 import SimbiUI
 import SwiftUI
 
@@ -17,7 +18,7 @@ struct SimbiApp: App {
         // the second launch, so this costs the first run nothing.
         // SIMBI_NO_SPARKLE skips it for headless verification runs: its
         // failed-check alert is app-modal and stalls the whole scene layer.
-        if ProcessInfo.processInfo.environment["SIMBI_NO_SPARKLE"] == nil {
+        if !Flags.noSparkle {
             SparkleCoordinator.shared.start()
         }
     }

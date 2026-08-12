@@ -223,7 +223,7 @@ struct NoteView: View {
     /// Spec §4: the strip exists once AI notes exist, are being generated,
     /// or the last attempt failed; never before.
     private var tabStripVisible: Bool {
-        Design.uiPreview || summary.summaryExists || summary.status != .idle
+        Flags.uiPreview || summary.summaryExists || summary.status != .idle
     }
 
     private var editorPane: some View {
@@ -276,11 +276,11 @@ struct NoteView: View {
                 action: recorder.status == .idle ? { summary.retry() } : nil
             )
         }
-        if (summary.status == .working && !summary.summaryExists) || Design.uiPreviewSummaryLoading {
+        if (summary.status == .working && !summary.summaryExists) || Flags.uiPreviewSummaryLoading {
             firstGenerationPlaceholder
         } else {
             MarkdownEditor(
-                text: Design.uiPreview && !summary.summaryExists
+                text: Flags.uiPreview && !summary.summaryExists
                     ? .constant(Self.previewSummary) : $aiDocument.text,
                 documentId: aiDocument.fileURL.path,
                 onLinkClick: handleLinkClick
@@ -347,7 +347,7 @@ struct NoteView: View {
     /// §6 degraded states: recording works without Codex, but transcription
     /// and agent features need the ChatGPT app + a signed-in auth.json.
     private var degradedBanner: String? {
-        if Design.uiPreview {
+        if Flags.uiPreview {
             return "ChatGPT app not found. Transcription and Codex features are disabled."
         }
         if !CodexInstallation.standard.isBinaryInstalled {
@@ -386,7 +386,7 @@ struct NoteView: View {
             // The player bar lives above the transcript whenever the note
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
-            if (recorder.status == .idle && playback.hasAudio) || Design.uiPreview {
+            if (recorder.status == .idle && playback.hasAudio) || Flags.uiPreview {
                 PlaybackBar(playback: playback, noteFolderURL: document.noteFolderURL)
                 Divider()
             }
@@ -413,7 +413,7 @@ struct NoteView: View {
 
     /// Preview pins the denied state so the banner can be screenshotted.
     private var systemAudioBanner: String? {
-        Design.uiPreview
+        Flags.uiPreview
             ? "System audio capture was denied. Recording the mic only."
             : recorder.systemAudioBanner
     }

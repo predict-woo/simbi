@@ -5,19 +5,6 @@ import SwiftUI
 /// contract this namespace implements — every view draws type, spacing,
 /// and color decisions from here so the panes read as one app.
 enum Design {
-    /// Design-review mode: `SIMBI_UI_PREVIEW=1` forces the rare states
-    /// (degraded banners, live-recording header, playback bar) visible so
-    /// they can be screenshotted without recording or playing audio.
-    /// Inert in normal launches.
-    static let uiPreview = ProcessInfo.processInfo.environment["SIMBI_UI_PREVIEW"] == "1"
-
-    /// SIMBI_UI_PREVIEW_SUMMARY=loading forces the AI Notes first-generation
-    /// placeholder for design review.
-    static var uiPreviewSummaryLoading: Bool {
-        uiPreview
-            && ProcessInfo.processInfo.environment["SIMBI_UI_PREVIEW_SUMMARY"] == "loading"
-    }
-
     // MARK: Spacing — 4pt grid
 
     /// Pane content inset (transcript, files, banners, chrome strips).

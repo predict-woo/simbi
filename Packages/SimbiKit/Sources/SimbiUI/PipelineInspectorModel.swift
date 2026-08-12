@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SimbiAudio
+import SimbiKit
 
 /// UI-side accumulator for the Pipeline Inspector window: subscribes to
 /// the note pipeline's inspector stream and folds it into
@@ -40,7 +41,7 @@ public final class PipelineInspectorModel {
 
     func attach(_ recorder: RecordingController) {
         guard task == nil else { return }
-        if Design.uiPreview {
+        if Flags.uiPreview {
             // Design-review mode: a scripted session through the real
             // engine, no recording needed (see InspectorPreviewDriver).
             let driver = InspectorPreviewDriver()

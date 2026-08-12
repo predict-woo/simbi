@@ -1,3 +1,4 @@
+import SimbiKit
 import SwiftUI
 
 /// Recording controls for the transcript pane, split out of `NoteView`
@@ -11,7 +12,7 @@ import SwiftUI
 struct RecordingBar: View {
     @Bindable var recorder: RecordingController
 
-    private var isRecording: Bool { recorder.status == .recording || Design.uiPreview }
+    private var isRecording: Bool { recorder.status == .recording || Flags.uiPreview }
 
     var body: some View {
         HStack(spacing: Design.rowGap) {
@@ -181,11 +182,11 @@ struct RecordingStatusStrip: View {
     @Bindable var recorder: RecordingController
     @Environment(\.openWindow) private var openWindow
 
-    private var isRecording: Bool { recorder.status == .recording || Design.uiPreview }
+    private var isRecording: Bool { recorder.status == .recording || Flags.uiPreview }
 
     /// Live-speaker slot; the preview flag pins one so the chip is visible.
     private var tentativeSpeaker: Int? {
-        Design.uiPreview ? 1 : recorder.tentativeSpeaker
+        Flags.uiPreview ? 1 : recorder.tentativeSpeaker
     }
 
     private var isFailed: Bool {
@@ -194,7 +195,7 @@ struct RecordingStatusStrip: View {
     }
 
     private var hasContent: Bool {
-        isRecording || isFailed || Design.uiPreview
+        isRecording || isFailed || Flags.uiPreview
     }
 
     var body: some View {
@@ -225,7 +226,7 @@ struct RecordingStatusStrip: View {
         // a session the icon was the strip's lone occupant, and keeping the
         // strip up for it wasn't worth the row.
         if (isRecording && (recorder.hasFixerThread || recorder.fixerActivity.status != .off))
-            || Design.uiPreview
+            || Flags.uiPreview
         {
             fixerButton
         }

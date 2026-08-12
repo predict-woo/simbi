@@ -78,7 +78,7 @@ public struct SimbiRootView: View {
             model.start()
             // Load the diarizer + VAD models now so Record never waits on
             // them (screenshot mode stays offline).
-            if !Design.uiPreview {
+            if !Flags.uiPreview {
                 SpeechModelPool.shared.warmUp()
             }
         }
