@@ -78,7 +78,7 @@ private struct CodexSetupCard: View {
                 }
                 .padding(Design.paneInset)
                 .frame(maxWidth: .infinity)
-                .card(fill: Color.statusWarning.opacity(0.1))
+                .card(fill: Color.statusWarning.opacity(0.1), stroke: Color.statusWarning.opacity(0.35))
             }
         }
         .animation(Design.Anim.standard, value: state)

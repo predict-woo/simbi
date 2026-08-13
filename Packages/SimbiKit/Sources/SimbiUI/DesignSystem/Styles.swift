@@ -3,10 +3,11 @@ import SwiftUI
 /// Cross-cutting view recipes (docs/design-system.md § Components).
 
 /// The bordered-card recipe: `cardFill` surface with a `hairline` stroke.
-/// The fill can be overridden for stateful tints (the welcome setup card's
-/// warning wash).
+/// The fill and stroke can be overridden for stateful tints (the welcome
+/// setup card's warning wash and matching outline).
 private struct CardModifier: ViewModifier {
     var fill: Color = .cardFill
+    var stroke: Color = .hairline
 
     func body(content: Content) -> some View {
         content
@@ -16,15 +17,15 @@ private struct CardModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Design.Radius.card)
-                    .stroke(Color.hairline)
+                    .stroke(stroke)
             )
     }
 }
 
 extension View {
     /// Card chrome: inspector panels, setup card, drop targets.
-    func card(fill: Color = .cardFill) -> some View {
-        modifier(CardModifier(fill: fill))
+    func card(fill: Color = .cardFill, stroke: Color = .hairline) -> some View {
+        modifier(CardModifier(fill: fill, stroke: stroke))
     }
 }
 
