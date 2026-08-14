@@ -103,11 +103,13 @@ private struct CodexSetupCard: View {
                 NSWorkspace.shared.open(URL(string: "https://chatgpt.com/download")!)
             }
             .buttonStyle(.borderedProminent)
+            .tint(.statusWarning)
         case .signedOut:
             Button("Open ChatGPT") {
                 NSWorkspace.shared.open(URL(filePath: "/Applications/ChatGPT.app"))
             }
             .buttonStyle(.borderedProminent)
+            .tint(.statusWarning)
         case .connected:
             EmptyView()
         }
