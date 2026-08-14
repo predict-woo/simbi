@@ -32,7 +32,6 @@ final class MenuOutlineView: NSOutlineView {
 
     @objc private func handleClick(_ sender: Any?) {
         guard togglesUnselectableRowsOnClick,
-            NSApp.currentEvent.map({ $0.clickCount <= 1 }) ?? true,
             clickedRow >= 0,
             let item = item(atRow: clickedRow),
             delegate?.outlineView?(self, shouldSelectItem: item) == false,
@@ -70,6 +69,15 @@ public extension OutlineView {
         return mutableSelf
     }
 
+    /// Paints a rounded `color` fill (radius `cornerRadius`) under the
+    /// row the pointer is over. Selected rows keep their selection fill
+    /// and never show the hover fill.
+    func hoverHighlight(color: NSColor, cornerRadius: CGFloat) -> Self {
+        var mutableSelf = self
+        mutableSelf.hoverHighlight = (color, cornerRadius)
+        return mutableSelf
+    }
+
     /// Restricts selection to elements passing `predicate`. A click on a
     /// row that fails the predicate toggles its expansion (when it has
     /// children) instead of selecting it; keyboard selection skips it.
@@ -89,10 +97,53 @@ public extension OutlineView {
     }
 }
 
+/// Row view that paints a soft rounded fill under the pointer when
+/// `hoverStyle` is set. Selection (drawn by the superclass) wins: the
+/// hover fill is skipped on selected rows.
+@available(macOS 11.0, *)
+class HoverHighlightRowView: AdjustableSeparatorRowView {
+    var hoverStyle: (color: NSColor, radius: CGFloat)?
+
+    private var isHovered = false {
+        didSet {
+            if isHovered != oldValue { needsDisplay = true }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.owner === self }.forEach(removeTrackingArea)
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self))
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false }
+
+    /// The system's source-list selection draws inset 10 pt from each row
+    /// edge (measured off a live selected row on macOS 26); the hover fill
+    /// mirrors that so both highlights share one shape.
+    private static let sourceListSelectionInset: CGFloat = 10
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard isHovered, !isSelected, let hoverStyle else { return }
+        hoverStyle.color.setFill()
+        NSBezierPath(
+            roundedRect: bounds.insetBy(dx: Self.sourceListSelectionInset, dy: 0),
+            xRadius: hoverStyle.radius,
+            yRadius: hoverStyle.radius
+        ).fill()
+    }
+}
+
 /// Row view whose selection always draws in the unemphasized (gray) style,
 /// regardless of first-responder status.
 @available(macOS 11.0, *)
-final class QuietSelectionRowView: AdjustableSeparatorRowView {
+final class QuietSelectionRowView: HoverHighlightRowView {
     override var isEmphasized: Bool {
         get { false }
         set {}
@@ -108,5 +159,9 @@ extension OutlineViewController {
     func setSelectionFilter(_ filter: ((Data.Element) -> Bool)?) {
         delegate.selectionFilter = filter
         outlineView.togglesUnselectableRowsOnClick = filter != nil
+    }
+
+    func setHoverHighlight(_ style: (color: NSColor, radius: CGFloat)?) {
+        delegate.hoverHighlight = style
     }
 }

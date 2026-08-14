@@ -12,6 +12,8 @@ where Data.Element: Identifiable {
     // Local edit (see VENDORED.md): rows failing this predicate refuse
     // selection (mouse and keyboard alike).
     var selectionFilter: ((Data.Element) -> Bool)?
+    // Local edit (see VENDORED.md): rounded hover fill under the pointer.
+    var hoverHighlight: (color: NSColor, radius: CGFloat)?
 
     func typedItem(_ item: Any) -> OutlineViewItem<Data> {
         item as! OutlineViewItem<Data>
@@ -42,11 +44,17 @@ where Data.Element: Identifiable {
         if #available(macOS 11.0, *) {
             // Release any unused row views.
             releaseUnusedRowViews(from: outlineView)
-            // Local edit (see VENDORED.md): quiet-selection row view option.
-            let rowView =
-                quietRowSelection
-                ? QuietSelectionRowView(frame: .zero)
-                : AdjustableSeparatorRowView(frame: .zero)
+            // Local edit (see VENDORED.md): quiet-selection and
+            // hover-highlight row view options.
+            let rowView: AdjustableSeparatorRowView
+            if quietRowSelection {
+                rowView = QuietSelectionRowView(frame: .zero)
+            } else if hoverHighlight != nil {
+                rowView = HoverHighlightRowView(frame: .zero)
+            } else {
+                rowView = AdjustableSeparatorRowView(frame: .zero)
+            }
+            (rowView as? HoverHighlightRowView)?.hoverStyle = hoverHighlight
             rowView.separatorInsets = separatorInsets?(typedItem(item).value)
             return rowView
         } else {

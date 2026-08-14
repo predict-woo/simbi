@@ -29,6 +29,7 @@ struct SidebarView: View {
         // Folders are containers, not documents: clicking one toggles its
         // expansion, and the selection only ever points at notes and files.
         .selectableRows { $0.kind != .folder }
+        .hoverHighlight(color: NSColor(Color.hoverFill), cornerRadius: Design.Radius.row)
         .dragDataSource { node in
             let item = NSPasteboardItem()
             item.setString(node.url.standardizedFileURL.path, forType: .simbiSidebarItem)

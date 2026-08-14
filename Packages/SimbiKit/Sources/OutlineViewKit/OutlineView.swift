@@ -52,6 +52,7 @@ where Drop.DataElement == Data.Element {
     var contextMenuProvider: ((Data.Element?) -> NSMenu?)? = nil
     var quietRowSelectionEnabled = false
     var selectionFilter: ((Data.Element) -> Bool)? = nil
+    var hoverHighlight: (color: NSColor, radius: CGFloat)? = nil
 
     // MARK: NSViewControllerRepresentable
 
@@ -83,6 +84,7 @@ where Drop.DataElement == Data.Element {
         outlineController.setContextMenuProvider(contextMenuProvider)
         outlineController.setQuietRowSelection(quietRowSelectionEnabled)
         outlineController.setSelectionFilter(selectionFilter)
+        outlineController.setHoverHighlight(hoverHighlight)
     }
 }
 
