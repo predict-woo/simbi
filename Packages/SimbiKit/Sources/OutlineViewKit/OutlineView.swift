@@ -47,10 +47,11 @@ where Drop.DataElement == Data.Element {
     var dragDataSource: DragSourceWriter<Data.Element>?
     var dropReceiver: Drop? = nil
     var acceptedDropTypes: [NSPasteboard.PasteboardType]? = nil
-    // Local edit (see VENDORED.md): per-row context-menu support and
-    // unemphasized (gray) row selection.
+    // Local edit (see VENDORED.md): per-row context-menu support,
+    // unemphasized (gray) row selection, and selection filtering.
     var contextMenuProvider: ((Data.Element?) -> NSMenu?)? = nil
     var quietRowSelectionEnabled = false
+    var selectionFilter: ((Data.Element) -> Bool)? = nil
 
     // MARK: NSViewControllerRepresentable
 
@@ -81,6 +82,7 @@ where Drop.DataElement == Data.Element {
         outlineController.setAcceptedDragTypes(acceptedDropTypes)
         outlineController.setContextMenuProvider(contextMenuProvider)
         outlineController.setQuietRowSelection(quietRowSelectionEnabled)
+        outlineController.setSelectionFilter(selectionFilter)
     }
 }
 

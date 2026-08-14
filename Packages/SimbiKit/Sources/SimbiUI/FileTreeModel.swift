@@ -79,8 +79,8 @@ public final class FileTreeModel {
     /// "New Note" with a name prompt (SPEC.md §6): the dialog opens with
     /// the default name prefilled and selected, so typing replaces it;
     /// Return creates, Esc cancels.
-    public func promptForNewNote() {
-        let parent = targetFolderForNewItems
+    public func promptForNewNote(in folder: URL? = nil) {
+        let parent = folder ?? targetFolderForNewItems
         let suggested = NoteOperations.availableNoteName(in: parent)
         guard let entered = NoteNamePrompt.run(suggestedName: suggested) else { return }
         // "/" would silently nest the note; an emptied field falls back to
@@ -99,8 +99,8 @@ public final class FileTreeModel {
         }
     }
 
-    public func createFolder() {
-        let parent = targetFolderForNewItems
+    public func createFolder(in folder: URL? = nil) {
+        let parent = folder ?? targetFolderForNewItems
         let name = NoteOperations.availableName("New Folder", in: parent)
         if (try? NoteOperations.createFolder(named: name, in: parent)) != nil {
             refresh()

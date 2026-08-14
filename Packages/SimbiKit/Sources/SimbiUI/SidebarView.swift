@@ -26,6 +26,9 @@ struct SidebarView: View {
         }
         .outlineViewStyle(.sourceList)
         .quietRowSelection()
+        // Folders are containers, not documents: clicking one toggles its
+        // expansion, and the selection only ever points at notes and files.
+        .selectableRows { $0.kind != .folder }
         .dragDataSource { node in
             let item = NSPasteboardItem()
             item.setString(node.url.standardizedFileURL.path, forType: .simbiSidebarItem)
@@ -84,13 +87,11 @@ struct SidebarView: View {
         if node.kind == .folder {
             menu.addItem(
                 HandlerMenuItem("New Note") {
-                    model.selection = node.url
-                    model.promptForNewNote()
+                    model.promptForNewNote(in: node.url)
                 })
             menu.addItem(
                 HandlerMenuItem("New Folder") {
-                    model.selection = node.url
-                    model.createFolder()
+                    model.createFolder(in: node.url)
                 })
             menu.addItem(.separator())
         }

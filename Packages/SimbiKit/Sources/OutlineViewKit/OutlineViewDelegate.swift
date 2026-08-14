@@ -9,6 +9,9 @@ where Data.Element: Identifiable {
     var selectedItem: OutlineViewItem<Data>?
     // Local edit (see VENDORED.md): unemphasized (gray) row selection.
     var quietRowSelection = false
+    // Local edit (see VENDORED.md): rows failing this predicate refuse
+    // selection (mouse and keyboard alike).
+    var selectionFilter: ((Data.Element) -> Bool)?
 
     func typedItem(_ item: Any) -> OutlineViewItem<Data> {
         item as! OutlineViewItem<Data>
@@ -103,6 +106,11 @@ where Data.Element: Identifiable {
         let view = content(typedItem(item).value)
         view.widthAnchor.constraint(equalToConstant: width).isActive = true
         return view.fittingSize.height
+    }
+
+    // Local edit (see VENDORED.md): selection filtering.
+    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        selectionFilter?(typedItem(item).value) ?? true
     }
 
     func outlineViewItemDidExpand(_ notification: Notification) {

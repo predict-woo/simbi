@@ -9,13 +9,16 @@ Local changes, each marked with a `Local edit (see VENDORED.md)` comment:
   `MenuOutlineView` subclass, `OutlineViewController.setContextMenuProvider`,
   and the `OutlineView.contextMenu(_:)` modifier — plus unemphasized (gray)
   row selection: `QuietSelectionRowView` and the `quietRowSelection()`
-  modifier.
+  modifier — plus selection filtering: the `selectableRows(_:)` modifier
+  makes rows failing the predicate unselectable, and a plain click on such
+  a row toggles its expansion instead (via the outline view's click action).
 - OutlineViewController.swift: instantiates `MenuOutlineView` instead of
   `NSOutlineView`.
-- OutlineView.swift: stores/plumbs `contextMenuProvider` and
-  `quietRowSelectionEnabled`.
+- OutlineView.swift: stores/plumbs `contextMenuProvider`,
+  `quietRowSelectionEnabled`, and `selectionFilter`.
 - OutlineViewDelegate.swift: `quietRowSelection` flag; row views use
-  `QuietSelectionRowView` when it is set.
+  `QuietSelectionRowView` when it is set. `selectionFilter` predicate
+  backing `outlineView(_:shouldSelectItem:)`.
 - AdjustableSeparatorRowView.swift: dropped `final` so
   `QuietSelectionRowView` can subclass it.
 - TreeMap.swift: removed a `TreeMap.Node: Equatable` extension that newer
