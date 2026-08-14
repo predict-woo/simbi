@@ -10,6 +10,9 @@ public struct SimbiRootView: View {
     /// asynchronously (see the `.task(id:)` below) so a sidebar click paints
     /// its highlight immediately instead of waiting on NoteView construction.
     @State private var openNoteURL: URL?
+    /// How far the sidebar outline is scrolled past its resting top, in
+    /// points. Drives the top fade so a first row at rest isn't dimmed.
+    @State private var sidebarScrollOverflow: CGFloat = 0
 
     public init() {}
 
@@ -20,10 +23,19 @@ public struct SimbiRootView: View {
             // than the one below it.
             VStack(spacing: 0) {
                 SidebarView(model: model)
-                    // Rows fade out above the footer instead of clipping
-                    // mid-glyph at a hard edge.
+                    .background(SidebarScrollProbe(overflow: $sidebarScrollOverflow))
+                    // Rows fade out under the title bar and above the footer
+                    // instead of clipping mid-glyph at a hard edge. The top
+                    // fade tracks the scroll position and vanishes at rest,
+                    // where there is nothing above to fade and it would only
+                    // dim the first row.
                     .mask {
                         VStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.black.opacity(1 - sidebarTopFade), .black],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                            .frame(height: Design.paneInset)
                             Rectangle()
                             LinearGradient(
                                 colors: [.black, .clear],
@@ -84,6 +96,13 @@ public struct SimbiRootView: View {
         }
     }
 
+    /// Strength of the top fade, 0...1: full once the content has scrolled
+    /// one fade-height past rest, proportional inside that range so the
+    /// gradient eases in with the scroll rather than popping.
+    private var sidebarTopFade: Double {
+        Double(min(max(sidebarScrollOverflow / Design.paneInset, 0), 1))
+    }
+
     @ViewBuilder
     private var detail: some View {
         if let url = openNoteURL {
@@ -101,6 +120,89 @@ public struct SimbiRootView: View {
                 systemImage: "doc.text",
                 description: Text("Choose a note in the sidebar, or create one with ⌘N.")
             )
+        }
+    }
+}
+
+/// Reports how far the sidebar outline's clip view is scrolled past its
+/// resting top, in points. OutlineViewKit exposes no scroll position, so
+/// this sits behind `SidebarView` and observes the `NSScrollView` directly.
+private struct SidebarScrollProbe: NSViewRepresentable {
+    @Binding var overflow: CGFloat
+
+    func makeNSView(context: Context) -> ProbeView { ProbeView() }
+
+    func updateNSView(_ view: ProbeView, context: Context) {
+        view.onOverflowChange = { overflow = $0 }
+    }
+
+    final class ProbeView: NSView {
+        var onOverflowChange: ((CGFloat) -> Void)?
+        private weak var clipView: NSClipView?
+        private var lastReported: CGFloat?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else { return }
+            // The outline's scroll view is a sibling subtree that may not
+            // be in the hierarchy yet on this pass; retry a runloop later.
+            if !attachIfPossible() {
+                DispatchQueue.main.async { [weak self] in
+                    _ = self?.attachIfPossible()
+                }
+            }
+        }
+
+        private func attachIfPossible() -> Bool {
+            guard let clip = locateOutlineClipView() else { return false }
+            guard clip !== clipView else { return true }
+            clipView = clip
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(boundsChanged),
+                name: NSView.boundsDidChangeNotification, object: clip)
+            // Deferred so the first report never lands mid view-update.
+            DispatchQueue.main.async { [weak self] in self?.report() }
+            return true
+        }
+
+        @objc private func boundsChanged() {
+            report()
+        }
+
+        private func report() {
+            guard let clip = clipView else { return }
+            // At rest the clip view's bounds sit at -contentInsets.top
+            // (the automatic title-bar inset), so this is zero at the top.
+            let overflow = clip.bounds.origin.y + clip.contentInsets.top
+            guard overflow != lastReported else { return }
+            lastReported = overflow
+            onOverflowChange?(overflow)
+        }
+
+        /// Nearest ancestor subtree wins, so this finds the sidebar's own
+        /// outline before it could ever reach another pane's scroll view.
+        private func locateOutlineClipView() -> NSClipView? {
+            var ancestor = superview
+            while let view = ancestor {
+                if let scroll = Self.outlineScrollView(in: view) {
+                    return scroll.contentView
+                }
+                ancestor = view.superview
+            }
+            return nil
+        }
+
+        private static func outlineScrollView(in view: NSView) -> NSScrollView? {
+            if let scroll = view as? NSScrollView, scroll.documentView is NSOutlineView {
+                return scroll
+            }
+            for subview in view.subviews {
+                if let found = outlineScrollView(in: subview) {
+                    return found
+                }
+            }
+            return nil
         }
     }
 }
