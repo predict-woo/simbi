@@ -176,6 +176,14 @@ struct NoteView: View {
                 titleController?.recordingDidStop()
             }
             titleController.renameNote = renameNote
+            // All three controllers are app-lifetime singletons for this
+            // note, so capturing them here stays valid across view
+            // recreation; the auto-rename waits for both to finish.
+            titleController.noteIsQuiet = { [recorder, summary] in
+                TitleController.isQuiet(
+                    fixerStatus: recorder.fixerActivity.status,
+                    summaryWorking: summary.status == .working)
+            }
             // Whatever triggers a generation (stop hook, regenerate, Try
             // Again), the controller flushes this view's debounced
             // autosaves before reading disk. Weak: once the view is gone

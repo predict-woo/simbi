@@ -34,6 +34,53 @@ struct TitleControllerTests {
                 alreadyWorking: false, recordingActive: true))
     }
 
+    @Test("the note is quiet only when the fixer and summarizer are both done")
+    func quietGate() {
+        #expect(TitleController.isQuiet(fixerStatus: .off, summaryWorking: false))
+        #expect(TitleController.isQuiet(fixerStatus: .done, summaryWorking: false))
+        #expect(!TitleController.isQuiet(fixerStatus: .waiting, summaryWorking: false))
+        #expect(!TitleController.isQuiet(fixerStatus: .working, summaryWorking: false))
+        #expect(!TitleController.isQuiet(fixerStatus: .done, summaryWorking: true))
+        #expect(!TitleController.isQuiet(fixerStatus: .off, summaryWorking: true))
+    }
+
+    @Test("a note that never goes quiet is not renamed")
+    @MainActor
+    func renameSkippedWhenNeverQuiet() async {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "New Note", directoryHint: .isDirectory)
+        let controller = TitleController(noteFolderURL: url)
+        controller.quietWaitTimeout = .milliseconds(100)
+        controller.quietPollInterval = .milliseconds(10)
+        var renamedTo: String?
+        controller.renameNote = { renamedTo = $0 }
+        controller.noteIsQuiet = { false }
+
+        await controller.awaitQuietThenApply("Design Sync")
+        #expect(renamedTo == nil)
+    }
+
+    @Test("the rename lands once the note goes quiet mid-wait")
+    @MainActor
+    func renameAppliesWhenQuietArrives() async {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "New Note", directoryHint: .isDirectory)
+        let controller = TitleController(noteFolderURL: url)
+        controller.quietWaitTimeout = .seconds(5)
+        controller.quietPollInterval = .milliseconds(10)
+        var renamedTo: String?
+        controller.renameNote = { renamedTo = $0 }
+        var polls = 0
+        controller.noteIsQuiet = {
+            polls += 1
+            return polls >= 3
+        }
+
+        await controller.awaitQuietThenApply("Design Sync")
+        #expect(renamedTo == "Design Sync")
+        #expect(polls >= 3)
+    }
+
     @Test("a finished title renames only a still-default note")
     @MainActor
     func renameRecheck() {

@@ -33,6 +33,20 @@ public final class TitleController {
     /// through FileTreeModel so sidebar order and selection follow.
     var renameNote: ((String) -> Void)?
 
+    /// Whether the note's other Codex jobs are finished — assigned by the
+    /// note view from the fixer's activity model and the summary status.
+    /// The rename waits for this: the fixer and summarizer hold absolute
+    /// paths into the note folder, so moving it under them strands their
+    /// output (or resurrects the old folder via their writable roots).
+    var noteIsQuiet: (() -> Bool)?
+
+    /// Generous bound on the quiet wait: the fixer reviews its remaining
+    /// cues after recording stop and a long session takes minutes. On
+    /// timeout the rename is skipped — the note keeps its default name
+    /// and the next recording stop retries.
+    var quietWaitTimeout: Duration = .seconds(300)
+    var quietPollInterval: Duration = .milliseconds(500)
+
     init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
         let settings =
@@ -46,6 +60,15 @@ public final class TitleController {
     var codexAvailable: Bool {
         CodexInstallation.standard.isBinaryInstalled
             && CodexInstallation.standard.loadAuth() != nil
+    }
+
+    /// Quiet means no in-flight job holds paths into the note folder:
+    /// the fixer has reviewed everything (or never ran) and no summary
+    /// generation is running.
+    nonisolated static func isQuiet(
+        fixerStatus: FixerActivityModel.Status, summaryWorking: Bool
+    ) -> Bool {
+        (fixerStatus == .off || fixerStatus == .done) && !summaryWorking
     }
 
     /// A note the user (or a previous run) has renamed is never touched;
@@ -73,11 +96,34 @@ public final class TitleController {
             defer { working = false }
             do {
                 let title = try await titler.generateTitle()
-                applyGeneratedTitle(title, currentFolderName: noteFolderURL.lastPathComponent)
+                await awaitQuietThenApply(title)
             } catch {
                 print("TitleController: titling failed for \(noteFolderURL.path): \(error)")
             }
         }
+    }
+
+    /// The title is generated eagerly (its thread only reads), but the
+    /// rename waits until the note is quiet. A restarted recording ends
+    /// the wait early; `applyGeneratedTitle` then rejects the rename and
+    /// the next stop starts over with the fuller transcript.
+    func awaitQuietThenApply(_ title: String) async {
+        let ended = await TranscriptDrainWait.wait(
+            timeout: quietWaitTimeout, pollInterval: quietPollInterval
+        ) { [weak self] in
+            guard let self else { return true }
+            return await self.quietOrAbandoned()
+        }
+        guard ended else {
+            print("TitleController: note never went quiet, keeping default name")
+            return
+        }
+        applyGeneratedTitle(title, currentFolderName: noteFolderURL.lastPathComponent)
+    }
+
+    private func quietOrAbandoned() -> Bool {
+        RecordingController.isCapturing(noteFolderURL: noteFolderURL)
+            || (noteIsQuiet?() ?? true)
     }
 
     /// Applies a generated title, re-checking that the note is still on
