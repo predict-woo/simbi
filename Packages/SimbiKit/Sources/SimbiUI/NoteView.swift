@@ -58,6 +58,7 @@ struct NoteView: View {
     @State private var files: FilesModel
     @State private var playback: PlaybackController
     @State private var summary: SummaryController
+    @State private var titleController: TitleController
     @State private var aiDocument: NoteDocument
     @State private var selectedTab: EditorTab = .myNotes
     @State private var transcriptFlash: CueFlash?
@@ -75,6 +76,8 @@ struct NoteView: View {
         self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
         self._playback = State(initialValue: PlaybackController(noteFolderURL: noteFolderURL))
         self._summary = State(initialValue: SummaryController.shared(noteFolderURL: noteFolderURL))
+        self._titleController = State(
+            initialValue: TitleController.shared(noteFolderURL: noteFolderURL))
         self._aiDocument = State(
             initialValue: NoteDocument(noteFolderURL: noteFolderURL, fileName: "summary.md"))
         self.renameNote = renameNote
@@ -168,9 +171,11 @@ struct NoteView: View {
         }
         .onAppear {
             // Both controllers are app-lifetime; reassigning is idempotent.
-            recorder.onRecordingStopped = { [weak summary] in
+            recorder.onRecordingStopped = { [weak summary, weak titleController] in
                 summary?.recordingDidStop()
+                titleController?.recordingDidStop()
             }
+            titleController.renameNote = renameNote
             // Whatever triggers a generation (stop hook, regenerate, Try
             // Again), the controller flushes this view's debounced
             // autosaves before reading disk. Weak: once the view is gone

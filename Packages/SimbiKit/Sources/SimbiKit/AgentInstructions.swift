@@ -26,6 +26,10 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// with the note folder as cwd, reads the note, transcript, and any
     /// current AI notes itself, and writes summary.md itself.
     case summary = "SUMMARY.md"
+    /// Note auto-titler instructions. No variables: the thread runs with
+    /// the note folder as cwd (read-only) and replies with the title as
+    /// its final message — nothing is written to disk.
+    case title = "TITLE.md"
     /// Ground rules for any agent working in the Simbi home. No variables;
     /// picked up by codex itself as a plain AGENTS.md.
     case agents = "AGENTS.md"
@@ -41,6 +45,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         case .ingest: "File converter"
         case .chat: "Note chat"
         case .summary: "AI notes"
+        case .title: "Note title"
         case .agents: "All agents"
         }
     }
@@ -50,7 +55,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// footer; unknown names in a template are left verbatim.
     public var variables: [String] {
         switch self {
-        case .fixer, .agents, .summary: []
+        case .fixer, .agents, .summary, .title: []
         case .ingest: ["file", "anydoc"]
         case .chat: ["note_path", "files"]
         }
@@ -103,6 +108,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         case .ingest: Self.defaultIngest
         case .chat: Self.defaultChat
         case .summary: Self.defaultSummary
+        case .title: Self.defaultTitle
         case .agents: Self.defaultAgents
         }
     }
@@ -238,6 +244,27 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
         Reply with one line: DONE, or FAILED: <reason>. No code fences, no other \
         output.
+        """
+
+    private static let defaultTitle = """
+        You name a Simbi note that still has its default title. Your working \
+        directory is the note folder; everything is read-only. Read note.md \
+        (the user's own notes), transcript.vtt (the speaker-labeled WebVTT \
+        transcript), and context/*.md if present, then choose a short, clean, \
+        specific title for the note.
+
+        Rules:
+        - 2 to 6 words, plain text: no quotes, no trailing period, no date, \
+        no "Meeting about" filler.
+        - Name the concrete subject, not the format: "Q3 Budget Review", not \
+        "Team Meeting Notes".
+        - The title becomes a folder name, so never use "/" or ":".
+        - Write it in the language the conversation was held in.
+        - Modify no files.
+
+        Reply with ONLY the title on a single line — no code fences, no \
+        commentary. If the content is too thin or garbled to name confidently, \
+        reply exactly: FAILED: <reason>.
         """
 
     private static let defaultAgents = """

@@ -121,6 +121,7 @@ private struct CodexSettingsPane: View {
                 modelPicker("Transcript fixer", selection: $settings.fixerModel)
                 modelPicker("File converter", selection: $settings.converterModel)
                 modelPicker("AI notes", selection: $settings.summaryModel)
+                modelPicker("Note title", selection: $settings.titleModel)
                 if modelsUnavailable {
                     Text("Model list unavailable. Is the ChatGPT app installed?")
                         .font(.caption)

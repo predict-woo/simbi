@@ -84,11 +84,16 @@ public enum NoteOperations {
         return candidate
     }
 
-    /// "2026-07-15 Note", "2026-07-15 Note 2", … — first name not taken in `parent`.
-    public static func availableNoteName(in parent: URL, date: Date = .now) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return availableName("\(formatter.string(from: date)) Note", in: parent)
+    /// "New Note", "New Note 2", … — first name not taken in `parent`.
+    /// Deliberately generic so `isDefaultNoteName` can tell "never renamed"
+    /// apart from a title someone chose.
+    public static func availableNoteName(in parent: URL) -> String {
+        availableName("New Note", in: parent)
+    }
+
+    /// True exactly for the names `availableNoteName` produces — the
+    /// auto-titler renames only notes whose title is still this default.
+    public static func isDefaultNoteName(_ name: String) -> Bool {
+        name.wholeMatch(of: /New Note( [0-9]+)?/) != nil
     }
 }

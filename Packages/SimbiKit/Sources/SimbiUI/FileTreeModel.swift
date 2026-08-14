@@ -77,14 +77,14 @@ public final class FileTreeModel {
     }
 
     /// "New Note" with a name prompt (SPEC.md §6): the dialog opens with
-    /// the dated default prefilled and selected, so typing replaces it;
+    /// the default name prefilled and selected, so typing replaces it;
     /// Return creates, Esc cancels.
     public func promptForNewNote() {
         let parent = targetFolderForNewItems
         let suggested = NoteOperations.availableNoteName(in: parent)
         guard let entered = NoteNamePrompt.run(suggestedName: suggested) else { return }
         // "/" would silently nest the note; an emptied field falls back to
-        // the dated default rather than failing.
+        // the default name rather than failing.
         var name =
             entered
             .trimmingCharacters(in: .whitespacesAndNewlines)

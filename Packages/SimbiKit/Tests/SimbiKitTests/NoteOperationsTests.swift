@@ -80,14 +80,25 @@ struct NoteOperationsTests {
         }
     }
 
-    @Test("availableNoteName dedupes with a counter")
+    @Test("availableNoteName is \"New Note\" with a counter for collisions")
     func noteNameDedup() throws {
         try withTempRoot { root in
-            let date = Date(timeIntervalSince1970: 1_784_000_000)  // fixed for determinism
-            let first = NoteOperations.availableNoteName(in: root, date: date)
-            try NoteOperations.createNote(named: first, in: root)
-            let second = NoteOperations.availableNoteName(in: root, date: date)
-            #expect(second == "\(first) 2")
+            #expect(NoteOperations.availableNoteName(in: root) == "New Note")
+            try NoteOperations.createNote(named: "New Note", in: root)
+            #expect(NoteOperations.availableNoteName(in: root) == "New Note 2")
         }
+    }
+
+    @Test("isDefaultNoteName matches exactly the names availableNoteName produces")
+    func defaultNoteNamePredicate() {
+        #expect(NoteOperations.isDefaultNoteName("New Note"))
+        #expect(NoteOperations.isDefaultNoteName("New Note 2"))
+        #expect(NoteOperations.isDefaultNoteName("New Note 41"))
+        #expect(!NoteOperations.isDefaultNoteName("New Note "))
+        #expect(!NoteOperations.isDefaultNoteName("new note"))
+        #expect(!NoteOperations.isDefaultNoteName("New Notes"))
+        #expect(!NoteOperations.isDefaultNoteName("Design sync"))
+        #expect(!NoteOperations.isDefaultNoteName("New Note 2b"))
+        #expect(!NoteOperations.isDefaultNoteName("2026-08-15 Note"))
     }
 }

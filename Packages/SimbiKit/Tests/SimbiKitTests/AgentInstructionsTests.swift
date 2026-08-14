@@ -96,6 +96,14 @@ struct AgentInstructionsTests {
         }
     }
 
+    @Test("titler instructions are a bootstrapped TITLE.md with no variables")
+    func titlerCaseShape() {
+        #expect(AgentInstructions.title.fileName == "TITLE.md")
+        #expect(AgentInstructions.title.title == "Note title")
+        #expect(AgentInstructions.title.variables.isEmpty)
+        #expect(AgentInstructions.allCases.contains(.title))
+    }
+
     @Test("default ingest template renders a runnable anydoc command")
     func defaultIngestRendersAnydoc() {
         let text = AgentInstructions.render(
