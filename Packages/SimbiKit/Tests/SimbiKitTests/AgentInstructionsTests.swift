@@ -104,6 +104,15 @@ struct AgentInstructionsTests {
         #expect(AgentInstructions.allCases.contains(.title))
     }
 
+    @Test("every default prompt carries the stay-in-scope guidance")
+    func defaultsCarryScopeGuidance() {
+        for file in AgentInstructions.allCases {
+            #expect(
+                file.defaultContents.contains("unless the user explicitly asks"),
+                "\(file.fileName) lacks the scope guidance")
+        }
+    }
+
     @Test("default ingest template renders a runnable anydoc command")
     func defaultIngestRendersAnydoc() {
         let text = AgentInstructions.render(

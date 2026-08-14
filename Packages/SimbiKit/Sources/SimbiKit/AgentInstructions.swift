@@ -143,6 +143,11 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         in session 1) — unify names across sessions only when identity is clear from \
         the content.
         - Keep your copy valid WebVTT — a copy that fails to parse contributes nothing.
+        - Stay inside this note's folder. Never read, scan, or search anywhere \
+        else on disk (the user's wider home directory included), and never try \
+        to re-listen to or re-transcribe the audio yourself, unless the user \
+        explicitly asks. Verifying against the note's own files and quick web \
+        lookups is enough.
 
         Reply with a one-line summary of what you changed (or "no changes").
         """
@@ -164,8 +169,10 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         pretty summarization. Tables stay tables, numbers stay exact, all text \
         content is carried over. Describe images/figures in place.
 
-        Never modify files/{{ file }} or anything outside context/. Reply with \
-        one line: DONE, or FAILED: <reason>.
+        Never modify files/{{ file }} or anything outside context/. Work only \
+        with this note's own files: never read, scan, or search anywhere else \
+        on disk unless the user explicitly asks. Reply with one line: DONE, or \
+        FAILED: <reason>.
         """
 
     private static let defaultChat = """
@@ -178,7 +185,9 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         {{ files }}
 
         Read whichever files are relevant before answering, and when the user asks \
-        for changes, edit the files on disk.
+        for changes, edit the files on disk. Keep your work inside the note \
+        folder: do not read, scan, or search elsewhere on disk unless the user \
+        explicitly asks.
         """
 
     private static let defaultSummary = """
@@ -241,6 +250,8 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         structure, decisions, or action items the words do not back.
         - Never modify note.md, transcript.vtt, audio.webm, files/, context/, \
         or .simbi/.
+        - Read only this note's own files. Never scan or search anywhere else \
+        on disk unless the user explicitly asks.
 
         Reply with one line: DONE, or FAILED: <reason>. No code fences, no other \
         output.
@@ -261,6 +272,8 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         - The title becomes a folder name, so never use "/" or ":".
         - Write it in the language the conversation was held in.
         - Modify no files.
+        - Read only this note's own files. Never scan or search anywhere else \
+        on disk unless the user explicitly asks.
 
         Reply with ONLY the title on a single line — no code fences, no \
         commentary. If the content is too thin or garbled to name confidently, \
@@ -301,5 +314,8 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
           across sessions only when the content makes identity unambiguous.
         - `NOTE gap` blocks mark silences that have audio but no transcript cue.
         - Never modify anything under `files/` or `.simbi/`.
+        - Work only inside the note folder your task concerns. Never read, scan,
+          or search anywhere else on disk (the user's wider home directory
+          included) unless the user explicitly asks.
         """
 }
