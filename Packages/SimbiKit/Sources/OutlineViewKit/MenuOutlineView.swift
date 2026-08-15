@@ -43,6 +43,87 @@ final class MenuOutlineView: NSOutlineView {
             animator().expandItem(item)
         }
     }
+
+    // MARK: Hover tracking
+
+    /// Hover state is tracked here, not per row: row-owned tracking areas
+    /// miss the exit event when rows scroll or move under a stationary
+    /// pointer, stranding rows in the hovered look. Every update marks the
+    /// single row under the pointer and clears all others, so stale
+    /// highlights cannot survive.
+    var hoverHighlightEnabled = false {
+        didSet {
+            guard hoverHighlightEnabled != oldValue else { return }
+            updateTrackingAreas()
+            if !hoverHighlightEnabled { updateHover(to: nil) }
+        }
+    }
+
+    private var scrollObserver: NSObjectProtocol?
+
+    deinit {
+        if let scrollObserver {
+            NotificationCenter.default.removeObserver(scrollObserver)
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.filter { $0.owner === self }.forEach(removeTrackingArea)
+        guard hoverHighlightEnabled else { return }
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+                owner: self))
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if let scrollObserver {
+            NotificationCenter.default.removeObserver(scrollObserver)
+            self.scrollObserver = nil
+        }
+        guard window != nil, let clipView = enclosingScrollView?.contentView else { return }
+        clipView.postsBoundsChangedNotifications = true
+        scrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: clipView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.refreshHoverUnderPointer()
+        }
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        updateHover(to: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        updateHover(to: convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        updateHover(to: nil)
+    }
+
+    /// Re-derives the hovered row from the current pointer position; used
+    /// when rows move without the mouse moving (scrolling).
+    private func refreshHoverUnderPointer() {
+        guard hoverHighlightEnabled, let window else { return }
+        let point = convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        updateHover(to: visibleRect.contains(point) ? point : nil)
+    }
+
+    private func updateHover(to point: NSPoint?) {
+        let target = point.map { row(at: $0) } ?? -1
+        enumerateAvailableRowViews { rowView, row in
+            (rowView as? HoverHighlightRowView)?.isHovered = row == target
+        }
+    }
 }
 
 @available(macOS 10.15, *)
@@ -97,31 +178,19 @@ public extension OutlineView {
     }
 }
 
-/// Row view that paints a soft rounded fill under the pointer when
-/// `hoverStyle` is set. Selection (drawn by the superclass) wins: the
-/// hover fill is skipped on selected rows.
+/// Row view that paints a soft rounded fill when `isHovered` is set by
+/// the owning `MenuOutlineView` (which does all the pointer tracking).
+/// Selection (drawn by the superclass) wins: the hover fill is skipped
+/// on selected rows.
 @available(macOS 11.0, *)
 class HoverHighlightRowView: AdjustableSeparatorRowView {
     var hoverStyle: (color: NSColor, radius: CGFloat)?
 
-    private var isHovered = false {
+    var isHovered = false {
         didSet {
             if isHovered != oldValue { needsDisplay = true }
         }
     }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.filter { $0.owner === self }.forEach(removeTrackingArea)
-        addTrackingArea(
-            NSTrackingArea(
-                rect: .zero,
-                options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
-                owner: self))
-    }
-
-    override func mouseEntered(with event: NSEvent) { isHovered = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false }
 
     /// The system's source-list selection draws inset 10 pt from each row
     /// edge (measured off a live selected row on macOS 26); the hover fill
@@ -163,5 +232,6 @@ extension OutlineViewController {
 
     func setHoverHighlight(_ style: (color: NSColor, radius: CGFloat)?) {
         delegate.hoverHighlight = style
+        outlineView.hoverHighlightEnabled = style != nil
     }
 }

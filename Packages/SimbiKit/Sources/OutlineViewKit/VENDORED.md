@@ -14,7 +14,9 @@ Local changes, each marked with a `Local edit (see VENDORED.md)` comment:
   a row toggles its expansion instead (via the outline view's click action)
   — plus row hover: the `hoverHighlight(color:cornerRadius:)` modifier
   paints a rounded fill under the pointer (`HoverHighlightRowView`, which
-  `QuietSelectionRowView` subclasses).
+  `QuietSelectionRowView` subclasses; `MenuOutlineView` owns the pointer
+  tracking and marks exactly one hovered row, so scrolling can't strand
+  stale highlights).
 - OutlineViewController.swift: instantiates `MenuOutlineView` instead of
   `NSOutlineView`.
 - OutlineView.swift: stores/plumbs `contextMenuProvider`,
