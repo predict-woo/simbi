@@ -99,10 +99,12 @@ targets:
         # small XML is served from Pages.
         SUFeedURL: https://predict-woo.github.io/simbi/appcast.xml
         SUPublicEDKey: $(SPARKLE_PUBLIC_ED_KEY)
-        # Deliberately NOT setting SUEnableAutomaticChecks: Sparkle treats it
-        # as a pre-answered consent and skips its permission prompt. Leaving
-        # it out preserves the ask-on-second-launch behaviour, so a first run
-        # is silent. Once the user consents, downloads are on by default.
+        # Both keys together are pre-answered consent: Sparkle skips its
+        # permission prompt and defaults to checking for and downloading
+        # updates automatically ("Download and ask" in Settings, where users
+        # can still opt down to notify-only or never). Installs are always
+        # held for an explicit click — see SparkleCoordinator.
+        SUEnableAutomaticChecks: true
         SUAutomaticallyUpdate: true
         SUAllowsAutomaticUpdates: true
         NSMicrophoneUsageDescription: >-
