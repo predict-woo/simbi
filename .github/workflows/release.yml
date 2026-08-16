@@ -129,8 +129,8 @@ jobs:
           SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
           SIGN=(codesign --force --sign "Developer ID Application" \
             --options runtime --timestamp)
-          "${SIGN[@]}" --preserve-metadata=entitlements \
-            "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+          # Per Sparkle's docs only Downloader.xpc keeps its entitlements.
+          "${SIGN[@]}" "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
           "${SIGN[@]}" --preserve-metadata=entitlements \
             "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
           "${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
