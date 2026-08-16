@@ -115,7 +115,28 @@ jobs:
             CODE_SIGN_IDENTITY="Developer ID Application" \
             DEVELOPMENT_TEAM='${{ secrets.APPLE_TEAM_ID }}' \
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
+            CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
             build
+
+      # The `build` action copies Sparkle.framework as shipped by the Sparkle
+      # project — its nested executables carry Sparkle's signature, which the
+      # notary service rejects. Re-sign inside-out with our Developer ID, then
+      # re-seal the app bundle the re-signing just invalidated.
+      - name: Re-sign Sparkle framework components
+        run: |
+          set -euo pipefail
+          APP=build/Build/Products/Release/Simbi.app
+          SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+          SIGN=(codesign --force --sign "Developer ID Application" \
+            --options runtime --timestamp)
+          "${SIGN[@]}" --preserve-metadata=entitlements \
+            "$SPARKLE/Versions/B/XPCServices/Installer.xpc"
+          "${SIGN[@]}" --preserve-metadata=entitlements \
+            "$SPARKLE/Versions/B/XPCServices/Downloader.xpc"
+          "${SIGN[@]}" "$SPARKLE/Versions/B/Autoupdate"
+          "${SIGN[@]}" "$SPARKLE/Versions/B/Updater.app"
+          "${SIGN[@]}" "$SPARKLE"
+          "${SIGN[@]}" --preserve-metadata=entitlements "$APP"
 
       - name: Verify signature
         run: |
@@ -124,10 +145,20 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=4 "$APP" 2>&1 | grep -q 'flags=.*runtime' \
             || { echo "::error::hardened runtime missing"; exit 1; }
-          # Sparkle's XPC services and Autoupdate.app must carry the same
-          # identity or the installer is rejected at update time.
+          # notarytool rejects any build whose main executable still has the
+          # debugger entitlement.
+          if codesign -d --entitlements - --xml "$APP" 2>/dev/null \
+            | grep -q get-task-allow; then
+            echo "::error::get-task-allow entitlement present"; exit 1
+          fi
+          # Sparkle's XPC services and Autoupdate.app must carry our identity
+          # (not Sparkle's) or notarization and updates are rejected.
           codesign --verify --strict \
             "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+          codesign -dv \
+            "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate" 2>&1 \
+            | grep -q 'TeamIdentifier=${{ secrets.APPLE_TEAM_ID }}' \
+            || { echo "::error::Sparkle Autoupdate not signed with our team ID"; exit 1; }
           # The bundled anydoc helper must be signed and universal, or
           # notarization fails / Intel Macs silently lose the tool.
           codesign --verify --strict "$APP/Contents/Helpers/anydoc"
