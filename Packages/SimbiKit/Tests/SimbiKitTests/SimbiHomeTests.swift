@@ -57,6 +57,10 @@ struct SimbiSettingsTests {
         settings.fixerModel = "gpt-5.4"
         settings.summaryModel = "gpt-5.4-mini"
         settings.titleModel = "gpt-5.4-mini"
+        settings.fixerEffort = "high"
+        settings.converterEffort = "low"
+        settings.summaryEffort = "medium"
+        settings.titleEffort = "low"
         settings.systemAudioEnabled = false
         settings.micDeviceUID = "BuiltInMicrophoneDevice"
         try settings.save(to: url)

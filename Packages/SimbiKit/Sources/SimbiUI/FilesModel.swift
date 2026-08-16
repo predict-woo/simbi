@@ -62,7 +62,7 @@ final class FilesModel {
             (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
         self.converter = FileConverter(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-            model: settings.converterModel,
+            model: settings.converterModel, effort: settings.converterEffort,
             anydocPath: FileConverter.bundledAnydocPath,
             shouldArchiveOnJobEnd: { threadId in
                 !(await ThreadViewerManager.shared.isOpen(threadId: threadId))

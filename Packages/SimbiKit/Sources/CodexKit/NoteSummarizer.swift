@@ -20,6 +20,8 @@ public actor NoteSummarizer {
     private let noteFolderURL: URL
     private let client: AppServerClient
     private let model: String?
+    /// Reasoning-effort override; nil = the model's own default.
+    private let effort: String?
     private let turnTimeout: Duration
     /// Fetched per generation so SUMMARY.md edits apply to the next run
     /// without an app restart (same contract as the converter's INGEST.md).
@@ -36,6 +38,7 @@ public actor NoteSummarizer {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
+        effort: String? = nil,
         turnTimeout: Duration = .seconds(600),
         instructionsProvider: @escaping @Sendable () -> String = {
             AgentInstructions.summary.contents(homeRootURL: SimbiHome().rootURL)
@@ -44,6 +47,7 @@ public actor NoteSummarizer {
         self.noteFolderURL = noteFolderURL
         self.client = client
         self.model = model
+        self.effort = effort
         self.turnTimeout = turnTimeout
         self.instructionsProvider = instructionsProvider
     }
@@ -144,9 +148,7 @@ public actor NoteSummarizer {
             "approvalPolicy": "never",
             "sandboxPolicy": sandboxPolicy,
         ]
-        if let model {
-            turnParams["model"] = model
-        }
+        TurnOverrides.apply(model: model, effort: effort, to: &turnParams)
         _ = try await client.request(method: "turn/start", params: turnParams)
         try await awaitTurnCompletion(threadId: threadId)
 

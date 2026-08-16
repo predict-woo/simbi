@@ -53,7 +53,7 @@ public final class TitleController {
             (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
         self.titler = NoteTitler(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-            model: settings.titleModel)
+            model: settings.titleModel, effort: settings.titleEffort)
     }
 
     /// Same two checks as the note view's degraded banner.

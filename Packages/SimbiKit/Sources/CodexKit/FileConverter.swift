@@ -15,6 +15,8 @@ public actor FileConverter {
     private let client: AppServerClient
     /// Model override for conversion turns (SPEC.md §5.5); nil = default.
     private let model: String?
+    /// Reasoning-effort override; nil = the model's own default.
+    private let effort: String?
     /// Absolute path of the bundled anydoc CLI; nil when running without the
     /// app bundle (tests, spikes). The template then gets the bare word
     /// `anydoc`, which fails fast in the sandbox and routes the agent to
@@ -41,6 +43,7 @@ public actor FileConverter {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
+        effort: String? = nil,
         turnTimeout: Duration = .seconds(900),
         anydocPath: String? = nil,
         shouldArchiveOnJobEnd: @escaping @Sendable (String) async -> Bool = { _ in true },
@@ -51,6 +54,7 @@ public actor FileConverter {
         self.noteFolderURL = noteFolderURL
         self.client = client
         self.model = model
+        self.effort = effort
         self.turnTimeout = turnTimeout
         self.anydocPath = anydocPath
         self.shouldArchiveOnJobEnd = shouldArchiveOnJobEnd
@@ -143,9 +147,7 @@ public actor FileConverter {
             "approvalPolicy": "never",
             "sandboxPolicy": sandboxPolicy,
         ]
-        if let model {
-            turnParams["model"] = model
-        }
+        TurnOverrides.apply(model: model, effort: effort, to: &turnParams)
         _ = try await client.request(method: "turn/start", params: turnParams)
         try await awaitTurnCompletion(threadId: threadId)
 

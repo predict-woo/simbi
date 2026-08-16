@@ -196,6 +196,7 @@ public final class RecordingController {
             let fixer = TranscriptFixer(
                 noteFolderURL: noteFolderURL, client: CodexServices.appServer,
                 savedThreadId: savedThreadId, model: settings.fixerModel,
+                effort: settings.fixerEffort,
                 instructions: fixerInstructions)
             let activity = fixerActivity
             await fixer.setEventSink { event in

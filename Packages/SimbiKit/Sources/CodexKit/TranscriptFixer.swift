@@ -54,6 +54,8 @@ public actor TranscriptFixer {
     private let client: AppServerClient
     /// Model override for fixer turns (SPEC.md §5.5); nil = thread default.
     private let model: String?
+    /// Reasoning-effort override; nil = the model's own default.
+    private let effort: String?
     /// The thread's opening instructions — FIXER.md's resolved text,
     /// injected by the caller; defaults to the built-in prompt.
     private let instructions: String
@@ -73,7 +75,7 @@ public actor TranscriptFixer {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, savedThreadId: String?,
-        model: String? = nil,
+        model: String? = nil, effort: String? = nil,
         instructions: String = AgentInstructions.fixer.defaultContents
     ) {
         self.noteFolderURL = noteFolderURL
@@ -81,6 +83,7 @@ public actor TranscriptFixer {
         self.savedThreadId = savedThreadId
         self.threadId = savedThreadId
         self.model = model
+        self.effort = effort
         self.instructions = instructions
     }
 
@@ -222,9 +225,7 @@ public actor TranscriptFixer {
                 "approvalPolicy": "never",
                 "sandboxPolicy": sandboxPolicy,
             ]
-            if let model {
-                params["model"] = model
-            }
+            TurnOverrides.apply(model: model, effort: effort, to: &params)
             _ = try await client.request(method: "turn/start", params: params)
         } catch {
             turnActive = false

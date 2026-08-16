@@ -11,7 +11,7 @@ import SwiftUI
 public struct SettingsView: View {
     @State private var settings: SimbiSettings =
         (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
-    @State private var models: [String] = []
+    @State private var models: [CodexModels.Model] = []
     @State private var modelsUnavailable = false
 
     public init() {}
@@ -110,7 +110,7 @@ private struct GeneralSettingsPane: View {
 /// Per-feature model overrides and the editable agent instruction files.
 private struct CodexSettingsPane: View {
     @Binding var settings: SimbiSettings
-    let models: [String]
+    let models: [CodexModels.Model]
     let modelsUnavailable: Bool
     /// Instruction file awaiting reset confirmation (nil = no dialog).
     @State private var resetTarget: AgentInstructions?
@@ -118,10 +118,18 @@ private struct CodexSettingsPane: View {
     var body: some View {
         Form {
             Section("Models") {
-                modelPicker("Transcript fixer", selection: $settings.fixerModel)
-                modelPicker("File converter", selection: $settings.converterModel)
-                modelPicker("AI notes", selection: $settings.summaryModel)
-                modelPicker("Note title", selection: $settings.titleModel)
+                modelRow(
+                    "Transcript fixer", model: $settings.fixerModel,
+                    effort: $settings.fixerEffort)
+                modelRow(
+                    "File converter", model: $settings.converterModel,
+                    effort: $settings.converterEffort)
+                modelRow(
+                    "AI notes", model: $settings.summaryModel,
+                    effort: $settings.summaryEffort)
+                modelRow(
+                    "Note title", model: $settings.titleModel,
+                    effort: $settings.titleEffort)
                 if modelsUnavailable {
                     Text("Model list unavailable. Is the ChatGPT app installed?")
                         .font(.caption)
@@ -178,18 +186,52 @@ private struct CodexSettingsPane: View {
         }
     }
 
-    private func modelPicker(_ title: String, selection: Binding<String?>) -> some View {
-        Picker(title, selection: selection) {
+    /// One feature's overrides: its model and, beside it, the reasoning
+    /// effort — whose options follow the model chosen in the same row.
+    private func modelRow(
+        _ title: String, model: Binding<String?>, effort: Binding<String?>
+    ) -> some View {
+        LabeledContent(title) {
+            HStack(spacing: 8) {
+                modelPicker(selection: model)
+                effortPicker(modelId: model.wrappedValue, selection: effort)
+            }
+        }
+    }
+
+    private func modelPicker(selection: Binding<String?>) -> some View {
+        Picker("Model", selection: selection) {
             Text("Default").tag(String?.none)
-            // Keep a saved override selectable even if the list is stale.
-            let options =
-                models.contains(selection.wrappedValue ?? "") || selection.wrappedValue == nil
-                ? models
-                : [selection.wrappedValue!] + models
-            ForEach(options, id: \.self) { model in
+            ForEach(stalePreserving(selection.wrappedValue, in: models.map(\.id)), id: \.self) {
+                model in
                 Text(model).tag(String?.some(model))
             }
         }
+        .labelsHidden()
+    }
+
+    /// Efforts of the row's model ("Default" model = the server's default
+    /// model), so the options track the picker beside this one.
+    private func effortPicker(modelId: String?, selection: Binding<String?>) -> some View {
+        let efforts = CodexModels.efforts(for: modelId, in: models)
+        return Picker("Effort", selection: selection) {
+            Text("Default").tag(String?.none)
+            ForEach(stalePreserving(selection.wrappedValue, in: efforts.map(\.id)), id: \.self) {
+                effort in
+                Text(effort).tag(String?.some(effort))
+            }
+        }
+        .labelsHidden()
+        .fixedSize()
+        .help(
+            efforts.first(where: { $0.id == selection.wrappedValue })?.description
+                ?? "Reasoning effort. Default uses the model's own default.")
+    }
+
+    /// Keep a saved override selectable even if the list is stale.
+    private func stalePreserving(_ saved: String?, in options: [String]) -> [String] {
+        guard let saved, !options.contains(saved) else { return options }
+        return [saved] + options
     }
 }
 
