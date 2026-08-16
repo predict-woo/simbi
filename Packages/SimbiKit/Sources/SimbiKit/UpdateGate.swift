@@ -111,6 +111,7 @@ public enum UpdatePresentation: Equatable, Sendable {
 public enum UpdateGate {
     public static func presentation(
         availability: UpdateAvailability,
+        mode: UpdateMode,
         isRecording: Bool,
         relaunchPending: Bool
     ) -> UpdatePresentation {
@@ -122,7 +123,10 @@ public enum UpdateGate {
         case .none:
             return .hidden
         case .available(let version):
-            return .available(version: version)
+            // When downloads are automatic, "found" is a transient state on
+            // the way to "staged" — a pill here would invite a click that the
+            // download is about to make redundant. Stay quiet until then.
+            return mode.downloadsAutomatically ? .hidden : .available(version: version)
         case .readyToInstall(let version):
             return .readyToInstall(version: version)
         }

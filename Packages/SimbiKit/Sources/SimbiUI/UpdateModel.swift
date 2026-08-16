@@ -111,6 +111,7 @@ public final class UpdateModel {
     public var presentation: UpdatePresentation {
         UpdateGate.presentation(
             availability: availability,
+            mode: mode,
             isRecording: RecordingActivity.shared.isRecording,
             relaunchPending: relaunchPending)
     }

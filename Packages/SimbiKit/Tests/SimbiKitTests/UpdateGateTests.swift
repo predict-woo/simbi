@@ -9,7 +9,7 @@ struct UpdateGateTests {
     func noUpdate() {
         #expect(
             UpdateGate.presentation(
-                availability: .none, isRecording: false, relaunchPending: false) == .hidden)
+                availability: .none, mode: .notifyOnly, isRecording: false, relaunchPending: false) == .hidden)
     }
 
     @Test("an available update shows while idle")
@@ -17,6 +17,7 @@ struct UpdateGateTests {
         #expect(
             UpdateGate.presentation(
                 availability: .available(version: "1.3.0"),
+                mode: .notifyOnly,
                 isRecording: false,
                 relaunchPending: false) == .available(version: "1.3.0"))
     }
@@ -26,6 +27,7 @@ struct UpdateGateTests {
         #expect(
             UpdateGate.presentation(
                 availability: .readyToInstall(version: "1.3.0"),
+                mode: .notifyOnly,
                 isRecording: false,
                 relaunchPending: false) == .readyToInstall(version: "1.3.0"))
     }
@@ -41,7 +43,7 @@ struct UpdateGateTests {
     func recordingHidesUnconsentedUpdates(availability: UpdateAvailability) {
         #expect(
             UpdateGate.presentation(
-                availability: availability, isRecording: true, relaunchPending: false) == .hidden)
+                availability: availability, mode: .notifyOnly, isRecording: true, relaunchPending: false) == .hidden)
     }
 
     @Test("an already-consented install shows as deferred while recording")
@@ -49,6 +51,7 @@ struct UpdateGateTests {
         #expect(
             UpdateGate.presentation(
                 availability: .readyToInstall(version: "1.3.0"),
+                mode: .notifyOnly,
                 isRecording: true,
                 relaunchPending: true) == .waitingForRecordingToEnd(version: "1.3.0"))
     }
@@ -60,6 +63,7 @@ struct UpdateGateTests {
         #expect(
             UpdateGate.presentation(
                 availability: .readyToInstall(version: "1.3.0"),
+                mode: .notifyOnly,
                 isRecording: false,
                 relaunchPending: true) == .waitingForRecordingToEnd(version: "1.3.0"))
     }
@@ -68,7 +72,29 @@ struct UpdateGateTests {
     func pendingRelaunchWithoutVersion() {
         #expect(
             UpdateGate.presentation(
-                availability: .none, isRecording: false, relaunchPending: true) == .hidden)
+                availability: .none, mode: .notifyOnly, isRecording: false, relaunchPending: true) == .hidden)
+    }
+
+    // Automatic mode downloads on its own, so a "found it" pill would invite
+    // a click the download is about to make redundant.
+    @Test("automatic mode hides a merely-available update")
+    func automaticHidesAvailable() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .available(version: "1.3.0"),
+                mode: .automatic,
+                isRecording: false,
+                relaunchPending: false) == .hidden)
+    }
+
+    @Test("automatic mode still shows a staged update as ready")
+    func automaticShowsReady() {
+        #expect(
+            UpdateGate.presentation(
+                availability: .readyToInstall(version: "1.3.0"),
+                mode: .automatic,
+                isRecording: false,
+                relaunchPending: false) == .readyToInstall(version: "1.3.0"))
     }
 
     @Test("relaunch is blocked exactly while recording")
