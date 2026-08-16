@@ -82,7 +82,8 @@ jobs:
           curl -fsSL \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
             | tar -xJ -C "$RUNNER_TEMP/sparkle"
-          "$RUNNER_TEMP/sparkle/bin/sign_update" --version
+          # Smoke-test the tool; sign_update has no --version flag.
+          "$RUNNER_TEMP/sparkle/bin/sign_update" --help > /dev/null
 
       - name: Import Developer ID certificate
         uses: apple-actions/import-codesign-certs@v3
