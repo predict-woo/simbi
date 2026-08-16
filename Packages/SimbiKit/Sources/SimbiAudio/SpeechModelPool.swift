@@ -1,5 +1,41 @@
 import FluidAudio
 import Foundation
+import Observation
+
+/// Warm-up progress for the onboarding download step
+/// (docs/superpowers/specs/2026-08-17-onboarding-wizard-design.md).
+/// `SpeechModelPool.warmUp()` is the only writer; views observe. Late
+/// download callbacks after `ready` are dropped so a background
+/// Sortformer refill can never resurrect the download UI.
+@MainActor @Observable
+public final class ModelWarmupState {
+    public enum Phase: Equatable {
+        case idle
+        /// Fraction 0...1 across both loads (Sortformer dominates).
+        case downloading(fraction: Double, detail: String)
+        case ready
+        case failed(message: String)
+    }
+
+    public private(set) var phase: Phase = .idle
+
+    func begin() {
+        phase = .downloading(fraction: 0, detail: "Preparing")
+    }
+
+    func report(sortformerFraction: Double, detail: String) {
+        guard case .downloading = phase else { return }
+        phase = .downloading(fraction: sortformerFraction, detail: detail)
+    }
+
+    func finish() {
+        phase = .ready
+    }
+
+    func fail(message: String) {
+        phase = .failed(message: message)
+    }
+}
 
 /// Process-wide pool of loaded speech models. `warmUp()` runs at app
 /// launch so that `prepare()` at record time is a cache hit instead of a
@@ -25,14 +61,36 @@ public final class SpeechModelPool: @unchecked Sendable {
     private var sortformerLoad: Task<Checkout, Error>?
     private var vadLoad: Task<VadManager, Error>?
 
-    /// Starts both model loads unless already loading/loaded. Failures
-    /// (e.g. first launch offline) are not cached here — they surface and
-    /// retry on the next `prepare()`.
+    /// Warm-up progress for the onboarding download step; only `warmUp()`
+    /// drives it.
+    @MainActor public static let warmupState = ModelWarmupState()
+
+    /// Starts both model loads unless already loading/loaded, publishing
+    /// progress to `warmupState`. Failures (e.g. first launch offline) are
+    /// not cached here — they surface and retry on the next `warmUp()` or
+    /// `prepare()`.
     public func warmUp() {
         lock.lock()
-        defer { lock.unlock() }
-        _ = sortformerLoadLocked()
-        _ = vadLoadLocked()
+        let sortformer = sortformerLoadLocked(reportingProgress: true)
+        let vad = vadLoadLocked()
+        lock.unlock()
+        Task { @MainActor in
+            SpeechModelPool.warmupState.begin()
+            do {
+                _ = try await sortformer.value
+                _ = try await vad.value
+                SpeechModelPool.warmupState.finish()
+            } catch {
+                // Clear the failed loads so a retry restarts them (both
+                // tasks have already completed by the time we get here).
+                lock.withLock {
+                    sortformerLoad = nil
+                    vadLoad = nil
+                }
+                SpeechModelPool.warmupState.fail(
+                    message: "Model download failed. Check your connection and retry.")
+            }
+        }
     }
 
     /// Exclusive checkout of a loaded Sortformer model set; refills the
@@ -68,11 +126,32 @@ public final class SpeechModelPool: @unchecked Sendable {
         lock.withLock { _ = sortformerLoadLocked() }
     }
 
-    /// Config must match `SortformerStream`'s diarizer config.
-    private func sortformerLoadLocked() -> Task<Checkout, Error> {
+    /// Config must match `SortformerStream`'s diarizer config. Progress is
+    /// only attached for `warmUp()`: checkout/refill paths must never
+    /// resurrect the onboarding download UI. (VAD is ~1 MB next to
+    /// Sortformer's ~235 MB, so it gates readiness but reports nothing.)
+    private func sortformerLoadLocked(reportingProgress: Bool = false) -> Task<Checkout, Error> {
         if let load = sortformerLoad { return load }
+        var handler: ProgressHandler?
+        if reportingProgress {
+            handler = { progress in
+                let detail: String =
+                    switch progress.phase {
+                    case .listing: "Preparing"
+                    case .downloading(let done, let total):
+                        "file \(min(done + 1, total)) of \(total)"
+                    case .compiling: "Preparing models"
+                    }
+                Task { @MainActor in
+                    SpeechModelPool.warmupState.report(
+                        sortformerFraction: progress.fractionCompleted, detail: detail)
+                }
+            }
+        }
         let load = Task {
-            Checkout(models: try await SortformerModels.loadFromHuggingFace(config: DiarizerPreset.config))
+            Checkout(
+                models: try await SortformerModels.loadFromHuggingFace(
+                    config: DiarizerPreset.config, progressHandler: handler))
         }
         sortformerLoad = load
         return load
