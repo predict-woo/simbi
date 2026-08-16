@@ -21,6 +21,9 @@ xcuserdata/
 ## Python
 __pycache__/
 
+## Secrets — never commit (local mirror of the release secrets; see docs/release-setup.md)
+.env
+
 ## Local-only folders (kept out of history)
 vendor/
 docs/

@@ -79,7 +79,7 @@ targets:
         # Public half of the EdDSA update-signing keypair. Replace with the
         # output of Sparkle's `generate_keys` — see docs/release-setup.md.
         # Until then Sparkle refuses every update, which is the safe failure.
-        SPARKLE_PUBLIC_ED_KEY: "REPLACE_WITH_generate_keys_OUTPUT"
+        SPARKLE_PUBLIC_ED_KEY: "ZsYijCb8MDRcgW5HoikpRVQvjicU/mC+7F8+sQLqczE="
         ENABLE_HARDENED_RUNTIME: YES
         # App Sandbox off (docs/SPEC.md §1): we spawn the codex binary, read
         # ~/.codex/auth.json, and write ~/Simbi.
