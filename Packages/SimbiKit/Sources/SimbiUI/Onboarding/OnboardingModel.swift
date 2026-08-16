@@ -24,11 +24,32 @@ final class OnboardingModel {
 
     static let repoURL = URL(string: "https://github.com/predict-woo/simbi")!
 
+    /// Reopened over a running app (Help > Welcome to Simbi): the root is
+    /// already latched, so the folder step is read-only and Finish only
+    /// saves settings.
+    let isRerun: Bool
+
     var step: OnboardingStep { flow.step }
     var canContinue: Bool { flow.canAdvance() }
     var isFinal: Bool { flow.isFinal }
 
     init() {
+        isRerun = OnboardingPresenter.shared.isRerun
+        if isRerun {
+            // Seed the draft from live state so the wizard shows what is
+            // actually configured.
+            draft.rootURL = SimbiHome.activeRootURL
+            if let settings = try? SimbiSettings.load(from: SimbiHome().settingsFileURL) {
+                draft.fixerModel = settings.fixerModel
+                draft.fixerEffort = settings.fixerEffort
+                draft.converterModel = settings.converterModel
+                draft.converterEffort = settings.converterEffort
+                draft.summaryModel = settings.summaryModel
+                draft.summaryEffort = settings.summaryEffort
+                draft.titleModel = settings.titleModel
+                draft.titleEffort = settings.titleEffort
+            }
+        }
         // The big download starts the moment the wizard exists, so the
         // download step near the end is usually already green. Preview
         // mode fakes readiness instead of touching the network.
@@ -80,11 +101,31 @@ final class OnboardingModel {
     }
 
     func finish() {
+        if isRerun {
+            // The root is latched for this process; only settings changes
+            // apply live. A folder change follows the Settings relaunch
+            // path instead of the first-run bootstrap.
+            let home = SimbiHome()
+            var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
+            settings.fixerModel = draft.fixerModel
+            settings.fixerEffort = draft.fixerEffort
+            settings.converterModel = draft.converterModel
+            settings.converterEffort = draft.converterEffort
+            settings.summaryModel = draft.summaryModel
+            settings.summaryEffort = draft.summaryEffort
+            settings.titleModel = draft.titleModel
+            settings.titleEffort = draft.titleEffort
+            try? settings.save(to: home.settingsFileURL)
+            completed = true
+            OnboardingPresenter.shared.dismiss()
+            return
+        }
         do {
             try OnboardingState.apply(draft)
             OnboardingState.markCompleted()
             applyError = nil
             completed = true
+            OnboardingPresenter.shared.dismiss()
         } catch {
             applyError = "Could not set up the notes folder: \(error.localizedDescription)"
         }

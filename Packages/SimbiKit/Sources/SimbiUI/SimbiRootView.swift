@@ -13,10 +13,39 @@ public struct SimbiRootView: View {
     /// How far the sidebar outline is scrolled past its resting top, in
     /// points. Drives the top fade so a first row at rest isn't dimmed.
     @State private var sidebarScrollOverflow: CGFloat = 0
+    /// Built lazily so a completed first run never constructs the wizard
+    /// (whose init starts the model download).
+    @State private var onboardingModel: OnboardingModel?
+    private var onboardingPresenter = OnboardingPresenter.shared
 
     public init() {}
 
     public var body: some View {
+        // While onboarding is active, the wizard IS the window: the main
+        // content's `.task` (home bootstrap, model warm-up) must not run
+        // until the wizard has persisted the folder choice, because
+        // `SimbiHome.activeRootURL` latches on first access.
+        if onboardingPresenter.isActive {
+            Group {
+                if let model = onboardingModel {
+                    OnboardingView(model: model)
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(minWidth: 640, minHeight: 480)
+            .onAppear {
+                if onboardingModel == nil { onboardingModel = OnboardingModel() }
+            }
+            .onChange(of: onboardingModel?.completed ?? false) { _, done in
+                if done { onboardingModel = nil }
+            }
+        } else {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
         NavigationSplitView {
             // A plain stack, not a safeAreaInset: the inset's default
             // spacing made the gap above the footer text visibly larger

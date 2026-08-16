@@ -31,6 +31,11 @@ struct SimbiApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesCommand()
             }
+            CommandGroup(after: .help) {
+                Button("Welcome to Simbi") {
+                    OnboardingPresenter.shared.present()
+                }
+            }
         }
         // The per-note chat windows (docs/SPEC.md §5.4) are NOT here on
         // purpose: they are AppKit windows owned by ChatWindowManager

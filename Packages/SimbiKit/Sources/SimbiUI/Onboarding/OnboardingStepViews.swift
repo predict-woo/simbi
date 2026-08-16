@@ -57,17 +57,26 @@ struct FolderStep: View {
             title: "Notes Folder",
             subtitle: "Your notes are plain files in one folder you own."
         ) {
-            HStack(spacing: Design.rowGap) {
-                Text((model.draft.rootURL.path as NSString).abbreviatingWithTildeInPath)
-                    .foregroundStyle(.secondary)
-                    .truncationMode(.middle)
-                    .lineLimit(1)
-                Spacer()
-                Button("Change…") { choose() }
+            VStack(spacing: Design.rowGap) {
+                HStack(spacing: Design.rowGap) {
+                    Text((model.draft.rootURL.path as NSString).abbreviatingWithTildeInPath)
+                        .foregroundStyle(.secondary)
+                        .truncationMode(.middle)
+                        .lineLimit(1)
+                    Spacer()
+                    if !model.isRerun {
+                        Button("Change…") { choose() }
+                    }
+                }
+                .padding(Design.paneInset)
+                .frame(maxWidth: .infinity)
+                .card()
+                if model.isRerun {
+                    Text("Change the folder in Settings > General.")
+                        .font(.meta)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .padding(Design.paneInset)
-            .frame(maxWidth: .infinity)
-            .card()
         }
     }
 
