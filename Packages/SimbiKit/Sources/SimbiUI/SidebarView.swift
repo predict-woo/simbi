@@ -39,15 +39,6 @@ struct SidebarView: View {
         .contextMenu { node in
             contextMenu(for: node)
         }
-        .overlay {
-            if model.nodes.isEmpty {
-                ContentUnavailableView(
-                    "No Notes Yet",
-                    systemImage: "square.and.pencil",
-                    description: Text("Create your first note with ⌘N.")
-                )
-            }
-        }
         .alert("Rename", isPresented: renameAlertPresented) {
             TextField("Name", text: $renameText)
             Button("Rename") {
