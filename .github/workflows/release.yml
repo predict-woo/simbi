@@ -293,7 +293,7 @@ jobs:
             --signature "$SIGNATURE" \
             --release-notes-url "$BASE/$NOTES"
 
-          cp docs/pages-index.html site/index.html
+          cp scripts/pages-index.html site/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
