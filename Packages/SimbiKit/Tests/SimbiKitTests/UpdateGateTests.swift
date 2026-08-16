@@ -80,19 +80,18 @@ struct UpdateGateTests {
 
 @Suite("UpdateMode")
 struct UpdateModeTests {
-    @Test("default keeps installs behind an explicit click")
+    @Test("default matches a fresh install's Info.plist state")
     func defaultMode() {
         let mode = UpdateMode.default
-        #expect(mode == .downloadAndAsk)
+        #expect(mode == .notifyOnly)
         #expect(mode.checksAutomatically)
-        #expect(mode.downloadsAutomatically)
-        #expect(mode.holdsInstallUntilConfirmed)
+        #expect(!mode.downloadsAutomatically)
     }
 
-    @Test("automatic lets Sparkle install on quit")
+    @Test("automatic checks and pre-downloads")
     func automaticMode() {
+        #expect(UpdateMode.automatic.checksAutomatically)
         #expect(UpdateMode.automatic.downloadsAutomatically)
-        #expect(!UpdateMode.automatic.holdsInstallUntilConfirmed)
     }
 
     @Test("notify-only checks but never pre-downloads")
@@ -112,6 +111,25 @@ struct UpdateModeTests {
         for mode in UpdateMode.allCases {
             #expect(UpdateMode(rawValue: mode.rawValue) == mode)
         }
+    }
+
+    // The single-source-of-truth contract: Sparkle's two persisted booleans
+    // fully determine the mode, and every mode maps back onto them.
+    @Test("modes round-trip through Sparkle's two booleans")
+    func sparkleBooleansRoundTrip() {
+        for mode in UpdateMode.allCases {
+            #expect(
+                UpdateMode(
+                    checksAutomatically: mode.checksAutomatically,
+                    downloadsAutomatically: mode.downloadsAutomatically) == mode)
+        }
+    }
+
+    @Test("downloads-on with checks-off still reads as never")
+    func checksOffWinsOverDownloadsOn() {
+        // Sparkle can persist this combination, but without background checks
+        // nothing is ever downloaded — "Never check" is the honest label.
+        #expect(UpdateMode(checksAutomatically: false, downloadsAutomatically: true) == .never)
     }
 }
 

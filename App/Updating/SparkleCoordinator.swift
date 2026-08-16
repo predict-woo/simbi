@@ -26,10 +26,7 @@ final class SparkleCoordinator: NSObject {
     /// Sparkle wants to relaunch, but a recording is live. Fired once capture
     /// stops.
     private var postponedRelaunch: (() -> Void)?
-    /// A downloaded update Sparkle would have installed on quit, held back
-    /// for an explicit click in `.downloadAndAsk` mode.
-    private var stagedInstall: (() -> Void)?
-    private var canCheckObservation: NSKeyValueObservation?
+    private var observations: [NSKeyValueObservation] = []
 
     private var updater: SPUUpdater? { updaterController?.updater }
 
@@ -46,14 +43,12 @@ final class SparkleCoordinator: NSObject {
 
         let model = UpdateModel.shared
         model.coordinator = self
-        // Until the user has chosen a mode, leave Sparkle's own settings
-        // alone: writing them would answer its second-launch permission
-        // prompt on their behalf. Reflect its state into Settings instead.
-        if model.hasExplicitMode {
-            apply(mode: model.mode)
-        } else {
-            model.adoptMode(Self.mode(matching: controller.updater))
-        }
+        // Sparkle's persisted settings are the single source of truth for the
+        // mode. Settings writes them through `apply(mode:)`; these observers
+        // reflect every change back — including ones made behind our back by
+        // the "Automatically download and install updates" checkbox in
+        // Sparkle's own update alert.
+        model.setMode(Self.mode(matching: controller.updater))
         model.setLastCheckDate(controller.updater.lastUpdateCheckDate)
 
         // One check per launch, so a fresh update is noticed without waiting
@@ -63,13 +58,22 @@ final class SparkleCoordinator: NSObject {
             controller.updater.checkForUpdatesInBackground()
         }
 
-        canCheckObservation = controller.updater.observe(
-            \.canCheckForUpdates, options: [.initial, .new]
-        ) { updater, _ in
+        let reflectMode: (SPUUpdater, Any) -> Void = { updater, _ in
             MainActor.assumeIsolated {
-                UpdateModel.shared.setCanCheckForUpdates(updater.canCheckForUpdates)
+                UpdateModel.shared.setMode(Self.mode(matching: updater))
             }
         }
+        observations = [
+            controller.updater.observe(\.automaticallyChecksForUpdates, changeHandler: reflectMode),
+            controller.updater.observe(\.automaticallyDownloadsUpdates, changeHandler: reflectMode),
+            controller.updater.observe(
+                \.canCheckForUpdates, options: [.initial, .new]
+            ) { updater, _ in
+                MainActor.assumeIsolated {
+                    UpdateModel.shared.setCanCheckForUpdates(updater.canCheckForUpdates)
+                }
+            },
+        ]
 
         NotificationCenter.default.addObserver(
             forName: .simbiRecordingDidEnd, object: nil, queue: .main
@@ -80,11 +84,11 @@ final class SparkleCoordinator: NSObject {
         }
     }
 
-    /// Read Sparkle's current settings back as one of our modes, so Settings
-    /// shows what is actually happening before the user has chosen anything.
+    /// Project Sparkle's two persisted booleans onto the Settings mode.
     private static func mode(matching updater: SPUUpdater) -> UpdateMode {
-        guard updater.automaticallyChecksForUpdates else { return .never }
-        return updater.automaticallyDownloadsUpdates ? .downloadAndAsk : .notifyOnly
+        UpdateMode(
+            checksAutomatically: updater.automaticallyChecksForUpdates,
+            downloadsAutomatically: updater.automaticallyDownloadsUpdates)
     }
 
     /// Fire a relaunch we held back, once the user has had a moment with
@@ -110,14 +114,9 @@ extension SparkleCoordinator: UpdateCoordinating {
     }
 
     func installUpdate() {
-        // Already downloaded and staged: install it now. Otherwise fall back
-        // to a normal check, which opens Sparkle's sheet with release notes.
-        if let stagedInstall {
-            self.stagedInstall = nil
-            stagedInstall()
-        } else {
-            checkForUpdates()
-        }
+        // A user-initiated check resumes the staged update through Sparkle's
+        // standard sheet ("ready to install" + Install and Relaunch).
+        checkForUpdates()
     }
 
     func apply(mode: UpdateMode) {
@@ -165,20 +164,17 @@ extension SparkleCoordinator: SPUUpdaterDelegate {
         }
     }
 
-    /// In `.downloadAndAsk` mode, take ownership of the staged update so it
-    /// waits for a click instead of landing on the next quit.
+    /// An update was downloaded and staged for install-on-quit (automatic
+    /// mode). Reflect it in the pill; Sparkle keeps ownership of the install.
     nonisolated func updater(
         _ updater: SPUUpdater,
         willInstallUpdateOnQuit item: SUAppcastItem,
         immediateInstallationBlock immediateInstallHandler: @escaping () -> Void
     ) -> Bool {
-        let handler = MainThreadBlock(run: immediateInstallHandler)
         let version = item.displayVersionString
         return MainActor.assumeIsolated {
             UpdateModel.shared.setAvailability(.readyToInstall(version: version))
-            guard UpdateModel.shared.mode.holdsInstallUntilConfirmed else { return false }
-            stagedInstall = handler.run
-            return true
+            return false
         }
     }
 

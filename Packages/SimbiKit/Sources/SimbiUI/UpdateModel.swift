@@ -57,7 +57,6 @@ public final class UpdateModel {
     public static let shared = UpdateModel()
 
     private enum Key {
-        static let mode = "SimbiUpdateMode"
         static let channel = "SimbiUpdateChannel"
     }
 
@@ -70,19 +69,18 @@ public final class UpdateModel {
     /// The running build, for Settings' "Simbi 1.3.0" readout.
     public let currentVersion: String
 
-    private var storedMode: UpdateMode
-    /// False until the user picks a mode themselves. Until then Sparkle owns
-    /// the decision — it asks permission on the second launch, and forcing
-    /// values into it beforehand would silently answer that prompt for them.
-    public private(set) var hasExplicitMode: Bool
+    /// Mirror of the mode Sparkle's persisted settings currently express.
+    /// Sparkle is the single source of truth: the setter forwards intent to
+    /// the coordinator (which writes Sparkle's booleans), and the coordinator
+    /// observes Sparkle and pushes every change — from the picker, from
+    /// Sparkle's own update-alert checkbox — back via `setMode(_:)`.
+    private var storedMode: UpdateMode = .default
 
     public var mode: UpdateMode {
         get { storedMode }
         set {
             guard newValue != storedMode else { return }
             storedMode = newValue
-            hasExplicitMode = true
-            UserDefaults.standard.set(newValue.rawValue, forKey: Key.mode)
             coordinator?.apply(mode: newValue)
         }
     }
@@ -101,9 +99,6 @@ public final class UpdateModel {
 
     private init() {
         let defaults = UserDefaults.standard
-        let saved = defaults.string(forKey: Key.mode).flatMap(UpdateMode.init(rawValue:))
-        storedMode = saved ?? .default
-        hasExplicitMode = saved != nil
         channel =
             defaults.string(forKey: Key.channel).flatMap(UpdateChannel.init(rawValue:))
             ?? .default
@@ -152,10 +147,10 @@ public final class UpdateModel {
         lastCheckDate = date
     }
 
-    /// Mirror the answer the user gave Sparkle's own permission prompt into
-    /// Settings, without persisting it as an explicit choice of theirs.
-    public func adoptMode(_ mode: UpdateMode) {
-        guard !hasExplicitMode else { return }
+    /// Reflect Sparkle's current settings, without echoing back into them.
+    /// The coordinator calls this at launch and whenever Sparkle's persisted
+    /// booleans change out from under us (e.g. the update alert's checkbox).
+    public func setMode(_ mode: UpdateMode) {
         storedMode = mode
     }
 }

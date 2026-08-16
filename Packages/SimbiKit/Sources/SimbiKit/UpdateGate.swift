@@ -9,16 +9,29 @@ import Foundation
 /// defaults — is the source of truth; the coordinator pushes it into Sparkle
 /// at launch and on every change, so there is one place to reason about.
 public enum UpdateMode: String, CaseIterable, Codable, Sendable {
-    /// Download and install on quit, no interaction at all.
+    /// Download in the background and install on quit, no interaction at all.
     case automatic
-    /// Download in the background, but stage it until the user clicks.
-    case downloadAndAsk
     /// Only say that a version exists; download when the user asks for it.
     case notifyOnly
     /// No background checks. "Check for Updates…" still works.
     case never
 
-    public static let `default` = UpdateMode.downloadAndAsk
+    /// Placeholder until the coordinator derives the real mode from Sparkle.
+    /// Matches the Info.plist defaults a fresh install starts from.
+    public static let `default` = UpdateMode.notifyOnly
+
+    /// The mode is a pure projection of Sparkle's two persisted booleans —
+    /// Sparkle is the single source of truth, and every control surface
+    /// (Settings picker, Sparkle's own update-alert checkbox) converges here.
+    public init(checksAutomatically: Bool, downloadsAutomatically: Bool) {
+        if !checksAutomatically {
+            self = .never
+        } else if downloadsAutomatically {
+            self = .automatic
+        } else {
+            self = .notifyOnly
+        }
+    }
 
     /// Maps to Sparkle's `SPUUpdater.automaticallyChecksForUpdates`.
     public var checksAutomatically: Bool {
@@ -27,23 +40,12 @@ public enum UpdateMode: String, CaseIterable, Codable, Sendable {
 
     /// Maps to Sparkle's `SPUUpdater.automaticallyDownloadsUpdates`.
     public var downloadsAutomatically: Bool {
-        switch self {
-        case .automatic, .downloadAndAsk: true
-        case .notifyOnly, .never: false
-        }
-    }
-
-    /// True when a staged update must wait for an explicit click rather than
-    /// landing on the next quit. Drives the return value of Sparkle's
-    /// `updater:willInstallUpdateOnQuit:immediateInstallationBlock:`.
-    public var holdsInstallUntilConfirmed: Bool {
-        self == .downloadAndAsk
+        self == .automatic
     }
 
     public var title: String {
         switch self {
         case .automatic: "Install automatically"
-        case .downloadAndAsk: "Download, then ask"
         case .notifyOnly: "Only notify me"
         case .never: "Never check"
         }
