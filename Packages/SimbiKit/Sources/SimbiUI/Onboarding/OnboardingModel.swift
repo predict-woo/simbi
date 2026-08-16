@@ -36,19 +36,30 @@ final class OnboardingModel {
     init() {
         isRerun = OnboardingPresenter.shared.isRerun
         if isRerun {
-            // Seed the draft from live state so the wizard shows what is
-            // actually configured.
             draft.rootURL = SimbiHome.activeRootURL
-            if let settings = try? SimbiSettings.load(from: SimbiHome().settingsFileURL) {
-                draft.fixerModel = settings.fixerModel
-                draft.fixerEffort = settings.fixerEffort
-                draft.converterModel = settings.converterModel
-                draft.converterEffort = settings.converterEffort
-                draft.summaryModel = settings.summaryModel
-                draft.summaryEffort = settings.summaryEffort
-                draft.titleModel = settings.titleModel
-                draft.titleEffort = settings.titleEffort
-            }
+        } else {
+            // A version-bump re-onboard on an existing install must show
+            // the folder actually in use, not the factory default.
+            // `resolvedRootURL()` reads the stored override without
+            // touching the `activeRootURL` latch.
+            draft.rootURL = SimbiHome.resolvedRootURL()
+        }
+        // Seed the draft from existing settings when a home already
+        // exists (re-run, or a first run over a previous install), so
+        // Finish never clobbers configured models with empty defaults.
+        // NOTE: reads the draft root directly, never `SimbiHome()` — the
+        // first-run path must not latch `activeRootURL` before apply.
+        if let settings = try? SimbiSettings.load(
+            from: SimbiHome(rootURL: draft.rootURL).settingsFileURL)
+        {
+            draft.fixerModel = settings.fixerModel
+            draft.fixerEffort = settings.fixerEffort
+            draft.converterModel = settings.converterModel
+            draft.converterEffort = settings.converterEffort
+            draft.summaryModel = settings.summaryModel
+            draft.summaryEffort = settings.summaryEffort
+            draft.titleModel = settings.titleModel
+            draft.titleEffort = settings.titleEffort
         }
         // The big download starts the moment the wizard exists, so the
         // download step near the end is usually already green. Preview
@@ -101,6 +112,12 @@ final class OnboardingModel {
     }
 
     func finish() {
+        if Flags.uiPreviewOnboarding {
+            // Design review must never persist anything.
+            completed = true
+            OnboardingPresenter.shared.dismiss()
+            return
+        }
         if isRerun {
             // The root is latched for this process; only settings changes
             // apply live. A folder change follows the Settings relaunch

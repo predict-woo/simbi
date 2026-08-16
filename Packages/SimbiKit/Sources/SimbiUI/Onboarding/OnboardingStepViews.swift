@@ -296,6 +296,12 @@ struct DownloadStep: View {
         .task {
             observedSince = Date()
             if case .downloading(let fraction, _) = warmupPhase { firstFraction = fraction }
+            // Preview fakes completion after a beat so the whole wizard
+            // stays walkable in design review.
+            if Flags.uiPreviewOnboarding {
+                try? await Task.sleep(for: .seconds(3))
+                model.retryDownload()
+            }
             // Poll the gate while visible so Continue enables itself.
             while !Task.isCancelled {
                 model.syncGates()
@@ -305,9 +311,12 @@ struct DownloadStep: View {
     }
 
     private var warmupPhase: ModelWarmupState.Phase {
-        Flags.uiPreviewOnboarding
-            ? .downloading(fraction: 0.48, detail: "file 3 of 7")
-            : SpeechModelPool.warmupState.phase
+        if Flags.uiPreviewOnboarding {
+            return model.flow.gates.modelsReady
+                ? .ready
+                : .downloading(fraction: 0.48, detail: "file 3 of 7")
+        }
+        return SpeechModelPool.warmupState.phase
     }
 
     @ViewBuilder

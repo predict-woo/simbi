@@ -29,7 +29,9 @@ final class OnboardingPermissions {
 
     init() {
         if Flags.uiPreviewOnboarding {
-            mic = .denied
+            // Both pending, so the whole wizard stays walkable in preview:
+            // Grant Access fakes the grant without touching TCC.
+            mic = .unknown
             systemAudio = .unknown
             return
         }
