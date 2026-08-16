@@ -30,6 +30,13 @@ public enum Flags {
     public static let uiPreviewCodex: String? =
         uiPreview ? environment["SIMBI_UI_PREVIEW_CODEX"] : nil
 
+    /// `SIMBI_UI_PREVIEW_ONBOARDING=1` — forces the first-run onboarding
+    /// wizard with faked permission, Codex, and download states so every
+    /// step can be design-reviewed without touching TCC or the network.
+    /// Composes with `SIMBI_UI_PREVIEW_CODEX` for the Codex step.
+    public static let uiPreviewOnboarding =
+        uiPreview && environment["SIMBI_UI_PREVIEW_ONBOARDING"] == "1"
+
     /// `SIMBI_NO_SPARKLE` (any value) — skips Sparkle startup for
     /// headless verification runs: its failed-check alert is
     /// app-modal and stalls the whole scene layer.
