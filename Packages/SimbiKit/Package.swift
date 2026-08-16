@@ -106,6 +106,13 @@ let package = Package(
                 .product(name: "MarkdownEngineLatex", package: "swift-markdown-engine"),
             ]
         ),
+        // M1 spike (b): proves the full `codex app-server` JSON-RPC lifecycle
+        // end-to-end against the real ChatGPT.app binary. The reference
+        // AppServerClient was built from; see its README for the wire shapes.
+        // Burns real tokens — run by hand, never in CI. Not shipped in the app.
+        .executableTarget(
+            name: "simbi-appserver-spike"
+        ),
         // M1 spike (SPEC.md §8): proves the vendored encoder's output is
         // accepted by backend-api/transcribe. Not shipped in the app.
         .executableTarget(

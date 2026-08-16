@@ -13,7 +13,7 @@ All 9 steps PASS; the model replied `pong` (one trivial turn, ~18k input /
 and MCP servers onto every turn, see gotchas).
 
 ```sh
-swift run --package-path Spikes/AppServerSpike appserver-spike
+swift run --package-path Packages/SimbiKit simbi-appserver-spike
 ```
 
 ## Transport

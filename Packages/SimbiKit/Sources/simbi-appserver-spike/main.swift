@@ -120,7 +120,8 @@ final class Spike {
             agentMessageDeltas += params["delta"] as? String ?? ""
         case "item/completed":
             if let item = params["item"] as? [String: Any],
-                item["type"] as? String == "agentMessage" {
+                item["type"] as? String == "agentMessage"
+            {
                 finalAgentMessage = item["text"] as? String ?? ""
             }
         case "turn/completed":
@@ -214,35 +215,42 @@ final class Spike {
         DispatchQueue.global().asyncAfter(deadline: .now() + overallTimeoutSeconds) {
             kill(pid, SIGKILL)
         }
-        record("1 spawn app-server", process.isRunning,
-               "pid \(pid), CODEX_HOME=\(codexHome), cwd=\(workDir.path), stderr=\(stderrLogPath)")
+        record(
+            "1 spawn app-server", process.isRunning,
+            "pid \(pid), CODEX_HOME=\(codexHome), cwd=\(workDir.path), stderr=\(stderrLogPath)")
 
         // ---- Step 2: initialize -> initialized handshake ----
-        let initId = try sendRequest("initialize", [
-            "clientInfo": ["name": "simbi-spike", "title": "Simbi M1 spike", "version": "0.1.0"]
-        ])
+        let initId = try sendRequest(
+            "initialize",
+            [
+                "clientInfo": ["name": "simbi-spike", "title": "Simbi M1 spike", "version": "0.1.0"]
+            ])
         let initResult = try waitForResponse(initId)
         try sendNotification("initialized")
-        record("2 initialize handshake", true,
-               "server: \(truncate("\(initResult)", 200))")
+        record(
+            "2 initialize handshake", true,
+            "server: \(truncate("\(initResult)", 200))")
 
         // ---- Auth preflight (informational but required for the turn) ----
         let authId = try sendRequest("getAuthStatus", ["includeToken": false, "refreshToken": false])
         let auth = try waitForResponse(authId)
         let authMethod = auth["authMethod"] as? String
         if authMethod == nil {
-            record("2b auth preflight", false,
-                   "no auth in \(codexHome)/auth.json — log in via the ChatGPT app or `codex login`, then re-run")
+            record(
+                "2b auth preflight", false,
+                "no auth in \(codexHome)/auth.json — log in via the ChatGPT app or `codex login`, then re-run")
             throw SpikeError("cannot run a model turn without auth")
         }
         record("2b auth preflight", true, "authMethod=\(authMethod!)")
 
         // ---- Step 3: thread/start in a fresh temp directory ----
-        let startId = try sendRequest("thread/start", [
-            "cwd": workDir.path,
-            "approvalPolicy": "never",
-            "sandbox": "read-only",
-        ])
+        let startId = try sendRequest(
+            "thread/start",
+            [
+                "cwd": workDir.path,
+                "approvalPolicy": "never",
+                "sandbox": "read-only",
+            ])
         let startResult = try waitForResponse(startId)
         guard let thread = startResult["thread"] as? [String: Any],
             let threadId = thread["id"] as? String, !threadId.isEmpty
@@ -257,12 +265,14 @@ final class Spike {
         record("4 thread/name/set", true, "name=\(threadName)")
 
         // ---- Step 5: turn/start with a trivial prompt, most restrictive options ----
-        let turnId = try sendRequest("turn/start", [
-            "threadId": threadId,
-            "input": [["type": "text", "text": prompt, "text_elements": [] as [Any]]],
-            "approvalPolicy": "never",
-            "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
-        ])
+        let turnId = try sendRequest(
+            "turn/start",
+            [
+                "threadId": threadId,
+                "input": [["type": "text", "text": prompt, "text_elements": [] as [Any]]],
+                "approvalPolicy": "never",
+                "sandboxPolicy": ["type": "readOnly", "networkAccess": false],
+            ])
         let turnResult = try waitForResponse(turnId)
         guard let turn = turnResult["turn"] as? [String: Any], let turnUuid = turn["id"] as? String
         else { throw SpikeError("turn/start returned no turn: \(turnResult)") }
@@ -273,8 +283,9 @@ final class Spike {
         let status = completed["status"] as? String ?? "?"
         let reply = finalAgentMessage.isEmpty ? agentMessageDeltas : finalAgentMessage
         let gotPong = reply.lowercased().contains("pong")
-        record("6 stream to turn/completed", status == "completed" && gotPong,
-               "status=\(status), agent reply=\"\(truncate(reply, 120))\"")
+        record(
+            "6 stream to turn/completed", status == "completed" && gotPong,
+            "status=\(status), agent reply=\"\(truncate(reply, 120))\"")
 
         // ---- Step 7: thread/archive ----
         let archiveId = try sendRequest("thread/archive", ["threadId": threadId])
@@ -300,8 +311,11 @@ final class Spike {
         }
         let resumedId = resumedThread?["id"] as? String
         let resumedTurns = (resumedThread?["turns"] as? [[String: Any]])?.count ?? 0
-        record("8 thread/resume after archive", resumedId == threadId,
-               resumeDetail + "resumed id=\(resumedId ?? "nil"), turns=\(resumedTurns), name=\(resumedThread?["name"] as? String ?? "nil")")
+        record(
+            "8 thread/resume after archive", resumedId == threadId,
+            resumeDetail
+                + "resumed id=\(resumedId ?? "nil"), turns=\(resumedTurns), name=\(resumedThread?["name"] as? String ?? "nil")"
+        )
 
         // ---- Step 9: clean exit ----
         try stdinPipe.fileHandleForWriting.close()

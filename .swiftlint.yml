@@ -7,7 +7,7 @@ excluded:
   - Packages/SimbiKit/Sources/SplitViewKit     # vendored stevengharris/SplitView
   - docs
   - Packages/SimbiKit/.build
-  - Spikes                # one-off experiments
+  - Packages/SimbiKit/Sources/simbi-appserver-spike
   - Packages/SimbiKit/Sources/simbi-audio-spike
   - Packages/SimbiKit/Sources/simbi-chat-spike
   - Packages/SimbiKit/Sources/simbi-converter-spike

@@ -107,7 +107,7 @@ final class AppServerJanitor: @unchecked Sendable {
 /// handler. Restarts the process on demand if it died (callers re-resume
 /// their threads).
 ///
-/// Wire shapes verified in Spikes/AppServerSpike/README.md.
+/// Wire shapes verified in Sources/simbi-appserver-spike/README.md.
 public actor AppServerClient {
     public enum ClientError: Error {
         case binaryMissing
