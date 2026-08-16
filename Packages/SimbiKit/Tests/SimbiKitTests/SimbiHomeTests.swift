@@ -45,6 +45,76 @@ struct SimbiHomeTests {
     }
 }
 
+@Suite("SimbiHome override")
+struct SimbiHomeOverrideTests {
+    /// A throwaway defaults suite so tests never touch the app's real domain.
+    private func makeDefaults() throws -> (UserDefaults, cleanup: () -> Void) {
+        let suiteName = "simbi-home-override-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        return (defaults, { defaults.removePersistentDomain(forName: suiteName) })
+    }
+
+    @Test("resolves to the default root when no override is set")
+    func noOverrideResolvesToDefault() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+
+        #expect(SimbiHome.overrideRootURL(in: defaults) == nil)
+        #expect(SimbiHome.resolvedRootURL(defaults: defaults) == SimbiHome.defaultRootURL)
+    }
+
+    @Test("a set override wins over the default root")
+    func overrideWins() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        let custom = URL(filePath: "/Users/someone/Notes/Simbi", directoryHint: .isDirectory)
+
+        SimbiHome.setOverrideRootURL(custom, in: defaults)
+
+        #expect(SimbiHome.overrideRootURL(in: defaults) == custom.standardizedFileURL)
+        #expect(SimbiHome.resolvedRootURL(defaults: defaults) == custom.standardizedFileURL)
+    }
+
+    @Test("clearing the override reverts to the default root")
+    func clearingReverts() throws {
+        let (defaults, cleanup) = try makeDefaults()
+        defer { cleanup() }
+        SimbiHome.setOverrideRootURL(
+            URL(filePath: "/Users/someone/Elsewhere", directoryHint: .isDirectory), in: defaults)
+
+        SimbiHome.setOverrideRootURL(nil, in: defaults)
+
+        #expect(SimbiHome.overrideRootURL(in: defaults) == nil)
+        #expect(SimbiHome.resolvedRootURL(defaults: defaults) == SimbiHome.defaultRootURL)
+    }
+
+    @Test("the override survives into a fresh defaults instance (persistence)")
+    func overridePersists() throws {
+        let suiteName = "simbi-home-override-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let custom = URL(filePath: "/Volumes/External/Simbi", directoryHint: .isDirectory)
+
+        SimbiHome.setOverrideRootURL(custom, in: defaults)
+
+        let reread = try #require(UserDefaults(suiteName: suiteName))
+        #expect(SimbiHome.overrideRootURL(in: reread) == custom.standardizedFileURL)
+    }
+
+    @Test("activeRootURL latches for the process: later override edits don't move it")
+    func activeRootLatches() throws {
+        let latched = SimbiHome.activeRootURL
+
+        SimbiHome.setOverrideRootURL(
+            URL(filePath: "/Users/someone/Moved/Simbi", directoryHint: .isDirectory))
+        defer { SimbiHome.setOverrideRootURL(nil) }
+
+        #expect(SimbiHome.activeRootURL == latched)
+        // Every fresh SimbiHome() stays on the latched root too.
+        #expect(SimbiHome().rootURL == latched)
+    }
+}
+
 @Suite("SimbiSettings")
 struct SimbiSettingsTests {
     @Test("round-trips through disk")

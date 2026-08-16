@@ -46,19 +46,37 @@ public struct SettingsView: View {
 private struct GeneralSettingsPane: View {
     @Binding var settings: SimbiSettings
     @Bindable private var updates = UpdateModel.shared
+    /// A freshly picked home root awaiting the relaunch confirmation
+    /// (nil = no dialog). Nothing is persisted until the user confirms.
+    @State private var proposedRootURL: URL?
 
     var body: some View {
         Form {
             Section("Notes folder") {
                 LabeledContent("Location") {
                     HStack(spacing: 8) {
-                        Text(abbreviatedHomePath)
+                        Text(abbreviatedPath(SimbiHome().rootURL))
                             .foregroundStyle(.secondary)
                             .truncationMode(.middle)
                             .lineLimit(1)
-                        Button("Show in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([SimbiHome().rootURL])
+                        Menu {
+                            Button("Show in Finder") {
+                                NSWorkspace.shared.activateFileViewerSelecting([
+                                    SimbiHome().rootURL
+                                ])
+                            }
+                            if SimbiHome.overrideRootURL() != nil {
+                                Button("Reset to Default…") {
+                                    proposedRootURL = SimbiHome.defaultRootURL
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        Button("Change…") { chooseHomeFolder() }
                     }
                 }
             }
@@ -86,6 +104,22 @@ private struct GeneralSettingsPane: View {
         }
         .formStyle(.grouped)
         .fixedSize(horizontal: false, vertical: true)
+        .alert(
+            "Relaunch Simbi to switch the notes folder?",
+            isPresented: Binding(
+                get: { proposedRootURL != nil },
+                set: { if !$0 { proposedRootURL = nil } }
+            ),
+            presenting: proposedRootURL
+        ) { url in
+            Button("Relaunch") {
+                SimbiHome.setOverrideRootURL(url == SimbiHome.defaultRootURL ? nil : url)
+                relaunch()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { url in
+            Text("Simbi will relaunch using \(abbreviatedPath(url)). Your notes stay where they are.")
+        }
     }
 
     /// "1.3.0 (up to date)" / "…(checking…)" / "…(1.4.0 available)".
@@ -101,9 +135,37 @@ private struct GeneralSettingsPane: View {
         return "\(version) (up to date)"
     }
 
-    /// `~`-relative home path — friendlier than the absolute `/Users/…`.
-    private var abbreviatedHomePath: String {
-        (SimbiHome().rootURL.path as NSString).abbreviatingWithTildeInPath
+    /// `~`-relative path — friendlier than the absolute `/Users/…`.
+    private func abbreviatedPath(_ url: URL) -> String {
+        (url.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Directory picker for the next home folder. The choice is only
+    /// proposed here; the relaunch alert persists or discards it.
+    private func chooseHomeFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Use Folder"
+        panel.message = "Choose the folder Simbi keeps its notes in."
+        panel.directoryURL = SimbiHome().rootURL.deletingLastPathComponent()
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let picked = url.standardizedFileURL
+        guard picked != SimbiHome.activeRootURL else { return }
+        proposedRootURL = picked
+    }
+
+    /// Quit and start a fresh instance, which latches the new home root.
+    /// The `open` runs from a detached shell so it outlives this process;
+    /// the path travels as an argument to sidestep quoting.
+    private func relaunch() {
+        let helper = Process()
+        helper.executableURL = URL(filePath: "/bin/sh")
+        helper.arguments = ["-c", #"sleep 0.5; /usr/bin/open "$0""#, Bundle.main.bundlePath]
+        try? helper.run()
+        NSApp.terminate(nil)
     }
 }
 

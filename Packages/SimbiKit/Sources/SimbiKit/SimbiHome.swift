@@ -1,6 +1,7 @@
 import Foundation
 
-/// The `~/Simbi` home directory: locating it, and first-launch bootstrap.
+/// The Simbi home directory (`~/Simbi` unless the user picked another folder
+/// in Settings): locating it, and first-launch bootstrap.
 ///
 /// Everything Simbi knows lives in plain files under this root (SPEC.md §2.1).
 /// `bootstrap()` is idempotent: it creates the directory, a default
@@ -15,6 +16,37 @@ public struct SimbiHome: Sendable, Equatable {
         FileManager.default.homeDirectoryForCurrentUser.appending(path: "Simbi", directoryHint: .isDirectory)
     }
 
+    /// UserDefaults key holding the user-chosen home root path. It lives
+    /// outside the home folder on purpose: the pointer must survive the
+    /// folder it points to being switched away from.
+    public static let overrideRootDefaultsKey = "homeRootPath"
+
+    /// The user-chosen home root, or nil when the default applies.
+    public static func overrideRootURL(in defaults: UserDefaults = .standard) -> URL? {
+        defaults.string(forKey: overrideRootDefaultsKey)
+            .map { URL(filePath: $0, directoryHint: .isDirectory).standardizedFileURL }
+    }
+
+    /// Persists (or, with nil, clears) the user-chosen home root.
+    public static func setOverrideRootURL(_ url: URL?, in defaults: UserDefaults = .standard) {
+        if let url {
+            defaults.set(url.standardizedFileURL.path, forKey: overrideRootDefaultsKey)
+        } else {
+            defaults.removeObject(forKey: overrideRootDefaultsKey)
+        }
+    }
+
+    /// `overrideRootURL` if set, else `defaultRootURL` — as stored right now.
+    public static func resolvedRootURL(defaults: UserDefaults = .standard) -> URL {
+        overrideRootURL(in: defaults) ?? defaultRootURL
+    }
+
+    /// The root this process runs against, latched on first access. A home
+    /// switch saved while the app is running must NOT re-root live components
+    /// mid-flight (watcher, recordings, settings saves) — it takes effect on
+    /// relaunch, when the latch resolves the stored override afresh.
+    public static let activeRootURL: URL = resolvedRootURL()
+
     public var settingsDirectoryURL: URL {
         rootURL.appending(path: ".simbi", directoryHint: .isDirectory)
     }
@@ -27,7 +59,7 @@ public struct SimbiHome: Sendable, Equatable {
         rootURL.appending(path: "AGENTS.md")
     }
 
-    public init(rootURL: URL = SimbiHome.defaultRootURL) {
+    public init(rootURL: URL = SimbiHome.activeRootURL) {
         self.rootURL = rootURL.standardizedFileURL
     }
 
