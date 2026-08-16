@@ -106,6 +106,9 @@ targets:
         # held for an explicit click — see SparkleCoordinator.
         SUEnableAutomaticChecks: true
         SUAutomaticallyUpdate: true
+        # Check hourly (Sparkle's default is daily). Irrelevant in "Never"
+        # mode, which disables scheduled checks entirely.
+        SUScheduledCheckInterval: 3600
         SUAllowsAutomaticUpdates: true
         NSMicrophoneUsageDescription: >-
           Simbi records meeting audio from your microphone to transcribe and
