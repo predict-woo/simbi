@@ -56,6 +56,13 @@ final class SparkleCoordinator: NSObject {
         }
         model.setLastCheckDate(controller.updater.lastUpdateCheckDate)
 
+        // One check per launch, so a fresh update is noticed without waiting
+        // out the scheduled interval. Guarded because Sparkle rejects (and
+        // logs) background checks while automatic checks are off ("Never").
+        if controller.updater.automaticallyChecksForUpdates {
+            controller.updater.checkForUpdatesInBackground()
+        }
+
         canCheckObservation = controller.updater.observe(
             \.canCheckForUpdates, options: [.initial, .new]
         ) { updater, _ in
