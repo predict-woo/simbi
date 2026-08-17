@@ -24,13 +24,10 @@ final class FilesModel {
         var id: String { name }
     }
 
-    private static var models: [URL: FilesModel] = [:]
+    private static let models = PerNoteRegistry<FilesModel>()
 
     static func shared(noteFolderURL: URL) -> FilesModel {
-        if let existing = models[noteFolderURL] { return existing }
-        let model = FilesModel(noteFolderURL: noteFolderURL)
-        models[noteFolderURL] = model
-        return model
+        models.value(for: noteFolderURL) { FilesModel(noteFolderURL: $0) }
     }
 
     private(set) var rows: [Row] = []

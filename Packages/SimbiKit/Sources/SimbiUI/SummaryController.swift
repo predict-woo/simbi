@@ -18,15 +18,10 @@ public final class SummaryController {
         case failed(String)
     }
 
-    private static var controllers: [URL: SummaryController] = [:]
+    private static let controllers = PerNoteRegistry<SummaryController>()
 
     public static func shared(noteFolderURL: URL) -> SummaryController {
-        if let existing = controllers[noteFolderURL] {
-            return existing
-        }
-        let controller = SummaryController(noteFolderURL: noteFolderURL)
-        controllers[noteFolderURL] = controller
-        return controller
+        controllers.value(for: noteFolderURL, make: SummaryController.init(noteFolderURL:))
     }
 
     private(set) var status: Status = .idle

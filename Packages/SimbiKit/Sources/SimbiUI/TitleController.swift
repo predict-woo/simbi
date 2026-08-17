@@ -13,15 +13,10 @@ import SimbiKit
 @MainActor
 @Observable
 public final class TitleController {
-    private static var controllers: [URL: TitleController] = [:]
+    private static let controllers = PerNoteRegistry<TitleController>()
 
     public static func shared(noteFolderURL: URL) -> TitleController {
-        if let existing = controllers[noteFolderURL] {
-            return existing
-        }
-        let controller = TitleController(noteFolderURL: noteFolderURL)
-        controllers[noteFolderURL] = controller
-        return controller
+        controllers.value(for: noteFolderURL, make: TitleController.init(noteFolderURL:))
     }
 
     private(set) var working = false

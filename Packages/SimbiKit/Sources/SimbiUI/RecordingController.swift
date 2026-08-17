@@ -13,23 +13,17 @@ import SimbiKit
 public final class RecordingController {
     /// One controller (and pipeline) per note folder, however many times
     /// the note view is recreated — two pipelines writing one note's files
-    /// would corrupt the timeline. Controllers are kept for the app's
-    /// lifetime; they are tiny when idle.
-    private static var controllers: [URL: RecordingController] = [:]
+    /// would corrupt the timeline.
+    private static let controllers = PerNoteRegistry<RecordingController>()
 
     public static func shared(noteFolderURL: URL) -> RecordingController {
-        if let existing = controllers[noteFolderURL] {
-            return existing
-        }
-        let controller = RecordingController(noteFolderURL: noteFolderURL)
-        controllers[noteFolderURL] = controller
-        return controller
+        controllers.value(for: noteFolderURL, make: RecordingController.init(noteFolderURL:))
     }
 
     /// True while any open note is capturing. The auto-updater reads this to
     /// keep an install from ever interrupting a meeting (`UpdateGate`).
     public static var isAnyRecording: Bool {
-        controllers.values.contains { $0.status.isCapturing }
+        controllers.all.contains { $0.status.isCapturing }
     }
 
     /// True while THIS note is capturing. Read-only — never creates a
