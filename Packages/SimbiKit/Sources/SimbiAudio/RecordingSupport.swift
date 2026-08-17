@@ -10,7 +10,6 @@ public struct PendingSegment: Codable, Equatable, Sendable {
     public var endSec: TimeInterval
     public var speaker: Int
     public var continuation: Bool
-    public var attempts: Int
 }
 
 /// Live-UI snapshot emitted by the pipeline while recording.

@@ -278,7 +278,7 @@ struct RecordingStatusStrip: View {
     /// transcript rows — strip and transcript read as one system.
     @ViewBuilder private var liveIndicator: some View {
         if let slot = tentativeSpeaker {
-            let name = "Speaker \(slot + 1)"
+            let name = SpeakerLabel.name(slot: slot)
             HStack(spacing: Design.iconGap) {
                 Image(systemName: "waveform")
                     .font(.meta)

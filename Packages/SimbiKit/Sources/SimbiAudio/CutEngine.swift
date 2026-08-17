@@ -34,7 +34,13 @@ public enum CutConstants {
     public static let preRollFrames = 12
     /// §4.1 release clock: records land this far behind live audio.
     public static let pipelineLatencyFrames = 13
+    /// The pipeline's one sample rate (§2): capture is resampled to it,
+    /// audio.webm is encoded at it, every samples↔seconds conversion
+    /// divides by it.
+    public static let sampleRate = 16_000
     public static let frameSamples = 1280
+    /// One frame in seconds (80 ms) — the factor behind every HUD readout.
+    public static let frameSeconds = Double(frameSamples) / Double(sampleRate)
     public static let vadChunkSamples = 4096
     /// Zeros fed to the models (only) at stop so every real frame gets a
     /// record (§5.4 Stop; the wrappers' latency must be drained).
@@ -42,16 +48,10 @@ public enum CutConstants {
     public static let ringTargetSeconds = 15.0
 }
 
-/// Per-frame Sortformer label. Retained for the live-UI tentative indicator
-/// and for scripting fake diarizers in tests.
+/// Per-frame Sortformer label, public so tests can script fake diarizers.
 public enum FrameLabel: Equatable, Sendable {
     case silence
     case speech(slot: Int)
-
-    var isSpeech: Bool {
-        if case .speech = self { return true }
-        return false
-    }
 
     var slot: Int? {
         if case .speech(let slot) = self { return slot }

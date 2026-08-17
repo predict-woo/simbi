@@ -48,15 +48,11 @@ public struct SimbiHome: Sendable, Equatable {
     public static let activeRootURL: URL = resolvedRootURL()
 
     public var settingsDirectoryURL: URL {
-        rootURL.appending(path: ".simbi", directoryHint: .isDirectory)
+        rootURL.appending(path: NoteLayout.stateDirName, directoryHint: .isDirectory)
     }
 
     public var settingsFileURL: URL {
         settingsDirectoryURL.appending(path: "settings.json")
-    }
-
-    public var agentsFileURL: URL {
-        rootURL.appending(path: "AGENTS.md")
     }
 
     public init(rootURL: URL = SimbiHome.activeRootURL) {

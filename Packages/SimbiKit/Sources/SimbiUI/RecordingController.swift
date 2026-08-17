@@ -116,7 +116,7 @@ public final class RecordingController {
         let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         self.hasRecording = state.sessionCount > 0 || state.activeSession != nil
         self.hasFixerThread = state.fixerThreadId != nil
-        self.elapsed = TimeInterval(state.totalSamples) / 16000
+        self.elapsed = TimeInterval(state.totalSamples) / TimeInterval(CutConstants.sampleRate)
         let settings = SimbiSettings.current()
         self.micEnabled = settings.micEnabled
         self.micDeviceUID = settings.micDeviceUID

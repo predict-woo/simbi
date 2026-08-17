@@ -42,7 +42,7 @@ struct NoteView: View {
             initialValue: TitleController.shared(noteFolderURL: noteFolderURL))
         self._aiDocument = State(
             initialValue: AutosavingDocument(
-                fileURL: noteFolderURL.appending(path: "summary.md")))
+                fileURL: NoteLayout.summaryURL(noteFolder: noteFolderURL)))
         self.renameNote = renameNote
     }
 

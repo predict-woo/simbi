@@ -33,14 +33,15 @@ struct SimbiHomeTests {
         defer { try? FileManager.default.removeItem(at: home.rootURL) }
 
         try home.bootstrap()
-        try "user edits".write(to: home.agentsFileURL, atomically: true, encoding: .utf8)
+        let agentsFileURL = AgentInstructions.agents.url(homeRootURL: home.rootURL)
+        try "user edits".write(to: agentsFileURL, atomically: true, encoding: .utf8)
         var settings = SimbiSettings.default
         settings.fixerModel = "gpt-5.4"
         try settings.save(to: home.settingsFileURL)
 
         try home.bootstrap()
 
-        #expect(try String(contentsOf: home.agentsFileURL, encoding: .utf8) == "user edits")
+        #expect(try String(contentsOf: agentsFileURL, encoding: .utf8) == "user edits")
         #expect(try SimbiSettings.load(from: home.settingsFileURL).fixerModel == "gpt-5.4")
     }
 }

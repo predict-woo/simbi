@@ -39,10 +39,6 @@ public final class FileTreeModel {
         }
     }
 
-    public func stop() {
-        watcher = nil
-    }
-
     public func refresh() {
         nodes = FileTreeScanner.scan(root: home.rootURL)
         // Clear the selection only when the item is truly gone from disk —

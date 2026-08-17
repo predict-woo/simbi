@@ -38,7 +38,7 @@ public actor TranscriptFixer {
     /// The fixer's working directory: holds its refreshed working copy of
     /// transcript.vtt, and nothing else.
     public static func worktreeURL(noteFolder: URL) -> URL {
-        noteFolder.appending(path: ".simbi/fixer-worktree", directoryHint: .isDirectory)
+        NoteLayout.fixerWorktreeURL(noteFolder: noteFolder)
     }
 
     /// Bumped whenever the thread's *contract* (worktree cwd, merge
@@ -61,7 +61,6 @@ public actor TranscriptFixer {
     private let instructions: String
     /// Persisted by the caller in .simbi/state.json across app restarts.
     public private(set) var threadId: String?
-    private let savedThreadId: String?
 
     private var turnActive = false
     private var lastPingedCue = 0
@@ -80,7 +79,6 @@ public actor TranscriptFixer {
     ) {
         self.noteFolderURL = noteFolderURL
         self.client = client
-        self.savedThreadId = savedThreadId
         self.threadId = savedThreadId
         self.model = model
         self.effort = effort

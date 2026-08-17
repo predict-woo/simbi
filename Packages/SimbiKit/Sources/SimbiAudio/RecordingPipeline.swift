@@ -58,9 +58,13 @@ public actor RecordingPipeline: TranscriptFixerHost {
     /// app dies mid-pass, that pass's edits are simply dropped.
     private var fixerSnapshot: String?
 
-    private var audioFileURL: URL { noteFolderURL.appending(path: "audio.webm") }
-    private var pendingDirURL: URL { noteFolderURL.appending(path: ".simbi/pending") }
-    private var sessionBaseSeconds: TimeInterval { TimeInterval(sessionBaseSamples) / 16000 }
+    private var audioFileURL: URL { NoteLayout.audioURL(noteFolder: noteFolderURL) }
+    private var pendingDirURL: URL { NoteLayout.pendingDirURL(noteFolder: noteFolderURL) }
+    private var sessionBaseSeconds: TimeInterval { Self.seconds(sessionBaseSamples) }
+
+    private static func seconds(_ samples: Int) -> TimeInterval {
+        TimeInterval(samples) / TimeInterval(CutConstants.sampleRate)
+    }
 
     public init(
         noteFolderURL: URL,
@@ -73,7 +77,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         self.diarizer = diarizer
         self.vad = vad
         self.outbox = TranscriptOutbox(
-            fileURL: noteFolderURL.appending(path: "transcript.vtt"),
+            fileURL: VTT.fileURL(noteFolder: noteFolderURL),
             noteName: noteFolderURL.lastPathComponent)
         self.state = NoteRecordingState.current(noteFolder: noteFolderURL)
     }
@@ -109,14 +113,12 @@ public actor RecordingPipeline: TranscriptFixerHost {
     }
 
     public var isRecording: Bool { recording }
-    public var canResume: Bool { state.sessionCount > 0 }
     /// Read-only observation for stop-time consumers (the AI-notes
     /// trigger): true once every reserved transcript entry has been
     /// rendered to transcript.vtt — no cue still awaits its
     /// transcription. Never drains while uploads are paused (degraded
     /// auth), so callers must bound their wait.
     public var isTranscriptDrained: Bool { outbox.isDrained }
-    public var fixerThreadId: String? { state.fixerThreadId }
 
     /// Attaches the note's fixer before `start()`.
     public func attachFixer(_ fixer: TranscriptFixer) async {
@@ -145,7 +147,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
                     .sessionEnd(
                         n: state.sessionCount,
                         wallClock: state.lastSessionEnd ?? .now,
-                        offset: TimeInterval(state.totalSamples) / 16000))
+                        offset: Self.seconds(state.totalSamples)))
             }
         }
 
@@ -167,7 +169,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         } else {
             // Verify the file matches state.json bookkeeping (±1 cluster).
             let probe = try OpusWebMDecoder(fileURL: audioFileURL)
-            let expectedMs = Int64(sessionBaseSamples / 16)
+            let expectedMs = Int64(sessionBaseSamples / (CutConstants.sampleRate / 1000))
             let actualMs = Int64(probe.endMilliseconds)
             guard abs(actualMs - expectedMs) <= Int64(OpusWebMFormat.clusterMilliseconds) + 20
             else {
@@ -241,7 +243,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         sortFrames += chunk.finalizedFrameCount
         liveContinuation?.yield(
             RecordingLiveUpdate(
-                elapsed: sessionBaseSeconds + TimeInterval(realSamples) / 16000,
+                elapsed: sessionBaseSeconds + Self.seconds(realSamples),
                 tentativeSpeaker: chunk.tentativeSpeaker))
     }
 
@@ -288,7 +290,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
     // MARK: - Flushes (§5)
 
     private var realAudioEndSec: TimeInterval {
-        sessionBaseSeconds + TimeInterval(realSamples) / 16000
+        sessionBaseSeconds + Self.seconds(realSamples)
     }
 
     private func noteTime(_ frame: Int) -> TimeInterval {
@@ -304,8 +306,8 @@ public actor RecordingPipeline: TranscriptFixerHost {
         // timeline (§5.1), so the slice is exactly the cue extents. The
         // upper bound clamps to written audio for the stop-time final
         // (possibly partial) frame.
-        let sliceEnd = min(command.endFrame * 1280, ring.writeHead)
-        let pcm = ring.slice((command.startFrame * 1280)..<sliceEnd)
+        let sliceEnd = min(command.endFrame * CutConstants.frameSamples, ring.writeHead)
+        let pcm = ring.slice((command.startFrame * CutConstants.frameSamples)..<sliceEnd)
 
         let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
         let segmentEncoder = try OpusWebMEncoder(fileURL: webmURL, mode: .create)
@@ -317,7 +319,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         let speakerSlot = command.speaker ?? 0
         let sidecar = PendingSegment(
             cueIndex: cueIndex, startSec: startSec, endSec: endSec,
-            speaker: speakerSlot, continuation: false, attempts: 0)
+            speaker: speakerSlot, continuation: false)
         let jsonEncoder = JSONEncoder()
         jsonEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try jsonEncoder.encode(sidecar)
@@ -336,7 +338,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         trackedCues.insert(cueIndex)
         outbox.reserveCue(
             index: cueIndex, start: startSec, end: endSec,
-            speaker: "Speaker \(speakerSlot + 1)",
+            speaker: SpeakerLabel.name(slot: speakerSlot),
             continuation: false)
         if inspector.isActive {
             inspector.uploadEvents.append(
@@ -353,13 +355,14 @@ public actor RecordingPipeline: TranscriptFixerHost {
         guard recording else { throw RecordingPipelineError.notRecording }
         recording = false
 
-        let realFrameEnd = (realSamples + 1279) / 1280
+        let realFrameEnd =
+            (realSamples + CutConstants.frameSamples - 1) / CutConstants.frameSamples
 
         // Drain: the wrapped models lag the audio (§3), so feed the stop
         // pad — zeros, to the models ONLY, never the ring or audio.webm —
         // until every real frame has both results, then release exactly the
         // real frames. Pad frames past realFrameEnd never reach the engine.
-        let pad = [Float](repeating: 0, count: Int(16000 * CutConstants.stopPadSeconds))
+        let pad = [Float](repeating: 0, count: Int(Double(CutConstants.sampleRate) * CutConstants.stopPadSeconds))
         vadVerdicts.append(contentsOf: try await vad.addAudio(pad))
         diarizer.addAudio(pad)
         while let chunk = try diarizer.process() {
@@ -433,7 +436,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
             trackedCues.insert(cueIndex)
             outbox.reserveCue(
                 index: sidecar.cueIndex, start: sidecar.startSec, end: sidecar.endSec,
-                speaker: "Speaker \(sidecar.speaker + 1)",
+                speaker: SpeakerLabel.name(slot: sidecar.speaker),
                 continuation: sidecar.continuation)
             enqueueUpload(sidecar.cueIndex)
             count += 1
@@ -450,14 +453,14 @@ public actor RecordingPipeline: TranscriptFixerHost {
         let worktree = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
         let live =
             (try? String(
-                contentsOf: noteFolderURL.appending(path: "transcript.vtt"), encoding: .utf8))
+                contentsOf: VTT.fileURL(noteFolder: noteFolderURL), encoding: .utf8))
             ?? VTT.header(noteName: noteFolderURL.lastPathComponent)
         fixerSnapshot = live
         do {
             try FileManager.default.createDirectory(
                 at: worktree, withIntermediateDirectories: true)
             try live.write(
-                to: worktree.appending(path: "transcript.vtt"), atomically: true, encoding: .utf8)
+                to: worktree.appending(path: VTT.fileName), atomically: true, encoding: .utf8)
         } catch {
             Log.recording.error("copying transcript into fixer worktree failed: \(error)")
         }
@@ -473,7 +476,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         guard let before = fixerSnapshot else { return 0 }
         fixerSnapshot = nil
         let copyURL = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
-            .appending(path: "transcript.vtt")
+            .appending(path: VTT.fileName)
         guard let after = try? String(contentsOf: copyURL, encoding: .utf8) else {
             Log.recording.warning("fixer worktree transcript unreadable; merge skipped")
             return 0
@@ -499,7 +502,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         var recoveredSamples = 0
         do {
             let probe = try OpusWebMDecoder(fileURL: audioFileURL)
-            recoveredSamples = Int(probe.endMilliseconds) * 16
+            recoveredSamples = Int(probe.endMilliseconds) * (CutConstants.sampleRate / 1000)
         } catch {
             Log.recording.warning(
                 "crash recovery: audio.webm unreadable, timeline recovered from cues only:"
@@ -517,11 +520,11 @@ public actor RecordingPipeline: TranscriptFixerHost {
                 lastCueEndSec = max(lastCueEndSec, end)
             }
         }
-        let totalSamples = max(recoveredSamples, Int((lastCueEndSec * 16000).rounded(.up)))
+        let totalSamples = max(recoveredSamples, Int((lastCueEndSec * Double(CutConstants.sampleRate)).rounded(.up)))
 
         // 3. Rewrite state; the true wall-clock end is unknowable.
         let estimatedEnd = active.wallStart.addingTimeInterval(
-            TimeInterval(totalSamples - active.baseSamples) / 16000)
+            Self.seconds(totalSamples - active.baseSamples))
         state.totalSamples = totalSamples
         state.sessionCount = active.n
         state.lastSessionEnd = estimatedEnd
@@ -535,7 +538,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         try outbox.append(
             .sessionEnd(
                 n: active.n, wallClock: estimatedEnd,
-                offset: TimeInterval(totalSamples) / 16000))
+                offset: Self.seconds(totalSamples)))
     }
 }
 
@@ -598,7 +601,7 @@ extension RecordingPipeline {
         Log.recording.error(
             "cue \(cueIndex) upload failed after \(Self.uploadMaxAttempts) attempts;"
                 + " rendering [inaudible] and moving segment to failed/")
-        let failedDir = noteFolderURL.appending(path: ".simbi/failed")
+        let failedDir = NoteLayout.failedDirURL(noteFolder: noteFolderURL)
         do {
             try FileManager.default.createDirectory(
                 at: failedDir, withIntermediateDirectories: true)

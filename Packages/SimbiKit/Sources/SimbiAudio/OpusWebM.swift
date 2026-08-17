@@ -17,7 +17,7 @@ public enum OpusWebMError: Error, Equatable {
 /// Shared constants of Simbi's single audio format (SPEC.md §3.1/§3.3):
 /// 16 kHz mono Float32 in, Opus ~24 kbps VBR in live-mode WebM out.
 public enum OpusWebMFormat {
-    public static let sampleRate: Int32 = 16000
+    public static let sampleRate = Int32(CutConstants.sampleRate)
     public static let channels: Int32 = 1
     public static let bitrate: Int32 = 24000
     /// 20 ms frames: 320 samples at 16 kHz.

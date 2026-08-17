@@ -80,8 +80,12 @@ public struct TerminalChatLaunch: Sendable, Equatable {
                 .map { prefix + $0.lastPathComponent }
         }
         let top = names(in: noteFolderURL)
-        let context = names(in: noteFolderURL.appending(path: "context"), prefix: "context/")
-        let attachments = names(in: noteFolderURL.appending(path: "files"), prefix: "files/")
+        let context = names(
+            in: NoteLayout.contextDirURL(noteFolder: noteFolderURL),
+            prefix: "\(NoteLayout.contextDirName)/")
+        let attachments = names(
+            in: NoteLayout.filesDirURL(noteFolder: noteFolderURL),
+            prefix: "\(NoteLayout.filesDirName)/")
         return (top + context + attachments).sorted()
     }
 }

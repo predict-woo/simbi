@@ -1,6 +1,16 @@
 import SimbiAudio
 import SwiftUI
 
+/// Shared HUD formatters: every threshold the inspector displays is derived
+/// from `CutConstants`, so tuning the engine re-labels the HUD with it.
+private let frameMs = Int((CutConstants.frameSeconds * 1000).rounded())
+
+/// "10 s", "2 s", "0.48 s" — whole seconds lose the fraction.
+private func hudSeconds(_ frames: Int) -> String {
+    let secs = Double(frames) * CutConstants.frameSeconds
+    return secs == secs.rounded() ? "\(Int(secs)) s" : String(format: "%.2f s", secs)
+}
+
 // The inspector's section views: front-end model boxes, rule meters, the
 // flush lane (segments + transcript text) and the event log. All
 // re-evaluate on the model's `summaryTick`, not per PCM batch.
@@ -38,7 +48,12 @@ struct InspectorFrontEndRow: View {
             box("PCM ring", subtitle: "evicts below flushedUpTo") {
                 let retained = retainedSeconds(latest)
                 bigValue(String(format: "%.1f s", retained), unit: retainedMB(retained))
-                MeterBar(fraction: retained / 31.0, tint: .statusWarning)
+                // Scale: the R5 bound plus one frame of slack.
+                MeterBar(
+                    fraction: retained
+                        / (Double(CutConstants.maxUnflushedFrames + 1)
+                            * CutConstants.frameSeconds),
+                    tint: .statusWarning)
             }
         }
     }
@@ -120,18 +135,22 @@ struct InspectorFrontEndRow: View {
 
     private func releaseLag(_ latest: InspectorUpdate?) -> Double {
         guard let latest else { return 0 }
-        return Double(latest.samplesFed - latest.frontier * CutConstants.frameSamples) / 16000
+        return Double(latest.samplesFed - latest.frontier * CutConstants.frameSamples)
+            / Double(CutConstants.sampleRate)
     }
 
     private func retainedSeconds(_ latest: InspectorUpdate?) -> Double {
         guard let latest else { return 0 }
         return max(
             0,
-            Double(latest.samplesFed - latest.flushedUpTo * CutConstants.frameSamples) / 16000)
+            Double(latest.samplesFed - latest.flushedUpTo * CutConstants.frameSamples)
+                / Double(CutConstants.sampleRate))
     }
 
     private func retainedMB(_ seconds: Double) -> String {
-        String(format: "%.2f MB · cap 30 s", seconds * 16000 * 4 / 1_000_000)
+        let mb = seconds * Double(CutConstants.sampleRate) * 4 / 1_000_000
+        let capFrames = Int(CutConstants.ringTargetSeconds / CutConstants.frameSeconds)
+        return String(format: "%.2f MB · cap %@", mb, hudSeconds(capFrames))
     }
 
     private func box(
@@ -207,26 +226,33 @@ struct InspectorMetersRow: View {
             meterView(
                 Meter(
                     id: "R6", name: "Silence trim",
-                    desc: "Past R3, dead air is discarded. Only a 0.96 s pre-roll is kept.",
+                    desc:
+                        "Past R3, dead air is discarded. Only a \(hudSeconds(CutConstants.preRollFrames)) pre-roll is kept.",
                     fraction: isTrimming(latest) ? 1 : 0,
-                    value: isTrimming(latest) ? "trimming (pre-roll 0.96 s)" : "idle",
+                    value: isTrimming(latest)
+                        ? "trimming (pre-roll \(hudSeconds(CutConstants.preRollFrames)))" : "idle",
                     color: Color.statusWarning))
             meterR4(latest)
             meterView(
                 Meter(
                     id: "R2", name: "Size flush",
-                    desc: "After any cut, staging over 10 s ships as one upload.",
+                    desc: "After any cut, staging over \(hudSeconds(CutConstants.stagingFlushFrames))"
+                        + " ships as one upload.",
                     fraction: fraction(staged(latest), of: CutConstants.stagingFlushFrames),
                     value: String(
-                        format: "%.1f s / 10 s staged", Double(staged(latest) ?? 0) * 0.08)))
+                        format: "%.1f s / %@ staged",
+                        Double(staged(latest) ?? 0) * CutConstants.frameSeconds,
+                        hudSeconds(CutConstants.stagingFlushFrames))))
             meterView(
                 Meter(
                     id: "R5", name: "Max latency",
-                    desc: "30 s unflushed forces a boundary, even mid-word.",
+                    desc: "\(hudSeconds(CutConstants.maxUnflushedFrames)) unflushed forces a boundary,"
+                        + " even mid-word.",
                     fraction: fraction(unflushed(latest), of: CutConstants.maxUnflushedFrames),
                     value: String(
-                        format: "%.1f s / 30 s unflushed",
-                        Double(unflushed(latest) ?? 0) * 0.08)))
+                        format: "%.1f s / %@ unflushed",
+                        Double(unflushed(latest) ?? 0) * CutConstants.frameSeconds,
+                        hudSeconds(CutConstants.maxUnflushedFrames))))
         }
     }
 
@@ -251,13 +277,16 @@ struct InspectorMetersRow: View {
     private func r1Value(_ latest: InspectorUpdate?) -> String {
         guard let run = latest?.silenceRun, run > 0 else { return "in speech" }
         return run < CutConstants.silenceCutFrames
-            ? "silence \(run * 80) ms / 240 ms" : "fired: waiting for speech"
+            ? "silence \(run * frameMs) ms / \(CutConstants.silenceCutFrames * frameMs) ms"
+            : "fired: waiting for speech"
     }
 
     private func r3Value(_ latest: InspectorUpdate?) -> String {
         guard let run = latest?.silenceRun, run > 0 else { return "–" }
         return run < CutConstants.longSilenceFlushFrames
-            ? String(format: "%.1f s / 2.0 s", Double(run) * 0.08)
+            ? String(
+                format: "%.1f s / %@", Double(run) * CutConstants.frameSeconds,
+                hudSeconds(CutConstants.longSilenceFlushFrames))
             : "fired: R6 owns the pause"
     }
 
@@ -267,10 +296,13 @@ struct InspectorMetersRow: View {
         }
         let run = challenger != nil ? (latest?.dominantRun ?? 0) : 0
         return meterCard("R4", "Speaker change") {
-            Text("A new speaker holding 0.48 s of dominance flushes the old turn.")
-                .font(.micro)
-                .foregroundStyle(.tertiary)
-                .frame(minHeight: 26, alignment: .top)
+            Text(
+                "A new speaker holding \(hudSeconds(CutConstants.speakerStableFrames))"
+                    + " of dominance flushes the old turn."
+            )
+            .font(.micro)
+            .foregroundStyle(.tertiary)
+            .frame(minHeight: 26, alignment: .top)
             MeterBar(
                 fraction: fraction(run, of: CutConstants.speakerStableFrames), tint: .secondary)
             HStack(spacing: 5) {

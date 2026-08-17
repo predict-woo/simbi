@@ -18,7 +18,10 @@ public struct SampleRingBuffer: Sendable {
     public var oldestRetained: Int { base }
     public var retainedCount: Int { storage.count }
 
-    public init(targetCapacity: Int = Int(CutConstants.ringTargetSeconds * 16000)) {
+    public init(
+        targetCapacity: Int = Int(
+            CutConstants.ringTargetSeconds * Double(CutConstants.sampleRate))
+    ) {
         self.targetCapacity = targetCapacity
     }
 

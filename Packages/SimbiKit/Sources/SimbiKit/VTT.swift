@@ -17,9 +17,13 @@ public enum VTTEntry: Equatable, Sendable {
 }
 
 public enum VTT {
+    /// A note's transcript file name — also used for the fixer worktree's
+    /// copy, which mirrors the live file's name.
+    public static let fileName = "transcript.vtt"
+
     /// A note's transcript file (SPEC.md §2.2 note-folder layout).
     public static func fileURL(noteFolder: URL) -> URL {
-        noteFolder.appending(path: "transcript.vtt")
+        noteFolder.appending(path: fileName)
     }
 
     /// True when the note's transcript parses and contains at least one
@@ -71,13 +75,26 @@ public enum VTT {
         "WEBVTT\n\nNOTE simbi note=\"\(noteName)\"\n"
     }
 
+    /// The `<v Name>` opening tag — the one wire shape speaker renames
+    /// string-replace on.
+    public static func voiceTag(speaker: String) -> String {
+        "<v \(speaker)>"
+    }
+
+    /// A cue's payload line: voice tag + text, exactly as the parser and
+    /// the fixer merge expect it.
+    public static func voicePayload(speaker: String, text: String) -> String {
+        voiceTag(speaker: speaker) + text
+    }
+
     /// Renders one entry as an appendable block (leading blank line).
     public static func render(_ entry: VTTEntry) -> String {
         switch entry {
         case .cue(let index, let start, let end, let speaker, let text, let continuation):
             let marker = continuation ? "\nNOTE continuation\n" : ""
             return marker
-                + "\n\(index)\n\(timestamp(start)) --> \(timestamp(end))\n<v \(speaker)>\(text)\n"
+                + "\n\(index)\n\(timestamp(start)) --> \(timestamp(end))\n"
+                + voicePayload(speaker: speaker, text: text) + "\n"
         case .gap(let start, let end):
             return "\nNOTE gap start=\(timestamp(start)) end=\(timestamp(end))\n"
         case .sessionStart(let n, let wall, let offset):
@@ -92,11 +109,9 @@ public enum VTT {
 
 /// A parsed transcript document.
 public struct VTTDocument: Equatable, Sendable {
-    public var noteName: String?
     public var entries: [VTTEntry]
 
-    public init(noteName: String? = nil, entries: [VTTEntry] = []) {
-        self.noteName = noteName
+    public init(entries: [VTTEntry] = []) {
         self.entries = entries
     }
 }
@@ -124,7 +139,7 @@ public enum VTTParser {
                 continue
             }
             if lines[0].hasPrefix("NOTE ") || lines[0] == "NOTE" {
-                if let entry = try parseNote(block: block, lines: lines, into: &document) {
+                if let entry = try parseNote(block: block, lines: lines) {
                     document.entries.append(entry)
                 }
                 continue
@@ -160,15 +175,12 @@ public enum VTTParser {
     }
 
     private static func parseNote(
-        block: String, lines: [String], into document: inout VTTDocument
+        block: String, lines: [String]
     ) throws -> VTTEntry? {
         let head = lines[0]
         if head.hasPrefix("NOTE simbi") {
-            if let range = head.range(of: "note=\""), let end = head.lastIndex(of: "\""),
-                range.upperBound < end
-            {
-                document.noteName = String(head[range.upperBound..<end])
-            }
+            // The note=… header identifies the file; nothing consumes it
+            // when parsing (writers emit it via VTT.header).
             return nil
         }
         if head.hasPrefix("NOTE gap ") {

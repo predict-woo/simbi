@@ -44,7 +44,7 @@ public actor NoteSummarizer {
         if let message, let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {
             throw CodexWorkerError.reportedFailure(reason)
         }
-        let output = noteFolderURL.appending(path: "summary.md")
+        let output = NoteLayout.summaryURL(noteFolder: noteFolderURL)
         let size =
             (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int) ?? 0
         guard size > 0 else { throw CodexWorkerError.noOutput }

@@ -60,10 +60,6 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     /// user-editable, so version alone can't tell an outdated thread —
     /// any text change retires the thread the same way a version bump does.
     public var fixerInstructionsHash: String?
-    /// The note's persistent chat thread (SPEC.md §5.4), resumed by the
-    /// in-app chat window across app restarts. Never archived by Simbi
-    /// except when the user starts a new chat.
-    public var chatThreadId: String?
     /// File-import conversion jobs by `files/` file name (SPEC.md §5.3).
     public var conversions: [String: FileConversion]
 
@@ -72,7 +68,7 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil,
         fixerThreadId: String? = nil, fixerInstructionsVersion: Int = 0,
         fixerInstructionsHash: String? = nil,
-        chatThreadId: String? = nil, conversions: [String: FileConversion] = [:]
+        conversions: [String: FileConversion] = [:]
     ) {
         self.nextCueIndex = nextCueIndex
         self.sessionCount = sessionCount
@@ -82,7 +78,6 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         self.fixerThreadId = fixerThreadId
         self.fixerInstructionsVersion = fixerInstructionsVersion
         self.fixerInstructionsHash = fixerInstructionsHash
-        self.chatThreadId = chatThreadId
         self.conversions = conversions
     }
 
@@ -99,14 +94,13 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
             try container.decodeIfPresent(Int.self, forKey: .fixerInstructionsVersion) ?? 0
         fixerInstructionsHash =
             try container.decodeIfPresent(String.self, forKey: .fixerInstructionsHash)
-        chatThreadId = try container.decodeIfPresent(String.self, forKey: .chatThreadId)
         conversions =
             try container.decodeIfPresent([String: FileConversion].self, forKey: .conversions)
             ?? [:]
     }
 
     public static func fileURL(noteFolder: URL) -> URL {
-        noteFolder.appending(path: ".simbi/state.json")
+        NoteLayout.stateDirURL(noteFolder: noteFolder).appending(path: "state.json")
     }
 
     /// The note's state as stored right now; a missing or corrupt file

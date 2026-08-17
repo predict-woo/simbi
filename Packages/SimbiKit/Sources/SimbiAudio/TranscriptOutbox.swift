@@ -135,7 +135,10 @@ public final class TranscriptOutbox {
             {
                 out.append(lines[i])
                 out.append(lines[i + 1])
-                out.append("<v \(Self.sanitizeSpeaker(edit.speaker))>\(Self.sanitizeText(edit.text))")
+                out.append(
+                    VTT.voicePayload(
+                        speaker: Self.sanitizeSpeaker(edit.speaker),
+                        text: Self.sanitizeText(edit.text)))
                 i += 2
                 while i < lines.count, !lines[i].isEmpty { i += 1 }
                 changed = true

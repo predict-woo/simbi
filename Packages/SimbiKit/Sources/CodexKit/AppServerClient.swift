@@ -131,44 +131,20 @@ public actor AppServerClient {
     private var readerTask: Task<Void, Never>?
     private var startupTask: Task<Void, Error>?
     /// Notification fan-out: method + params (raw JSON of the params
-    /// object) — Data is Sendable; handlers parse what they need.
-    private var notificationHandlers: [UUID: @Sendable (String, Data) -> Void] = [:]
-
-    /// Answers server→client requests (approvals). First handler returning
-    /// `.result` wins; if none claims it the client answers with a JSON-RPC
-    /// error so the server never hangs on us.
-    public enum ServerRequestReply: Sendable {
-        case notMine
-        case result([String: any Sendable])
-    }
-
-    private var serverRequestHandlers: [UUID: @Sendable (String, Data) async -> ServerRequestReply] = [:]
+    /// object) — Data is Sendable; handlers parse what they need. Handlers
+    /// live for the client's lifetime (each guards itself with weak self).
+    private var notificationHandlers: [@Sendable (String, Data) -> Void] = []
 
     public init(installation: CodexInstallation = .standard) {
         self.installation = installation
         AppServerJanitor.shared.prepare(binaryPath: installation.binaryURL.path)
     }
 
-    @discardableResult
     public func addNotificationHandler(
         _ handler: @escaping @Sendable (String, Data) -> Void
-    ) -> UUID {
-        let id = UUID()
-        notificationHandlers[id] = handler
-        return id
+    ) {
+        notificationHandlers.append(handler)
     }
-
-    @discardableResult
-    public func addServerRequestHandler(
-        _ handler: @escaping @Sendable (String, Data) async -> ServerRequestReply
-    ) -> UUID {
-        let id = UUID()
-        serverRequestHandlers[id] = handler
-        return id
-    }
-
-    /// True while the child process is alive and the socket is open.
-    public var isRunning: Bool { process?.isRunning == true && socket != nil }
 
     /// The server's loopback websocket endpoint (e.g. "ws://127.0.0.1:51859"),
     /// starting the server if needed. Viewer terminals attach here
@@ -315,7 +291,11 @@ public actor AppServerClient {
         _ = try await send(
             method: "initialize",
             params: [
-                "clientInfo": ["name": "simbi", "title": "Simbi", "version": "0.1.0"]
+                "clientInfo": [
+                    "name": "simbi", "title": "Simbi",
+                    "version": Bundle.main.object(
+                        forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
+                ]
             ])
         try await write(["jsonrpc": "2.0", "method": "initialized"])
 
@@ -369,39 +349,19 @@ public actor AppServerClient {
                     returning: (try? JSONSerialization.data(
                         withJSONObject: result, options: [.fragmentsAllowed])) ?? Data("{}".utf8))
             }
-        case .serverRequest(let id, let method, let params):
-            // Approvals: the server is blocked on our answer, so an
-            // unclaimed request gets an explicit error, never silence.
-            let paramsData =
-                (try? JSONSerialization.data(withJSONObject: params)) ?? Data("{}".utf8)
-            let handlers = Array(serverRequestHandlers.values)
-            Task { [weak self] in
-                for handler in handlers {
-                    if case .result(let result) = await handler(method, paramsData) {
-                        await self?.respond(id: id, result: result)
-                        return
-                    }
-                }
-                await self?.respondMethodNotFound(id: id, method: method)
-            }
+        case .serverRequest(let id, let method, _):
+            // Approvals: the server is blocked on our answer. Every thread
+            // runs approvalPolicy "never", so no server request is ever
+            // expected — answer with an explicit error, never silence.
+            respondMethodNotFound(id: id, method: method)
         case .notification(let method, let params):
             let paramsData =
                 (try? JSONSerialization.data(withJSONObject: params)) ?? Data("{}".utf8)
-            for handler in notificationHandlers.values {
+            for handler in notificationHandlers {
                 handler(method, paramsData)
             }
         case .invalid:
             break
-        }
-    }
-
-    private func respond(id: RPCID, result: [String: any Sendable]) {
-        Task {
-            do {
-                try await self.write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result])
-            } catch {
-                Log.codex.error("replying to server request \(id.jsonValue) failed: \(error)")
-            }
         }
     }
 

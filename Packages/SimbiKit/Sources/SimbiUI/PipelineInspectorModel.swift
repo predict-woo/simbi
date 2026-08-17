@@ -36,7 +36,8 @@ public final class PipelineInspectorModel {
     /// Session-local seconds of audio captured (the live head).
     var elapsed: TimeInterval {
         guard let latest = state.latest else { return 0 }
-        return latest.sessionBaseSeconds + TimeInterval(latest.samplesFed) / 16000
+        return latest.sessionBaseSeconds
+            + TimeInterval(latest.samplesFed) / TimeInterval(CutConstants.sampleRate)
     }
 
     func attach(_ recorder: RecordingController) {

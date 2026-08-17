@@ -1,4 +1,5 @@
 import SimbiAudio
+import SimbiKit
 import SwiftUI
 
 /// The per-note Pipeline Inspector window (spec
@@ -35,7 +36,7 @@ public struct PipelineInspectorWindow: View {
 /// mapping and grid math live here.
 enum Inspector {
     /// Seconds per 80 ms grid frame.
-    static let frameSeconds = Double(CutConstants.frameSamples) / 16000
+    static let frameSeconds = CutConstants.frameSeconds
 
     static func speakerColor(_ slot: Int?) -> Color {
         guard let slot else { return Color.primary.opacity(0.12) }
@@ -44,7 +45,7 @@ enum Inspector {
 
     static func speakerName(_ slot: Int?) -> String {
         guard let slot else { return "–" }
-        return "Speaker \(slot + 1)"
+        return SpeakerLabel.name(slot: slot)
     }
 }
 

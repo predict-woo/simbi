@@ -75,7 +75,7 @@ public actor FileConverter {
             throw CodexWorkerError.reportedFailure(reason)
         }
 
-        let output = noteFolderURL.appending(path: "context/\(fileName).md")
+        let output = NoteLayout.contextURL(noteFolder: noteFolderURL, fileName: fileName)
         let size =
             (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int) ?? 0
         guard size > 0 else { throw CodexWorkerError.noOutput }

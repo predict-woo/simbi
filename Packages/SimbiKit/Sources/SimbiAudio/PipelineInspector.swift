@@ -385,7 +385,7 @@ public struct InspectorTimelineState: Sendable {
     }
 
     static let frameSeconds =
-        Double(CutConstants.frameSamples) / 16000
+        CutConstants.frameSeconds
     private static func seconds(_ frame: Int) -> TimeInterval {
         Double(frame) * frameSeconds
     }

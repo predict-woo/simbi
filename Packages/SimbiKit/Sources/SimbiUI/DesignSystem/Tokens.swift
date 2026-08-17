@@ -1,4 +1,5 @@
 import AppKit
+import SimbiKit
 import SwiftUI
 
 /// SimbiUI's shared design language. `docs/design-system.md` is the
@@ -55,8 +56,6 @@ enum Design {
         static let row: CGFloat = 6
         /// Cards: inspector panels, setup card, drop targets.
         static let card: CGFloat = 8
-        /// Floating overlays (terminal session-ended scrim).
-        static let overlay: CGFloat = 12
     }
 
     // MARK: Motion
@@ -76,8 +75,8 @@ enum Design {
     static let speakerPalette: [Color] = [.indigo, .teal, .orange, .purple]
 
     static func speakerColor(_ name: String) -> Color {
-        if name.hasPrefix("Speaker "), let n = Int(name.dropFirst(8)), n >= 1 {
-            return speakerPalette[(n - 1) % speakerPalette.count]
+        if let slot = SpeakerLabel.slot(name: name) {
+            return speakerPalette[slot % speakerPalette.count]
         }
         return speakerPalette[stableHash(name) % speakerPalette.count]
     }

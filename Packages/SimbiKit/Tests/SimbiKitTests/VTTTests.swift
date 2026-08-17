@@ -40,7 +40,6 @@ struct VTTTests {
         }
 
         let document = try VTTParser.parse(file)
-        #expect(document.noteName == "2026-07-15 Standup")
         #expect(document.entries == entries)
     }
 

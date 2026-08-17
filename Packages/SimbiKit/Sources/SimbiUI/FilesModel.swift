@@ -19,7 +19,6 @@ final class FilesModel {
     struct Row: Identifiable {
         let name: String
         let status: NoteRecordingState.FileConversion.Status
-        let hasContext: Bool
         let threadId: String?
         var id: String { name }
     }
@@ -43,10 +42,10 @@ final class FilesModel {
     private var externalTurns: Set<String> = []
     private var watcher: FileTreeWatcher?
 
-    private var filesURL: URL { noteFolderURL.appending(path: "files") }
+    private var filesURL: URL { NoteLayout.filesDirURL(noteFolder: noteFolderURL) }
 
     func contextURL(for name: String) -> URL {
-        noteFolderURL.appending(path: "context/\(name).md")
+        NoteLayout.contextURL(noteFolder: noteFolderURL, fileName: name)
     }
 
     func fileURL(for name: String) -> URL {
@@ -192,24 +191,18 @@ final class FilesModel {
                 atPath: contextURL(for: name).path)
             let threadId = state.conversions[name]?.threadId
             if activeJobs.contains(name) || externalTurns.contains(name) {
-                return Row(
-                    name: name, status: .converting, hasContext: hasContext,
-                    threadId: threadId)
+                return Row(name: name, status: .converting, threadId: threadId)
             }
             switch state.conversions[name]?.status {
             case .failed:
-                return Row(
-                    name: name, status: .failed, hasContext: hasContext,
-                    threadId: threadId)
+                return Row(name: name, status: .failed, threadId: threadId)
             case .done where hasContext:
-                return Row(name: name, status: .done, hasContext: true, threadId: threadId)
+                return Row(name: name, status: .done, threadId: threadId)
             default:
                 // New file, a "converting" record from a run that died, or a
                 // done record whose context file was deleted → (re)convert.
                 dispatch(name)
-                return Row(
-                    name: name, status: .converting, hasContext: hasContext,
-                    threadId: threadId)
+                return Row(name: name, status: .converting, threadId: threadId)
             }
         }
     }

@@ -41,7 +41,7 @@ public final class SummaryController {
             model: choice.model, effort: choice.effort)
     }
 
-    var summaryFileURL: URL { noteFolderURL.appending(path: "summary.md") }
+    var summaryFileURL: URL { NoteLayout.summaryURL(noteFolder: noteFolderURL) }
 
     /// Flushes any pending debounced editor autosaves so the summarizer
     /// thread reads current note.md/summary.md from disk. Assigned by the

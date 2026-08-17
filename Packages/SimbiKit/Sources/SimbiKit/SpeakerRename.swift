@@ -16,7 +16,8 @@ public enum SpeakerRename {
         guard !trimmed.isEmpty, !trimmed.contains(">"), !trimmed.contains("\n") else {
             throw RenameError.invalidName
         }
-        let renamed = transcript.replacingOccurrences(of: "<v \(from)>", with: "<v \(trimmed)>")
+        let renamed = transcript.replacingOccurrences(
+            of: VTT.voiceTag(speaker: from), with: VTT.voiceTag(speaker: trimmed))
         guard (try? VTTParser.parse(renamed)) != nil else {
             throw RenameError.wouldInvalidate
         }

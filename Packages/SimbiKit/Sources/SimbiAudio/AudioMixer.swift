@@ -16,7 +16,10 @@ public struct AudioMixer: Sendable {
     /// Read position into `fifo` (compacted lazily, avoids O(n) removeFirst).
     private var fifoStart = 0
 
-    public init(micGain: Float = 1, systemGain: Float = 1, maxBacklogSamples: Int = 16000) {
+    public init(
+        micGain: Float = 1, systemGain: Float = 1,
+        maxBacklogSamples: Int = CutConstants.sampleRate  // one second
+    ) {
         self.micGain = micGain
         self.systemGain = systemGain
         self.maxBacklogSamples = maxBacklogSamples

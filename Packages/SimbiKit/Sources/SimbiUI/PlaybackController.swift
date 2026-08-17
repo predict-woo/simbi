@@ -21,7 +21,7 @@ final class PlaybackController {
     private var tickTask: Task<Void, Never>?
 
     init(noteFolderURL: URL) {
-        self.audioURL = noteFolderURL.appending(path: "audio.webm")
+        self.audioURL = NoteLayout.audioURL(noteFolder: noteFolderURL)
     }
 
     var hasAudio: Bool {

@@ -50,7 +50,7 @@ private struct TimelineDrawer {
     private var yPtrEnd: CGFloat { size.height - 32 }
 
     /// Session-local seconds of the live head.
-    private var liveT: Double { Double(latest.samplesFed) / 16000 }
+    private var liveT: Double { Double(latest.samplesFed) / Double(CutConstants.sampleRate) }
     private var pxPerSec: CGFloat { (size.width - padL - padR) / Self.windowSeconds }
     private var windowStart: Double { liveT - Self.windowSeconds }
     private var frameW: CGFloat { max(0.6, pxPerSec * Inspector.frameSeconds - 0.4) }
