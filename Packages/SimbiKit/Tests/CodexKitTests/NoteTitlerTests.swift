@@ -52,6 +52,6 @@ struct NoteTitlerTests {
 
     @Test("a FAILED reply is recognized via the shared failure contract")
     func failedReply() {
-        #expect(NoteSummarizer.reportedFailure(in: "FAILED: transcript too thin") != nil)
+        #expect(CodexWorkerTurnRunner.reportedFailure(in: "FAILED: transcript too thin") != nil)
     }
 }

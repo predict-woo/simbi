@@ -158,7 +158,7 @@ public final class SummaryController {
                 // The banner shows a fixed message; keep the real error
                 // (including a thread-reported FAILED reason) visible in
                 // the console for diagnosis.
-                if case NoteSummarizer.SummarizerError.reportedFailure(let reason) = error {
+                if case CodexWorkerError.reportedFailure(let reason) = error {
                     print(
                         "SummaryController: summarizer reported failure for "
                             + "\(noteFolderURL.path): \(reason)")

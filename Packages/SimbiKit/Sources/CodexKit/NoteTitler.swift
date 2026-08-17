@@ -7,34 +7,9 @@ import SimbiKit
 /// thread writes nothing — its final agent message IS the result, which
 /// `sanitizedTitle` turns into a folder-safe name.
 public actor NoteTitler {
-    public enum TitlerError: Error {
-        case noOutput
-        case timeout
-        case malformedResponse
-        /// The thread replied "FAILED: <reason>"; carries the trimmed
-        /// first line of that reply.
-        case reportedFailure(String)
-    }
-
     private static let maxTitleLength = 64
 
-    private let noteFolderURL: URL
-    private let client: AppServerClient
-    private let model: String?
-    /// Reasoning-effort override; nil = the model's own default.
-    private let effort: String?
-    private let turnTimeout: Duration
-    /// Fetched per attempt so TITLE.md edits apply to the next run
-    /// without an app restart (same contract as the summarizer).
-    private let instructionsProvider: @Sendable () -> String
-
-    private var bound = false
-    private var waiting: [String: CheckedContinuation<Void, any Error>] = [:]
-    private var activeThreads: Set<String> = []
-    private var completedTurns: Set<String> = []
-    /// Last agentMessage text seen per active thread; the final one when
-    /// the turn completes is the title reply itself.
-    private var messages: [String: String] = [:]
+    private let runner: CodexWorkerTurnRunner
 
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
@@ -44,13 +19,22 @@ public actor NoteTitler {
             AgentInstructions.title.contents(homeRootURL: SimbiHome().rootURL)
         }
     ) {
-        self.noteFolderURL = noteFolderURL
-        self.client = client
-        self.model = model
-        self.effort = effort
-        self.turnTimeout = turnTimeout
         self.instructionsProvider = instructionsProvider
+        self.noteFolderURL = noteFolderURL
+        // Read-only: the titler never touches disk (verified thread/start
+        // shape in references/codex-remote-tui). The turn inherits the
+        // thread's sandbox, so no writable root is passed.
+        self.runner = CodexWorkerTurnRunner(
+            client: client,
+            spec: .init(
+                cwd: noteFolderURL, sandbox: "read-only", writableRoot: nil,
+                model: model, effort: effort, turnTimeout: turnTimeout))
     }
+
+    private let noteFolderURL: URL
+    /// Fetched per attempt so TITLE.md edits apply to the next run
+    /// without an app restart (same contract as the summarizer).
+    private let instructionsProvider: @Sendable () -> String
 
     /// The reply reduced to a folder-safe title: first line, wrapping
     /// quotes/backticks/fences stripped, `/` and `:` neutralized, leading
@@ -102,103 +86,17 @@ public actor NoteTitler {
     /// Runs one attempt end-to-end and returns the sanitized title. The
     /// thread is archived on the way out, success or failure.
     public func generateTitle() async throws -> String {
-        if !bound {
-            bound = true
-            await client.addNotificationHandler { [weak self] method, paramsData in
-                switch method {
-                case "item/completed":
-                    guard let parsed = NoteSummarizer.agentMessage(fromItemCompleted: paramsData)
-                    else { return }
-                    Task { await self?.record(text: parsed.text, threadId: parsed.threadId) }
-                case "turn/completed":
-                    let params =
-                        (try? JSONSerialization.jsonObject(with: paramsData)) as? [String: Any]
-                    guard let threadId = params?["threadId"] as? String else { return }
-                    Task { await self?.turnCompleted(threadId: threadId) }
-                default:
-                    break
-                }
-            }
+        let message = try await runner.run(
+            instructions: instructionsProvider(),
+            threadName: "[simbi] title: \(noteFolderURL.lastPathComponent)")
+
+        guard let message else { throw CodexWorkerError.noOutput }
+        if let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {
+            throw CodexWorkerError.reportedFailure(reason)
         }
-
-        // Read-only: the titler never touches disk (verified thread/start
-        // shape in references/codex-remote-tui). The turn inherits the
-        // thread's sandbox.
-        let resultData = try await client.request(
-            method: "thread/start",
-            params: [
-                "cwd": noteFolderURL.path,
-                "approvalPolicy": "never",
-                "sandbox": "read-only",
-            ])
-        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
-        guard let thread = result?["thread"] as? [String: Any],
-            let threadId = thread["id"] as? String
-        else { throw TitlerError.malformedResponse }
-        activeThreads.insert(threadId)
-
-        defer {
-            activeThreads.remove(threadId)
-            completedTurns.remove(threadId)
-            messages.removeValue(forKey: threadId)
-            Task { [client] in
-                _ = try? await client.request(
-                    method: "thread/archive", params: ["threadId": threadId])
-            }
+        guard let title = Self.sanitizedTitle(from: message) else {
+            throw CodexWorkerError.noOutput
         }
-
-        // Naming forces rollout persistence (M1 spike gotcha #2).
-        _ = try await client.request(
-            method: "thread/name/set",
-            params: [
-                "threadId": threadId,
-                "name": "[simbi] title: \(noteFolderURL.lastPathComponent)",
-            ])
-
-        let input: [[String: any Sendable]] = [
-            ["type": "text", "text": instructionsProvider(), "text_elements": [String]()]
-        ]
-        var turnParams: [String: any Sendable] = [
-            "threadId": threadId,
-            "input": input,
-            "approvalPolicy": "never",
-        ]
-        TurnOverrides.apply(model: model, effort: effort, to: &turnParams)
-        _ = try await client.request(method: "turn/start", params: turnParams)
-        try await awaitTurnCompletion(threadId: threadId)
-
-        guard let text = messages[threadId] else { throw TitlerError.noOutput }
-        if let reason = NoteSummarizer.reportedFailure(in: text) {
-            throw TitlerError.reportedFailure(reason)
-        }
-        guard let title = Self.sanitizedTitle(from: text) else { throw TitlerError.noOutput }
         return title
-    }
-
-    private func record(text: String, threadId: String) {
-        guard activeThreads.contains(threadId) else { return }
-        messages[threadId] = text
-    }
-
-    private func awaitTurnCompletion(threadId: String) async throws {
-        if completedTurns.remove(threadId) != nil { return }
-        try await withCheckedThrowingContinuation {
-            (continuation: CheckedContinuation<Void, any Error>) in
-            waiting[threadId] = continuation
-            Task {  // inherits actor isolation
-                try? await Task.sleep(for: turnTimeout)
-                waiting.removeValue(forKey: threadId)?.resume(
-                    throwing: TitlerError.timeout)
-            }
-        }
-    }
-
-    private func turnCompleted(threadId: String) {
-        guard activeThreads.contains(threadId) else { return }
-        if let continuation = waiting.removeValue(forKey: threadId) {
-            continuation.resume()
-        } else {
-            completedTurns.insert(threadId)
-        }
     }
 }

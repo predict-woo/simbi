@@ -207,23 +207,14 @@ public actor TranscriptFixer {
         turnActive = true
         eventSink?(.passStarted)
         do {
-            let input: [[String: any Sendable]] = [
-                ["type": "text", "text": text, "text_elements": [String]()]
-            ]
             // Workspace-write scoped to the fixer's worktree — the live
             // note folder (transcript.vtt included) is read-only to it.
-            let sandboxPolicy: [String: any Sendable] = [
-                "type": "workspaceWrite",
-                "writableRoots": [Self.worktreeURL(noteFolder: noteFolderURL).path],
-                "networkAccess": false,
-                "excludeTmpdirEnvVar": false,
-                "excludeSlashTmp": false,
-            ]
             var params: [String: any Sendable] = [
                 "threadId": threadId,
-                "input": input,
+                "input": CodexTurn.textInput(text),
                 "approvalPolicy": "never",
-                "sandboxPolicy": sandboxPolicy,
+                "sandboxPolicy": CodexTurn.workspaceWritePolicy(
+                    writableRoot: Self.worktreeURL(noteFolder: noteFolderURL)),
             ]
             TurnOverrides.apply(model: model, effort: effort, to: &params)
             _ = try await client.request(method: "turn/start", params: params)

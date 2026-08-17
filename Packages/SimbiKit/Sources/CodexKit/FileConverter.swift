@@ -6,45 +6,22 @@ import SimbiKit
 /// workspace-write sandbox) with one turn that converts `files/<name>` to
 /// `context/<name>.md`; the thread is archived when the job ends.
 public actor FileConverter {
-    public enum ConversionError: Error {
-        case outputMissing
-        case timeout
-    }
-
     private let noteFolderURL: URL
-    private let client: AppServerClient
-    /// Model override for conversion turns (SPEC.md §5.5); nil = default.
-    private let model: String?
-    /// Reasoning-effort override; nil = the model's own default.
-    private let effort: String?
+    private let runner: CodexWorkerTurnRunner
     /// Absolute path of the bundled anydoc CLI; nil when running without the
     /// app bundle (tests, spikes). The template then gets the bare word
     /// `anydoc`, which fails fast in the sandbox and routes the agent to
     /// INGEST.md's fallback tools — degraded, never failing.
     private let anydocPath: String?
-    /// Consulted when a job ends: false leaves the thread unarchived
-    /// (a viewer window holds it open — its close handler archives
-    /// instead; live-view spec §6).
-    private let shouldArchiveOnJobEnd: @Sendable (String) async -> Bool
-    /// Generous ceiling — odd formats can send the agent exploring.
-    private let turnTimeout: Duration
     /// INGEST.md's template text, fetched per job so edits apply to the
     /// next conversion without an app restart. `{{ file }}` is the
     /// imported file's name.
     private let instructionsTemplate: @Sendable () -> String
 
-    private var bound = false
-    private var waiting: [String: CheckedContinuation<Void, any Error>] = [:]
-    /// Converter threads with a job in flight — the shared client fans every
-    /// notification out to us, so ignore other threads' turns (the fixer's).
-    private var activeThreads: Set<String> = []
-    /// Threads whose turn completed before the waiter was registered.
-    private var completedTurns: Set<String> = []
-
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         effort: String? = nil,
-        turnTimeout: Duration = .seconds(900),
+        turnTimeout: Duration = .seconds(900),  // generous — odd formats send the agent exploring
         anydocPath: String? = nil,
         shouldArchiveOnJobEnd: @escaping @Sendable (String) async -> Bool = { _ in true },
         instructionsTemplate: @escaping @Sendable () -> String = {
@@ -52,13 +29,14 @@ public actor FileConverter {
         }
     ) {
         self.noteFolderURL = noteFolderURL
-        self.client = client
-        self.model = model
-        self.effort = effort
-        self.turnTimeout = turnTimeout
         self.anydocPath = anydocPath
-        self.shouldArchiveOnJobEnd = shouldArchiveOnJobEnd
         self.instructionsTemplate = instructionsTemplate
+        self.runner = CodexWorkerTurnRunner(
+            client: client,
+            spec: .init(
+                cwd: noteFolderURL, sandbox: "workspace-write", writableRoot: noteFolderURL,
+                model: model, effort: effort, turnTimeout: turnTimeout,
+                shouldArchiveOnEnd: shouldArchiveOnJobEnd))
     }
 
     private func instructions(fileName: String) -> String {
@@ -89,92 +67,14 @@ public actor FileConverter {
     public func convert(
         fileName: String, onThreadStarted: @Sendable (String) async -> Void = { _ in }
     ) async throws {
-        if !bound {
-            bound = true
-            await client.addNotificationHandler { [weak self] method, paramsData in
-                guard method == "turn/completed" else { return }
-                let params =
-                    (try? JSONSerialization.jsonObject(with: paramsData)) as? [String: Any]
-                guard let threadId = params?["threadId"] as? String else { return }
-                Task { await self?.turnCompleted(threadId: threadId) }
-            }
-        }
-
-        let resultData = try await client.request(
-            method: "thread/start",
-            params: [
-                "cwd": noteFolderURL.path,
-                "approvalPolicy": "never",
-                "sandbox": "workspace-write",
-            ])
-        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
-        guard let thread = result?["thread"] as? [String: Any],
-            let threadId = thread["id"] as? String
-        else { throw AppServerClient.ClientError.malformedResponse }
-        activeThreads.insert(threadId)
-        await onThreadStarted(threadId)
-
-        defer {
-            activeThreads.remove(threadId)
-            completedTurns.remove(threadId)
-            // Archived when the job ends (§5.3) — success or failure —
-            // unless a viewer window holds the thread open.
-            Task { [client, shouldArchiveOnJobEnd] in
-                guard await shouldArchiveOnJobEnd(threadId) else { return }
-                _ = try? await client.request(
-                    method: "thread/archive", params: ["threadId": threadId])
-            }
-        }
-
-        // Naming forces rollout persistence (M1 spike gotcha #2).
-        _ = try await client.request(
-            method: "thread/name/set",
-            params: ["threadId": threadId, "name": "[simbi] convert: \(fileName)"])
-
-        let input: [[String: any Sendable]] = [
-            ["type": "text", "text": instructions(fileName: fileName), "text_elements": [String]()]
-        ]
-        let sandboxPolicy: [String: any Sendable] = [
-            "type": "workspaceWrite",
-            "writableRoots": [noteFolderURL.path],
-            "networkAccess": false,
-            "excludeTmpdirEnvVar": false,
-            "excludeSlashTmp": false,
-        ]
-        var turnParams: [String: any Sendable] = [
-            "threadId": threadId,
-            "input": input,
-            "approvalPolicy": "never",
-            "sandboxPolicy": sandboxPolicy,
-        ]
-        TurnOverrides.apply(model: model, effort: effort, to: &turnParams)
-        _ = try await client.request(method: "turn/start", params: turnParams)
-        try await awaitTurnCompletion(threadId: threadId)
+        _ = try await runner.run(
+            instructions: instructions(fileName: fileName),
+            threadName: "[simbi] convert: \(fileName)",
+            onThreadStarted: onThreadStarted)
 
         let output = noteFolderURL.appending(path: "context/\(fileName).md")
         let size =
             (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int) ?? 0
-        guard size > 0 else { throw ConversionError.outputMissing }
-    }
-
-    private func awaitTurnCompletion(threadId: String) async throws {
-        if completedTurns.remove(threadId) != nil { return }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            waiting[threadId] = continuation
-            Task {  // inherits actor isolation
-                try? await Task.sleep(for: turnTimeout)
-                waiting.removeValue(forKey: threadId)?.resume(
-                    throwing: ConversionError.timeout)
-            }
-        }
-    }
-
-    private func turnCompleted(threadId: String) {
-        guard activeThreads.contains(threadId) else { return }
-        if let continuation = waiting.removeValue(forKey: threadId) {
-            continuation.resume()
-        } else {
-            completedTurns.insert(threadId)
-        }
+        guard size > 0 else { throw CodexWorkerError.noOutput }
     }
 }
