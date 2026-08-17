@@ -111,14 +111,8 @@ final class ThreadViewerWindow: NSWindow, NSWindowDelegate {
             backing: .buffered,
             defer: false)
         self.title = title
-        // The manager keeps the strong reference; never restore viewer
-        // windows — a restored viewer would attach to a thread nobody asked
-        // to watch.
-        isReleasedWhenClosed = false
-        isRestorable = false
-        tabbingMode = .disallowed
         delegate = self
-        contentMinSize = NSSize(width: 480, height: 420)
+        applyManagedStyle(minContentSize: NSSize(width: 480, height: 420))
 
         let launch = TerminalViewerLaunch.forThread(
             threadId: threadId, appServerURL: endpoint)
@@ -132,7 +126,6 @@ final class ThreadViewerWindow: NSWindow, NSWindowDelegate {
         self.terminal = terminal
         contentView = terminal
         makeFirstResponder(terminal)
-        center()
     }
 
     func windowWillClose(_ notification: Notification) {

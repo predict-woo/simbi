@@ -161,7 +161,7 @@ private struct FileTile: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.middle)
-                .foregroundStyle(isSelected ? Color.white : Color.primary)
+                .foregroundStyle(isSelected ? Color.selectionInk : Color.primary)
                 .padding(.horizontal, Design.iconGap)
                 .padding(.vertical, 1)
                 .background {

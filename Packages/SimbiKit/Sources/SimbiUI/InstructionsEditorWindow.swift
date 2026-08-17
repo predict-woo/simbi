@@ -10,7 +10,7 @@ import SwiftUI
 public final class InstructionsEditorWindowManager {
     public static let shared = InstructionsEditorWindowManager()
 
-    private var windows: [AgentInstructions: InstructionsEditorWindow] = [:]
+    private var windows: [AgentInstructions: AutosaveEditorWindow] = [:]
 
     private var homeRootURL: URL { SimbiHome().rootURL }
 
@@ -23,12 +23,14 @@ public final class InstructionsEditorWindowManager {
         materialize(file)
         // Starts from the file's effective contents (the built-in default
         // when the file is missing or blank).
-        let window = InstructionsEditorWindow(
-            file: file,
-            document: AutosavingDocument(
-                fileURL: file.url(homeRootURL: homeRootURL),
-                initialText: file.contents(homeRootURL: homeRootURL)),
-            manager: self)
+        let document = AutosavingDocument(
+            fileURL: file.url(homeRootURL: homeRootURL),
+            initialText: file.contents(homeRootURL: homeRootURL))
+        let window = AutosaveEditorWindow(
+            title: "Instructions: \(file.fileName)",
+            document: document,
+            content: InstructionsEditorView(file: file, document: document),
+            onWillClose: { [weak self] _ in self?.windows.removeValue(forKey: file) })
         windows[file] = window
         window.makeKeyAndOrderFront(nil)
     }
@@ -67,47 +69,6 @@ public final class InstructionsEditorWindowManager {
         }
     }
 
-    fileprivate func windowWillClose(_ window: InstructionsEditorWindow) {
-        windows.removeValue(forKey: window.file)
-    }
-}
-
-/// One instruction file's editor: the note markdown editor as the whole
-/// content view.
-final class InstructionsEditorWindow: NSWindow, NSWindowDelegate {
-    let file: AgentInstructions
-    let document: AutosavingDocument
-    private weak var manager: InstructionsEditorWindowManager?
-
-    init(
-        file: AgentInstructions, document: AutosavingDocument,
-        manager: InstructionsEditorWindowManager
-    ) {
-        self.file = file
-        self.document = document
-        self.manager = manager
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false)
-        title = "Instructions: \(file.fileName)"
-        // The manager keeps the strong reference; never restore these —
-        // same rules as the chat windows.
-        isReleasedWhenClosed = false
-        isRestorable = false
-        tabbingMode = .disallowed
-        delegate = self
-        contentMinSize = NSSize(width: 440, height: 320)
-        contentView = NSHostingView(
-            rootView: InstructionsEditorView(file: file, document: document))
-        center()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        document.saveNow()
-        manager?.windowWillClose(self)
-    }
 }
 
 private struct InstructionsEditorView: View {

@@ -123,10 +123,7 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         let url = Self.fileURL(noteFolder: noteFolder)
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-        try encoder.encode(self).write(to: url, options: .atomic)
+        try PersistedJSON.encoder().encode(self).write(to: url, options: .atomic)
     }
 
     // Two writers share state.json: the recording pipeline (which holds its

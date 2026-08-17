@@ -58,6 +58,18 @@ public enum NoteLayout {
     }
 }
 
+/// The on-disk JSON house style — pretty-printed, key-sorted (stable
+/// diffs), ISO 8601 dates. Every persisted JSON file (state.json,
+/// settings.json, pending-segment sidecars) encodes through it.
+public enum PersistedJSON {
+    public static func encoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+}
+
 /// The `"Speaker N"` display convention (SPEC.md §5.3): written into cue
 /// voice tags by the pipeline, parsed back for stable speaker colors.
 /// Slots are 0-based internally; display numbers are 1-based.

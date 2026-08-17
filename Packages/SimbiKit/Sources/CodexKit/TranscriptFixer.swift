@@ -101,10 +101,10 @@ public actor TranscriptFixer {
         self.eventSink = sink
     }
 
-    /// Creates the fixer thread on first recording start, or unarchives +
-    /// resumes the note's existing thread (archive → unarchive → resume).
     private var bound = false
 
+    /// Creates the fixer thread on first recording start, or unarchives +
+    /// resumes the note's existing thread (archive → unarchive → resume).
     public func recordingStarted() async throws {
         stopping = false
         // The thread's cwd; must exist before thread/start.
@@ -143,22 +143,11 @@ public actor TranscriptFixer {
             return
         }
 
-        let resultData = try await client.request(
-            method: "thread/start",
-            params: [
-                "cwd": Self.worktreeURL(noteFolder: noteFolderURL).path,
-                "approvalPolicy": "never",
-                "sandbox": "workspace-write",
-            ])
-        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
-        guard let thread = result?["thread"] as? [String: Any],
-            let id = thread["id"] as? String
-        else { throw AppServerClient.ClientError.malformedResponse }
-        threadId = id
-        // Naming forces rollout persistence (M1 spike gotcha #2).
-        _ = try await client.request(
-            method: "thread/name/set",
-            params: ["threadId": id, "name": "[simbi] fixer: \(noteFolderURL.lastPathComponent)"])
+        threadId = try await CodexTurn.startThread(
+            client: client,
+            cwd: Self.worktreeURL(noteFolder: noteFolderURL),
+            sandbox: "workspace-write",
+            name: "[simbi] fixer: \(noteFolderURL.lastPathComponent)")
         try await startTurn(text: instructions)
     }
 
@@ -219,15 +208,12 @@ public actor TranscriptFixer {
         do {
             // Workspace-write scoped to the fixer's worktree — the live
             // note folder (transcript.vtt included) is read-only to it.
-            var params: [String: any Sendable] = [
-                "threadId": threadId,
-                "input": CodexTurn.textInput(text),
-                "approvalPolicy": "never",
-                "sandboxPolicy": CodexTurn.workspaceWritePolicy(
-                    writableRoot: Self.worktreeURL(noteFolder: noteFolderURL)),
-            ]
-            TurnOverrides.apply(model: model, effort: effort, to: &params)
-            _ = try await client.request(method: "turn/start", params: params)
+            _ = try await client.request(
+                method: "turn/start",
+                params: CodexTurn.startParams(
+                    threadId: threadId, text: text,
+                    writableRoot: Self.worktreeURL(noteFolder: noteFolderURL),
+                    model: model, effort: effort))
         } catch {
             turnActive = false
             throw error

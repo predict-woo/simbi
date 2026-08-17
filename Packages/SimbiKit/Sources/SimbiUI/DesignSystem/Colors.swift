@@ -22,6 +22,9 @@ extension Color {
     static let trackFill = Color.primary.opacity(0.06)
     /// Icon-selection backplate (files shelf), matching Finder's.
     static let selectionBackplate = Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+    /// Text on an accent-filled selection (files-shelf caption), the
+    /// system's semantic ink rather than a hardcoded white.
+    static let selectionInk = Color(nsColor: .alternateSelectedControlTextColor)
     /// Hover highlight for icon buttons and interactive surfaces.
     static let hoverFill = Color.primary.opacity(0.08)
     /// Pressed highlight — one step past hover.

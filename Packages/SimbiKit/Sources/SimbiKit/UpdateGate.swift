@@ -5,9 +5,10 @@ import Foundation
 /// The Sparkle wiring lives in the app shell (`App/Updating/`); it reads these
 /// types and does what they say.
 
-/// How eagerly Simbi adopts new versions. This — not Sparkle's own user
-/// defaults — is the source of truth; the coordinator pushes it into Sparkle
-/// at launch and on every change, so there is one place to reason about.
+/// How eagerly Simbi adopts new versions. Sparkle's two persisted booleans
+/// are the source of truth; this enum is the readable projection of them
+/// (see `init(checksAutomatically:downloadsAutomatically:)`), and the
+/// coordinator KVO-observes Sparkle so every control surface converges here.
 public enum UpdateMode: String, CaseIterable, Codable, Sendable {
     /// Download in the background and install on quit, no interaction at all.
     case automatic

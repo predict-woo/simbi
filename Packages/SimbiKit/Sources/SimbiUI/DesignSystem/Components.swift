@@ -146,3 +146,25 @@ extension View {
         }
     }
 }
+
+/// Display hero — 44 pt light symbol, title, secondary subtitle — the
+/// shared header of the welcome pane and every onboarding step. Emitted
+/// as a Group so the parent stack owns the spacing.
+struct HeroHeader: View {
+    let symbol: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        Group {
+            Image(systemName: symbol)
+                .font(.system(size: 44, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.title.weight(.semibold))
+            Text(subtitle)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+    }
+}

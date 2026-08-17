@@ -68,11 +68,8 @@ public final class CodexStatusWindowManager {
             backing: .buffered,
             defer: false)
         window.title = "Codex Status"
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.tabbingMode = .disallowed
         window.contentView = NSHostingView(rootView: CodexStatusView(model: model))
-        window.center()
+        window.applyManagedStyle()
         window.makeKeyAndOrderFront(nil)
         self.window = window
     }

@@ -137,7 +137,7 @@ struct PipelineInspectorView: View {
             HStack(spacing: Design.iconGap) {
                 StatusDot(color: model.phase == .live ? .statusLive : .faintInk)
                 Text(Design.time(model.elapsed))
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.body.weight(.medium))
                     .monospacedDigit()
             }
             if let latest {

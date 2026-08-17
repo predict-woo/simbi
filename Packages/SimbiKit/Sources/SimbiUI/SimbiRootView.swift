@@ -214,22 +214,12 @@ private struct SidebarScrollProbe: NSViewRepresentable {
         private func locateOutlineClipView() -> NSClipView? {
             var ancestor = superview
             while let view = ancestor {
-                if let scroll = Self.outlineScrollView(in: view) {
+                if let scroll = view.firstDescendant(where: {
+                    ($0 as? NSScrollView)?.documentView is NSOutlineView
+                }) as? NSScrollView {
                     return scroll.contentView
                 }
                 ancestor = view.superview
-            }
-            return nil
-        }
-
-        private static func outlineScrollView(in view: NSView) -> NSScrollView? {
-            if let scroll = view as? NSScrollView, scroll.documentView is NSOutlineView {
-                return scroll
-            }
-            for subview in view.subviews {
-                if let found = outlineScrollView(in: subview) {
-                    return found
-                }
             }
             return nil
         }

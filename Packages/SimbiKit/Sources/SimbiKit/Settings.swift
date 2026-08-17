@@ -167,8 +167,6 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
     }
 
     public func save(to url: URL) throws {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self).write(to: url, options: .atomic)
+        try PersistedJSON.encoder().encode(self).write(to: url, options: .atomic)
     }
 }

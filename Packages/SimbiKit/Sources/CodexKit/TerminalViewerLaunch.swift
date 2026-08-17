@@ -22,13 +22,10 @@ public struct TerminalViewerLaunch: Sendable, Equatable {
         appServerURL: String,
         installation: CodexInstallation = .standard
     ) -> TerminalViewerLaunch {
-        TerminalViewerLaunch(envVars: [
-            // Without CODEX_HOME the standalone binary uses a private home
-            // invisible to the ChatGPT app login (CodexInstallation).
-            "CODEX_HOME": installation.codexHomeURL.path,
-            "SIMBI_CODEX_BIN": installation.binaryURL.path,
-            "SIMBI_APPSERVER_URL": appServerURL,
-            "SIMBI_THREAD_ID": threadId,
-        ])
+        TerminalViewerLaunch(
+            envVars: installation.terminalLaunchEnvironment.merging([
+                "SIMBI_APPSERVER_URL": appServerURL,
+                "SIMBI_THREAD_ID": threadId,
+            ]) { _, new in new })
     }
 }

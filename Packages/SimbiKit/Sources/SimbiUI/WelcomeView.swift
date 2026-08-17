@@ -15,13 +15,9 @@ struct WelcomeView: View {
 
     var body: some View {
         VStack(spacing: Design.rowGap) {
-            Image(systemName: "waveform.and.mic")
-                .font(.system(size: 44, weight: .light))
-                .foregroundStyle(.secondary)
-            Text("Welcome to Simbi")
-                .font(.title.weight(.semibold))
-            Text("Notes that record, transcribe, and think alongside you.")
-                .foregroundStyle(.secondary)
+            HeroHeader(
+                symbol: WelcomeCopy.symbol, title: WelcomeCopy.title,
+                subtitle: WelcomeCopy.tagline)
             CodexSetupCard(state: setup.state)
                 .padding(.top, Design.rowGap)
             createButton
@@ -99,4 +95,12 @@ private struct CodexSetupCard: View {
             .buttonStyle(.borderedProminent)
             .tint(.statusWarning)
     }
+}
+
+/// The one welcome identity — icon and copy shared by the welcome pane
+/// and the onboarding welcome step, so the tagline can't drift.
+enum WelcomeCopy {
+    static let symbol = "waveform.and.mic"
+    static let title = "Welcome to Simbi"
+    static let tagline = "Notes that record, transcribe, and think alongside you."
 }

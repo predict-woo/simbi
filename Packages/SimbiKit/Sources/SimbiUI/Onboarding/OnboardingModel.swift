@@ -90,12 +90,8 @@ final class OnboardingModel {
     /// this step shows, but failure still degrades to Default-only.
     func fetchModels() async {
         guard models.isEmpty else { return }
-        do {
-            models = try await CodexModels.list(client: CodexServices.appServer)
-            modelsUnavailable = models.isEmpty
-        } catch {
-            modelsUnavailable = true
-        }
+        models = await CodexModels.availableModels(client: CodexServices.appServer)
+        modelsUnavailable = models.isEmpty
     }
 
     func retryDownload() {

@@ -51,7 +51,7 @@ public final class OpusWebMEncoder {
         case create
         /// Existing live-mode file: appends clusters only. `baseMilliseconds`
         /// is the note-timeline offset of the first new sample (= end of the
-        /// previous session, from the cluster index).
+        /// previous session, from state.json bookkeeping).
         case append(baseMilliseconds: UInt64)
     }
 
@@ -195,8 +195,9 @@ public final class OpusWebMDecoder {
 
     private let reader: OpaquePointer
 
-    /// The cluster index built at open (SPEC.md §3.1: built once at
-    /// note-open, used for seeks and for the resume timeline offset).
+    /// The cluster index built at open. Production seeks use the C
+    /// iterator and the resume offset comes from `endMilliseconds`; this
+    /// array serves tests and the audio spike's diagnostics.
     public let clusterIndex: [ClusterEntry]
 
     /// Start time of the last packet in the file, or nil for an empty file.

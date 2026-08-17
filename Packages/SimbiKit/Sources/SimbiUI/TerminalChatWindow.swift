@@ -102,15 +102,10 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
             backing: .buffered,
             defer: false)
         title = "Chat: \(noteFolderURL.lastPathComponent)"
-        // The manager keeps the strong reference; never restore chat
-        // windows — a restored chat would spawn a codex process on launch
-        // with nobody asking.
-        isReleasedWhenClosed = false
-        isRestorable = false
-        tabbingMode = .preferred
-        tabbingIdentifier = ChatWindowTabbing.identifier(for: noteFolderURL)
         delegate = self
-        contentMinSize = NSSize(width: 480, height: 420)
+        applyManagedStyle(
+            tabbing: .preferred, minContentSize: NSSize(width: 480, height: 420))
+        tabbingIdentifier = ChatWindowTabbing.identifier(for: noteFolderURL)
 
         if CodexInstallation.standard.isBinaryInstalled {
             let terminal = TerminalView(frame: contentRect(forFrameRect: frame))
@@ -149,7 +144,6 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
         toolbarStyle = .unifiedCompact
         self.toolbar = toolbar
 
-        center()
     }
 
     static let newChatItemID = NSToolbarItem.Identifier("new-chat")

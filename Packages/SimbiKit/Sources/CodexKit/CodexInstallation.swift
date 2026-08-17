@@ -32,6 +32,17 @@ public struct CodexInstallation: Sendable, Equatable {
         FileManager.default.isExecutableFile(atPath: binaryURL.path)
     }
 
+    /// The env pair every terminal launch spec starts from: without
+    /// CODEX_HOME the standalone binary uses a private home invisible to
+    /// the ChatGPT app login, and SIMBI_CODEX_BIN carries the binary path
+    /// into the constant command lines (quoting-free by design).
+    public var terminalLaunchEnvironment: [String: String] {
+        [
+            "CODEX_HOME": codexHomeURL.path,
+            "SIMBI_CODEX_BIN": binaryURL.path,
+        ]
+    }
+
     /// Where "Get ChatGPT" sends the user.
     public static let downloadURL = URL(string: "https://chatgpt.com/download")!
 

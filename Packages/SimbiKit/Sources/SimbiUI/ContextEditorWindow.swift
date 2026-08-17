@@ -9,7 +9,7 @@ import SwiftUI
 public final class ContextEditorWindowManager {
     public static let shared = ContextEditorWindowManager()
 
-    private var windows: [String: ContextEditorWindow] = [:]
+    private var windows: [String: AutosaveEditorWindow] = [:]
 
     /// The files view's "Open Context": focus the file's window or open one.
     func open(fileURL: URL, title: String) {
@@ -17,46 +17,14 @@ public final class ContextEditorWindowManager {
             window.makeKeyAndOrderFront(nil)
             return
         }
-        let window = ContextEditorWindow(
-            document: AutosavingDocument(fileURL: fileURL), title: title, manager: self)
+        let document = AutosavingDocument(fileURL: fileURL)
+        let window = AutosaveEditorWindow(
+            title: title,
+            document: document,
+            content: ContextEditorView(document: document),
+            onWillClose: { [weak self] _ in self?.windows.removeValue(forKey: fileURL.path) })
         windows[fileURL.path] = window
         window.makeKeyAndOrderFront(nil)
-    }
-
-    fileprivate func windowWillClose(_ window: ContextEditorWindow) {
-        windows.removeValue(forKey: window.document.fileURL.path)
-    }
-}
-
-/// One context file's editor: the note markdown editor as the whole
-/// content view.
-final class ContextEditorWindow: NSWindow, NSWindowDelegate {
-    let document: AutosavingDocument
-    private weak var manager: ContextEditorWindowManager?
-
-    init(document: AutosavingDocument, title: String, manager: ContextEditorWindowManager) {
-        self.document = document
-        self.manager = manager
-        super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 620, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false)
-        self.title = title
-        // The manager keeps the strong reference; never restore these —
-        // same rules as the chat windows.
-        isReleasedWhenClosed = false
-        isRestorable = false
-        tabbingMode = .disallowed
-        delegate = self
-        contentMinSize = NSSize(width: 440, height: 320)
-        contentView = NSHostingView(rootView: ContextEditorView(document: document))
-        center()
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        document.saveNow()
-        manager?.windowWillClose(self)
     }
 }
 

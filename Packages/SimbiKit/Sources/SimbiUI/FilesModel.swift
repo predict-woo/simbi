@@ -3,12 +3,6 @@ import Foundation
 import Observation
 import SimbiKit
 
-/// One app-server process for the whole app (SPEC.md §5.1), shared by every
-/// feature that talks to Codex (fixer, converter, chat).
-enum CodexServices {
-    static let appServer = AppServerClient()
-}
-
 /// Owns file import + conversion for one note (SPEC.md §5.3): copies
 /// dropped/picked files into `files/`, dispatches one converter thread per
 /// file, and exposes per-row status for the UI. Shared per note (like
@@ -114,11 +108,9 @@ final class FilesModel {
             }
         case .turnEnded(let file):
             externalTurns.remove(file)
-            let size =
-                (try? FileManager.default.attributesOfItem(
-                    atPath: contextURL(for: file).path)[.size] as? Int) ?? 0
+            let done = WorkerOutput.exists(at: contextURL(for: file))
             Self.updateState(noteFolder: noteFolderURL) {
-                $0.conversions[file]?.status = size > 0 ? .done : .failed
+                $0.conversions[file]?.status = done ? .done : .failed
             }
         }
         refresh()

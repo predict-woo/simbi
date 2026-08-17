@@ -296,7 +296,7 @@ struct TranscriptView: View {
     private func renamePopover(target: RenameTarget) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Rename \(target.name) everywhere")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.body.weight(.semibold))
             TextField("Name", text: $renameText)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 200)

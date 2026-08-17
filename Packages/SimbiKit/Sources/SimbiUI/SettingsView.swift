@@ -35,13 +35,8 @@ public struct SettingsView: View {
             }
         }
         .task {
-            do {
-                models = try await CodexModels.list(client: CodexServices.appServer)
-                modelsUnavailable = models.isEmpty
-            } catch {
-                Log.ui.warning("fetching model list failed: \(error)")
-                modelsUnavailable = true
-            }
+            models = await CodexModels.availableModels(client: CodexServices.appServer)
+            modelsUnavailable = models.isEmpty
         }
     }
 }
@@ -156,19 +151,9 @@ private struct GeneralSettingsPane: View {
     }
 
     /// Quit and start a fresh instance, which latches the new home root.
-    /// The `open` runs from a detached shell so it outlives this process;
-    /// the path travels as an argument to sidestep quoting.
     private func relaunch() {
-        let helper = Process()
-        helper.executableURL = URL(filePath: "/bin/sh")
-        helper.arguments = ["-c", #"sleep 0.5; /usr/bin/open "$0""#, Bundle.main.bundlePath]
-        do {
-            try helper.run()
-        } catch {
-            // Quitting anyway would strand the user without a relaunch.
-            Log.ui.error("relaunch helper failed to start; staying open: \(error)")
-            return
-        }
+        // Quitting without a spawned relauncher would strand the user.
+        guard Relaunch.spawnRelauncher(bundlePath: Bundle.main.bundlePath) else { return }
         NSApp.terminate(nil)
     }
 }
@@ -246,50 +231,13 @@ private struct CodexSettingsPane: View {
     /// One role's overrides: its model and, beside it, the reasoning
     /// effort — whose options follow the model chosen in the same row.
     private func modelRow(_ role: AgentRole) -> some View {
-        let choice = Binding(
-            get: { settings[role] },
-            set: { settings[role] = $0 })
-        return LabeledContent(role.title) {
-            HStack(spacing: 8) {
-                modelPicker(selection: choice.model)
-                effortPicker(modelId: choice.wrappedValue.model, selection: choice.effort)
-            }
+        LabeledContent(role.title) {
+            ModelEffortPickers(
+                choice: Binding(
+                    get: { settings[role] },
+                    set: { settings[role] = $0 }),
+                models: models)
         }
-    }
-
-    private func modelPicker(selection: Binding<String?>) -> some View {
-        Picker("Model", selection: selection) {
-            Text("Default").tag(String?.none)
-            ForEach(stalePreserving(selection.wrappedValue, in: models.map(\.id)), id: \.self) {
-                model in
-                Text(model).tag(String?.some(model))
-            }
-        }
-        .labelsHidden()
-    }
-
-    /// Efforts of the row's model ("Default" model = the server's default
-    /// model), so the options track the picker beside this one.
-    private func effortPicker(modelId: String?, selection: Binding<String?>) -> some View {
-        let efforts = CodexModels.efforts(for: modelId, in: models)
-        return Picker("Effort", selection: selection) {
-            Text("Default").tag(String?.none)
-            ForEach(stalePreserving(selection.wrappedValue, in: efforts.map(\.id)), id: \.self) {
-                effort in
-                Text(effort).tag(String?.some(effort))
-            }
-        }
-        .labelsHidden()
-        .fixedSize()
-        .help(
-            efforts.first(where: { $0.id == selection.wrappedValue })?.description
-                ?? "Reasoning effort. Default uses the model's own default.")
-    }
-
-    /// Keep a saved override selectable even if the list is stale.
-    private func stalePreserving(_ saved: String?, in options: [String]) -> [String] {
-        guard let saved, !options.contains(saved) else { return options }
-        return [saved] + options
     }
 }
 

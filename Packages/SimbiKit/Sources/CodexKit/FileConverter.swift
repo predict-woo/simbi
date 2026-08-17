@@ -76,8 +76,6 @@ public actor FileConverter {
         }
 
         let output = NoteLayout.contextURL(noteFolder: noteFolderURL, fileName: fileName)
-        let size =
-            (try? FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int) ?? 0
-        guard size > 0 else { throw CodexWorkerError.noOutput }
+        guard WorkerOutput.exists(at: output) else { throw CodexWorkerError.noOutput }
     }
 }

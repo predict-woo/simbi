@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Shared helpers for the in-app chat (SPEC.md §5.4): the path helper used
 /// by the terminal chat's developer instructions, and model discovery for
@@ -54,6 +55,18 @@ public enum CodexModels {
     public static func list(client: AppServerClient) async throws -> [Model] {
         let data = try await client.request(method: "model/list", params: [:])
         return parse(data)
+    }
+
+    /// `list` with the picker surfaces' shared failure policy: an
+    /// unreachable app-server degrades to an empty list (logged), which
+    /// callers show as "defaults still work".
+    public static func availableModels(client: AppServerClient) async -> [Model] {
+        do {
+            return try await list(client: client)
+        } catch {
+            Log.codex.warning("fetching model list failed: \(error)")
+            return []
+        }
     }
 
     /// The efforts to offer for a selection: the chosen model's, or the

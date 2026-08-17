@@ -324,9 +324,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         let sidecar = PendingSegment(
             cueIndex: cueIndex, startSec: startSec, endSec: endSec,
             speaker: speakerSlot, continuation: false)
-        let jsonEncoder = JSONEncoder()
-        jsonEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try jsonEncoder.encode(sidecar)
+        try PersistedJSON.encoder().encode(sidecar)
             .write(to: pendingDirURL.appending(path: "\(cueIndex).json"), options: .atomic)
 
         // Every fallible step is done: only now consume the cue index

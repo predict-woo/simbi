@@ -33,6 +33,57 @@ enum CodexTurn {
             "excludeSlashTmp": false,
         ]
     }
+
+    /// The `turn/start` params every Simbi turn shares: never-approve, a
+    /// text input, an optional workspace-write scope, and the caller's
+    /// model/effort overrides. Used by the fixer and the one-shot workers.
+    static func startParams(
+        threadId: String, text: String, writableRoot: URL?, model: String?, effort: String?
+    ) -> [String: any Sendable] {
+        var params: [String: any Sendable] = [
+            "threadId": threadId,
+            "input": textInput(text),
+            "approvalPolicy": "never",
+        ]
+        if let writableRoot {
+            params["sandboxPolicy"] = workspaceWritePolicy(writableRoot: writableRoot)
+        }
+        TurnOverrides.apply(model: model, effort: effort, to: &params)
+        return params
+    }
+
+    /// Parses a `thread/start` result into the new thread's id.
+    static func threadId(fromStartResult resultData: Data) throws -> String {
+        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
+        guard let thread = result?["thread"] as? [String: Any],
+            let id = thread["id"] as? String
+        else { throw CodexWorkerError.malformedResponse }
+        return id
+    }
+
+    /// `thread/start` + `thread/name/set` in one step — naming forces
+    /// rollout persistence (M1 spike gotcha #2), so no Simbi thread ever
+    /// starts unnamed.
+    static func startThread(
+        client: AppServerClient, cwd: URL, sandbox: String, name: String
+    ) async throws -> String {
+        let resultData = try await client.request(
+            method: "thread/start",
+            params: ["cwd": cwd.path, "approvalPolicy": "never", "sandbox": sandbox])
+        let id = try threadId(fromStartResult: resultData)
+        _ = try await client.request(
+            method: "thread/name/set", params: ["threadId": id, "name": name])
+        return id
+    }
+}
+
+/// The worker contract's output check — the promised file exists and is
+/// non-empty. Shared by the converter, the summarizer, and the UI's
+/// grading of externally-driven converter turns.
+public enum WorkerOutput {
+    public static func exists(at url: URL) -> Bool {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0) > 0
+    }
 }
 
 /// The lifecycle shared by the one-shot worker actors: start one thread,
@@ -131,17 +182,8 @@ actor CodexWorkerTurnRunner {
             }
         }
 
-        let resultData = try await client.request(
-            method: "thread/start",
-            params: [
-                "cwd": spec.cwd.path,
-                "approvalPolicy": "never",
-                "sandbox": spec.sandbox,
-            ])
-        let result = (try? JSONSerialization.jsonObject(with: resultData)) as? [String: Any]
-        guard let thread = result?["thread"] as? [String: Any],
-            let threadId = thread["id"] as? String
-        else { throw CodexWorkerError.malformedResponse }
+        let threadId = try await CodexTurn.startThread(
+            client: client, cwd: spec.cwd, sandbox: spec.sandbox, name: threadName)
         activeThreads.insert(threadId)
         await onThreadStarted(threadId)
 
@@ -163,20 +205,10 @@ actor CodexWorkerTurnRunner {
         }
 
         _ = try await client.request(
-            method: "thread/name/set",
-            params: ["threadId": threadId, "name": threadName])
-
-        var turnParams: [String: any Sendable] = [
-            "threadId": threadId,
-            "input": CodexTurn.textInput(instructions),
-            "approvalPolicy": "never",
-        ]
-        if let writableRoot = spec.writableRoot {
-            turnParams["sandboxPolicy"] = CodexTurn.workspaceWritePolicy(
-                writableRoot: writableRoot)
-        }
-        TurnOverrides.apply(model: spec.model, effort: spec.effort, to: &turnParams)
-        _ = try await client.request(method: "turn/start", params: turnParams)
+            method: "turn/start",
+            params: CodexTurn.startParams(
+                threadId: threadId, text: instructions, writableRoot: spec.writableRoot,
+                model: spec.model, effort: spec.effort))
         try await awaitTurnCompletion(threadId: threadId)
         return messages[threadId]
     }

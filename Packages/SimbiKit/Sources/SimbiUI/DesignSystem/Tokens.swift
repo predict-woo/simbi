@@ -98,15 +98,11 @@ enum Design {
 
     // MARK: Time
 
-    /// Compact human time for UI readouts: 0:07, 12:34, 1:02:03.
-    /// (`VTT.timestamp` is the wire format — never show it in UI.)
+    /// Compact human time for UI readouts: 0:07, 12:34, 1:02:03 — the
+    /// same rendering AI-notes timestamp citations use, deliberately
+    /// (`TimestampLink` owns it; `VTT.timestamp` is the wire format and
+    /// never shows in UI).
     static func time(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds.rounded())
-        let hours = total / 3600
-        let mins = (total % 3600) / 60
-        let secs = total % 60
-        return hours > 0
-            ? String(format: "%d:%02d:%02d", hours, mins, secs)
-            : String(format: "%d:%02d", mins, secs)
+        TimestampLink.render(seconds)
     }
 }

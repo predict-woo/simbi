@@ -173,7 +173,7 @@ struct InspectorFrontEndRow: View {
     private func bigValue(_ value: String, unit: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
-                .font(.system(size: 15, weight: .medium))
+                .font(.body.weight(.medium))
                 .monospacedDigit()
             Text(unit)
                 .font(.micro)

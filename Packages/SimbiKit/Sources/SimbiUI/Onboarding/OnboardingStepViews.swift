@@ -19,14 +19,7 @@ private struct StepScaffold<Content: View>: View {
     var body: some View {
         VStack(spacing: Design.rowGap) {
             Spacer()
-            Image(systemName: symbol)
-                .font(.system(size: 44, weight: .light))
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.title.weight(.semibold))
-            Text(subtitle)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            HeroHeader(symbol: symbol, title: title, subtitle: subtitle)
             content
                 .padding(.top, Design.rowGap)
             Spacer()
@@ -37,9 +30,9 @@ private struct StepScaffold<Content: View>: View {
 struct WelcomeStep: View {
     var body: some View {
         StepScaffold(
-            symbol: "waveform.and.mic",
-            title: "Welcome to Simbi",
-            subtitle: "Notes that record, transcribe, and think alongside you."
+            symbol: WelcomeCopy.symbol,
+            title: WelcomeCopy.title,
+            subtitle: WelcomeCopy.tagline
         ) {
             Text("A few quick steps set everything up.")
                 .font(.meta)
@@ -227,32 +220,14 @@ struct AgentsStep: View {
     }
 
     private func agentRow(_ role: AgentRole) -> some View {
-        let choice = Binding(
-            get: { model.draft[role] },
-            set: { model.draft[role] = $0 })
-        return HStack {
+        HStack {
             Text(role.title)
             Spacer()
-            Picker("Model", selection: choice.model) {
-                Text("Default").tag(String?.none)
-                ForEach(model.models.map(\.id), id: \.self) { id in
-                    Text(id).tag(String?.some(id))
-                }
-            }
-            .labelsHidden()
-            .fixedSize()
-            Picker("Effort", selection: choice.effort) {
-                Text("Default").tag(String?.none)
-                ForEach(
-                    CodexModels.efforts(for: choice.wrappedValue.model, in: model.models)
-                        .map(\.id),
-                    id: \.self
-                ) { id in
-                    Text(id).tag(String?.some(id))
-                }
-            }
-            .labelsHidden()
-            .fixedSize()
+            ModelEffortPickers(
+                choice: Binding(
+                    get: { model.draft[role] },
+                    set: { model.draft[role] = $0 }),
+                models: model.models)
         }
     }
 }

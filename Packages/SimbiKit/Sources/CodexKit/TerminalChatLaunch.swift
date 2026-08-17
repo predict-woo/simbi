@@ -37,16 +37,13 @@ public struct TerminalChatLaunch: Sendable, Equatable {
         homeRootURL: URL,
         installation: CodexInstallation = .standard
     ) -> TerminalChatLaunch {
-        TerminalChatLaunch(envVars: [
-            // Without CODEX_HOME the standalone binary uses a private home
-            // invisible to the ChatGPT app login (CodexInstallation).
-            "CODEX_HOME": installation.codexHomeURL.path,
-            "SIMBI_CODEX_BIN": installation.binaryURL.path,
-            "SIMBI_NOTE_DIR": noteFolderURL.standardizedFileURL.path,
-            "SIMBI_HOME_ROOT": homeRootURL.standardizedFileURL.path,
-            "SIMBI_CHAT_CONTEXT": developerInstructions(
-                noteFolderURL: noteFolderURL, homeRootURL: homeRootURL),
-        ])
+        TerminalChatLaunch(
+            envVars: installation.terminalLaunchEnvironment.merging([
+                "SIMBI_NOTE_DIR": noteFolderURL.standardizedFileURL.path,
+                "SIMBI_HOME_ROOT": homeRootURL.standardizedFileURL.path,
+                "SIMBI_CHAT_CONTEXT": developerInstructions(
+                    noteFolderURL: noteFolderURL, homeRootURL: homeRootURL),
+            ]) { _, new in new })
     }
 
     /// The developer message codex starts with: CHAT.md's template (user
