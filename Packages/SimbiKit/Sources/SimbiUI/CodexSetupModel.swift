@@ -1,7 +1,9 @@
+import AppKit
 import CodexKit
 import Foundation
 import Observation
 import SimbiKit
+import SwiftUI
 
 /// Live Codex-connection state for the welcome pane's setup card.
 /// Polls two cheap file checks (the bundled binary and `~/.codex/auth.json`)
@@ -63,5 +65,28 @@ final class CodexSetupModel {
     private static func previewState() -> CodexSetupState? {
         guard let raw = Flags.uiPreviewCodex else { return nil }
         return CodexSetupState(rawValue: raw)
+    }
+}
+
+/// The setup state's one call to action — Get ChatGPT (the download page)
+/// or Open ChatGPT — shared by the welcome pane's card and the onboarding
+/// Codex step; nothing once connected. Callers style it (`buttonStyle`,
+/// `tint`) to fit their surface.
+struct CodexSetupActionButton: View {
+    let state: CodexSetupState
+
+    var body: some View {
+        switch state {
+        case .notInstalled:
+            Button("Get ChatGPT") {
+                NSWorkspace.shared.open(CodexInstallation.downloadURL)
+            }
+        case .signedOut:
+            Button("Open ChatGPT") {
+                NSWorkspace.shared.open(CodexInstallation.standard.appBundleURL)
+            }
+        case .connected:
+            EmptyView()
+        }
     }
 }

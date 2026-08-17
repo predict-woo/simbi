@@ -38,6 +38,18 @@ public struct CodexInstallation: Sendable, Equatable {
         isBinaryInstalled && loadAuth() != nil
     }
 
+    /// Where "Get ChatGPT" sends the user.
+    public static let downloadURL = URL(string: "https://chatgpt.com/download")!
+
+    /// The ChatGPT app bundle the codex binary ships inside — the
+    /// "Open ChatGPT" target.
+    public var appBundleURL: URL {
+        binaryURL
+            .deletingLastPathComponent()  // Resources
+            .deletingLastPathComponent()  // Contents
+            .deletingLastPathComponent()  // ChatGPT.app
+    }
+
     /// Loads credentials, or `nil` if absent/not a ChatGPT login.
     public func loadAuth() -> CodexAuth? {
         try? CodexAuth.load(from: authFileURL)

@@ -39,15 +39,11 @@ struct SidebarView: View {
         .contextMenu { node in
             contextMenu(for: node)
         }
-        .alert("Rename", isPresented: renameAlertPresented) {
-            TextField("Name", text: $renameText)
-            Button("Rename") {
-                if let target = renameTarget, !renameText.isEmpty {
-                    model.rename(target.url, to: renameText)
-                }
-                renameTarget = nil
+        .renameAlert(isPresented: renameAlertPresented, name: $renameText) { name in
+            if let target = renameTarget {
+                model.rename(target.url, to: name)
             }
-            Button("Cancel", role: .cancel) { renameTarget = nil }
+            renameTarget = nil
         }
     }
 

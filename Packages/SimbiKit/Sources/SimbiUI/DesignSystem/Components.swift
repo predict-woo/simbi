@@ -111,6 +111,24 @@ struct MeterBar: View {
 }
 
 extension View {
+    /// The Rename dialog shared by the toolbar-title click and the
+    /// sidebar's context menu: a name field, Rename (ignored while
+    /// empty), Cancel.
+    func renameAlert(
+        isPresented: Binding<Bool>, name: Binding<String>,
+        onRename: @escaping (String) -> Void
+    ) -> some View {
+        alert("Rename", isPresented: isPresented) {
+            TextField("Name", text: name)
+            Button("Rename") {
+                if !name.wrappedValue.isEmpty {
+                    onRename(name.wrappedValue)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
     /// Floating-element chrome (docs/design-system.md § Components):
     /// Liquid Glass where the OS has it (macOS 26); further back, the
     /// closest material plus a hairline stroke and a soft drop shadow so

@@ -95,23 +95,9 @@ private struct CodexSetupCard: View {
         }
     }
 
-    @ViewBuilder
     private var actionButton: some View {
-        switch state {
-        case .notInstalled:
-            Button("Get ChatGPT") {
-                NSWorkspace.shared.open(URL(string: "https://chatgpt.com/download")!)
-            }
+        CodexSetupActionButton(state: state)
             .buttonStyle(.borderedProminent)
             .tint(.statusWarning)
-        case .signedOut:
-            Button("Open ChatGPT") {
-                NSWorkspace.shared.open(URL(filePath: "/Applications/ChatGPT.app"))
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.statusWarning)
-        case .connected:
-            EmptyView()
-        }
     }
 }

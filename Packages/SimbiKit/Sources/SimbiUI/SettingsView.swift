@@ -142,17 +142,11 @@ private struct GeneralSettingsPane: View {
     /// Directory picker for the next home folder. The choice is only
     /// proposed here; the relaunch alert persists or discards it.
     private func chooseHomeFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use Folder"
-        panel.message = "Choose the folder Simbi keeps its notes in."
-        panel.directoryURL = SimbiHome().rootURL.deletingLastPathComponent()
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let picked = url.standardizedFileURL
-        guard picked != SimbiHome.activeRootURL else { return }
+        guard
+            let picked = NotesFolderPicker.choose(
+                startingAt: SimbiHome().rootURL.deletingLastPathComponent()),
+            picked != SimbiHome.activeRootURL
+        else { return }
         proposedRootURL = picked
     }
 

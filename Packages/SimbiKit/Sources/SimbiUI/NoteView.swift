@@ -102,14 +102,8 @@ struct NoteView: View {
                 renameDialogShown = true
             }
         )
-        .alert("Rename", isPresented: $renameDialogShown) {
-            TextField("Name", text: $renameText)
-            Button("Rename") {
-                if !renameText.isEmpty {
-                    renameNote(renameText)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
+        .renameAlert(isPresented: $renameDialogShown, name: $renameText) { name in
+            renameNote(name)
         }
         .toolbar {
             ToolbarItem {

@@ -81,17 +81,11 @@ struct FolderStep: View {
     }
 
     private func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.prompt = "Use Folder"
-        panel.message = "Choose the folder Simbi keeps its notes in."
-        panel.directoryURL = model.draft.rootURL.deletingLastPathComponent()
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let picked = url.standardizedFileURL
-        guard FileManager.default.isWritableFile(atPath: picked.path) else { return }
+        guard
+            let picked = NotesFolderPicker.choose(
+                startingAt: model.draft.rootURL.deletingLastPathComponent()),
+            FileManager.default.isWritableFile(atPath: picked.path)
+        else { return }
         model.draft.rootURL = picked
     }
 }
@@ -185,19 +179,12 @@ struct CodexStep: View {
             StatusDot(color: model.codexSetup.state == .connected ? .statusOK : .statusWarning)
             Text(message)
             Spacer()
-            switch model.codexSetup.state {
-            case .notInstalled:
-                Button("Get ChatGPT") {
-                    NSWorkspace.shared.open(URL(string: "https://chatgpt.com/download")!)
-                }
-            case .signedOut:
-                Button("Open ChatGPT") {
-                    NSWorkspace.shared.open(URL(filePath: "/Applications/ChatGPT.app"))
-                }
-            case .connected:
+            if model.codexSetup.state == .connected {
                 Label("Connected", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(Color.statusOK)
                     .font(.metaSemibold)
+            } else {
+                CodexSetupActionButton(state: model.codexSetup.state)
             }
         }
         .padding(Design.paneInset)
