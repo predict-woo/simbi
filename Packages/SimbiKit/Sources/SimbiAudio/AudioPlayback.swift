@@ -37,10 +37,7 @@ public final class AudioPlayback: @unchecked Sendable {
 
     public init(fileURL: URL, manualRenderingForTest: Bool = false) throws {
         self.fileURL = fileURL
-        guard
-            let format = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: Double(OpusWebMFormat.sampleRate), channels: 1, interleaved: false)
+        guard let format = AudioResampling.pipelineFormat
         else { throw OpusWebMError.decoderCreateFailed(0) }
         self.format = format
         engine.attach(node)

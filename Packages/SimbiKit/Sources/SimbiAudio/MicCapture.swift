@@ -3,8 +3,8 @@ import Foundation
 
 /// Microphone capture (SPEC.md §3.1): AVAudioEngine input-node tap,
 /// converted to the pipeline format (16 kHz mono Float32) and delivered as
-/// an AsyncStream of sample batches. System-audio capture and mixing arrive
-/// in M6; until then the mic stream IS the mixed stream.
+/// an AsyncStream of sample batches. `MixedCapture` mixes this stream with
+/// the system-audio tap's.
 public final class MicCapture: @unchecked Sendable {
     public enum CaptureError: Error {
         case converterUnavailable
@@ -37,10 +37,7 @@ public final class MicCapture: @unchecked Sendable {
         }
         let inputFormat = input.outputFormat(forBus: 0)
         guard
-            let targetFormat = AVAudioFormat(
-                commonFormat: .pcmFormatFloat32,
-                sampleRate: Double(OpusWebMFormat.sampleRate),
-                channels: 1, interleaved: false),
+            let targetFormat = AudioResampling.pipelineFormat,
             let converter = AVAudioConverter(from: inputFormat, to: targetFormat)
         else {
             throw CaptureError.converterUnavailable
@@ -52,28 +49,9 @@ public final class MicCapture: @unchecked Sendable {
         input.installTap(
             onBus: 0, bufferSize: 1024, format: inputFormat
         ) { [weak self] buffer, _ in
-            guard let self else { return }
-            let ratio = targetFormat.sampleRate / inputFormat.sampleRate
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
-            guard
-                let converted = AVAudioPCMBuffer(
-                    pcmFormat: targetFormat, frameCapacity: capacity)
+            guard let self,
+                let samples = AudioResampling.convert(buffer, using: converter, to: targetFormat)
             else { return }
-            var fed = false
-            var conversionError: NSError?
-            converter.convert(to: converted, error: &conversionError) { _, status in
-                if fed {
-                    status.pointee = .noDataNow
-                    return nil
-                }
-                fed = true
-                status.pointee = .haveData
-                return buffer
-            }
-            guard conversionError == nil, converted.frameLength > 0,
-                let channel = converted.floatChannelData?[0]
-            else { return }
-            let samples = Array(UnsafeBufferPointer(start: channel, count: Int(converted.frameLength)))
             self.continuation?.yield(samples)
         }
 

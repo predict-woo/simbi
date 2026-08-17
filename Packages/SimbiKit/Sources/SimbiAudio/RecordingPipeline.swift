@@ -497,23 +497,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         try state.saveRecording(noteFolder: noteFolderURL)
 
         // 4. Re-enqueue pending uploads in cueIndex order.
-        let pendingIndices =
-            ((try? FileManager.default.contentsOfDirectory(
-                at: pendingDirURL, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension == "json" }
-            .compactMap { Int($0.deletingPathExtension().lastPathComponent) }
-            .sorted()
-        for cueIndex in pendingIndices {
-            let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
-            guard let data = try? Data(contentsOf: jsonURL),
-                let sidecar = try? JSONDecoder().decode(PendingSegment.self, from: data)
-            else { continue }
-            outbox.reserveCue(
-                index: sidecar.cueIndex, start: sidecar.startSec, end: sidecar.endSec,
-                speaker: "Speaker \(sidecar.speaker + 1)",
-                continuation: sidecar.continuation)
-            enqueueUpload(sidecar.cueIndex)
-        }
+        _ = reenqueuePendingSegments()
 
         // 5. Close the unfinished session in the transcript.
         try outbox.append(
@@ -523,7 +507,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
     }
 }
 
-// MARK: - Upload workers (§9.2, stub in M2)
+// MARK: - Upload workers (§9.2)
 
 extension RecordingPipeline {
     private func enqueueUpload(_ cueIndex: Int) {

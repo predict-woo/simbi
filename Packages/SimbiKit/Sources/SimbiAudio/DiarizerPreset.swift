@@ -5,10 +5,6 @@ import Foundation
 /// geometry as `fastV2_1` but a 188-frame FIFO — FluidAudio's best-DER
 /// streaming preset) and the derived timing constants the cut-point engine
 /// builds on (docs/recording-algorithm.md §0–1).
-///
-/// M0 scope: this target exists to prove the FluidAudio dependency resolves
-/// and the API surface the algorithm guide relies on is real. The pipeline
-/// lands in M2.
 public enum DiarizerPreset {
     public static let config = SortformerConfig.balancedV2_1
 

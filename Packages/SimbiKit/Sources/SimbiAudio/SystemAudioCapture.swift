@@ -81,10 +81,7 @@ public final class SystemAudioCapture: @unchecked Sendable {
                 throw CaptureError.tapFormatUnavailable(formatStatus)
             }
             guard let tapFormat = AVAudioFormat(streamDescription: &streamDescription),
-                let targetFormat = AVAudioFormat(
-                    commonFormat: .pcmFormatFloat32,
-                    sampleRate: Double(OpusWebMFormat.sampleRate),
-                    channels: 1, interleaved: false),
+                let targetFormat = AudioResampling.pipelineFormat,
                 let converter = AVAudioConverter(from: tapFormat, to: targetFormat)
             else { throw CaptureError.converterUnavailable }
 
@@ -137,8 +134,8 @@ public final class SystemAudioCapture: @unchecked Sendable {
         }
     }
 
-    /// Converts one IO cycle's tap buffers to 16 kHz mono and yields them —
-    /// same conversion pattern the mic tap uses (MicCapture).
+    /// Converts one IO cycle's tap buffers to 16 kHz mono and yields them
+    /// (AudioResampling — the same path the mic tap uses).
     private func deliver(
         _ inputData: UnsafePointer<AudioBufferList>, tapFormat: AVAudioFormat,
         converter: AVAudioConverter, targetFormat: AVAudioFormat
@@ -146,29 +143,10 @@ public final class SystemAudioCapture: @unchecked Sendable {
         guard
             let buffer = AVAudioPCMBuffer(
                 pcmFormat: tapFormat, bufferListNoCopy: inputData, deallocator: nil),
-            buffer.frameLength > 0
+            buffer.frameLength > 0,
+            let samples = AudioResampling.convert(buffer, using: converter, to: targetFormat)
         else { return }
-        let ratio = targetFormat.sampleRate / tapFormat.sampleRate
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 16
-        guard
-            let converted = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity)
-        else { return }
-        var fed = false
-        var conversionError: NSError?
-        converter.convert(to: converted, error: &conversionError) { _, status in
-            if fed {
-                status.pointee = .noDataNow
-                return nil
-            }
-            fed = true
-            status.pointee = .haveData
-            return buffer
-        }
-        guard conversionError == nil, converted.frameLength > 0,
-            let channel = converted.floatChannelData?[0]
-        else { return }
-        continuation?.yield(
-            Array(UnsafeBufferPointer(start: channel, count: Int(converted.frameLength))))
+        continuation?.yield(samples)
     }
 
     /// Stops IO and tears down the aggregate device and tap. Safe to call
