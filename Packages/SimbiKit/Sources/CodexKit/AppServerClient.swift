@@ -421,8 +421,9 @@ public actor AppServerClient {
         return try await withCheckedThrowingContinuation { continuation in
             pending[id] = continuation
             Task {
+                // Inherits actor isolation, so failPending needs no await.
                 do { try await self.write(payload) } catch {
-                    await self.failPending(id: id, with: error)
+                    self.failPending(id: id, with: error)
                 }
             }
         }
