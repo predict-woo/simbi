@@ -58,6 +58,17 @@ public enum SidebarOrder {
         return listed + nodes.filter { rank[$0.name] == nil }
     }
 
+    /// Pins `name` to the top of its folder's order, creating the order
+    /// file when the folder had none — unlisted siblings keep their
+    /// alphabetical order below (`apply`). New notes go through this so
+    /// they appear first instead of at their alphabetical slot.
+    public static func prepend(_ name: String, in folder: URL) {
+        var names = read(in: folder)
+        names.removeAll { $0 == name }
+        names.insert(name, at: 0)
+        write(names, in: folder)
+    }
+
     /// Keeps a renamed item's manual position, if it had one.
     public static func renamed(from oldName: String, to newName: String, in folder: URL) {
         var names = read(in: folder)

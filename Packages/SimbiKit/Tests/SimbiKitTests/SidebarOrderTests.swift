@@ -43,6 +43,24 @@ struct SidebarOrderTests {
         #expect(SidebarOrder.apply(to: defaultOrder, in: folder).map(\.name) == ["c", "a", "b", "d"])
     }
 
+    @Test("prepend pins a name first, creating the order file if needed")
+    func prepend() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        // No order file yet: prepend creates one holding just this name.
+        SidebarOrder.prepend("new", in: folder)
+        #expect(SidebarOrder.read(in: folder) == ["new"])
+
+        SidebarOrder.write(["a", "b"], in: folder)
+        SidebarOrder.prepend("new", in: folder)
+        #expect(SidebarOrder.read(in: folder) == ["new", "a", "b"])
+
+        // An already-listed name moves to the front instead of duplicating.
+        SidebarOrder.prepend("b", in: folder)
+        #expect(SidebarOrder.read(in: folder) == ["b", "new", "a"])
+    }
+
     @Test("rename keeps the manual position, removal drops the name")
     func renameAndRemove() throws {
         let folder = try makeTempFolder()

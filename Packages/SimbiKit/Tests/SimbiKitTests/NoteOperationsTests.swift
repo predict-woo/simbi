@@ -21,6 +21,16 @@ struct NoteOperationsTests {
         }
     }
 
+    @Test("createNote pins the new note to the top of its parent's sidebar order")
+    func createNotePinsToTop() throws {
+        try withTempRoot { root in
+            try NoteOperations.createNote(named: "Alpha", in: root)
+            try NoteOperations.createNote(named: "Zulu", in: root)
+            try NoteOperations.createNote(named: "New Note", in: root)
+            #expect(FileTreeScanner.scan(root: root).map(\.name) == ["New Note", "Zulu", "Alpha"])
+        }
+    }
+
     @Test("availableName counts up without treating dots as extensions")
     func availableNameCountsUp() throws {
         try withTempRoot { root in
