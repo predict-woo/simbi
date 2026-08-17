@@ -179,18 +179,9 @@ private struct CodexSettingsPane: View {
     var body: some View {
         Form {
             Section("Models") {
-                modelRow(
-                    "Transcript fixer", model: $settings.fixerModel,
-                    effort: $settings.fixerEffort)
-                modelRow(
-                    "File converter", model: $settings.converterModel,
-                    effort: $settings.converterEffort)
-                modelRow(
-                    "AI notes", model: $settings.summaryModel,
-                    effort: $settings.summaryEffort)
-                modelRow(
-                    "Note title", model: $settings.titleModel,
-                    effort: $settings.titleEffort)
+                ForEach(AgentRole.allCases) { role in
+                    modelRow(role)
+                }
                 if modelsUnavailable {
                     Text("Model list unavailable. Is the ChatGPT app installed?")
                         .font(.caption)
@@ -247,15 +238,16 @@ private struct CodexSettingsPane: View {
         }
     }
 
-    /// One feature's overrides: its model and, beside it, the reasoning
+    /// One role's overrides: its model and, beside it, the reasoning
     /// effort — whose options follow the model chosen in the same row.
-    private func modelRow(
-        _ title: String, model: Binding<String?>, effort: Binding<String?>
-    ) -> some View {
-        LabeledContent(title) {
+    private func modelRow(_ role: AgentRole) -> some View {
+        let choice = Binding(
+            get: { settings[role] },
+            set: { settings[role] = $0 })
+        return LabeledContent(role.title) {
             HStack(spacing: 8) {
-                modelPicker(selection: model)
-                effortPicker(modelId: model.wrappedValue, selection: effort)
+                modelPicker(selection: choice.model)
+                effortPicker(modelId: choice.wrappedValue.model, selection: choice.effort)
             }
         }
     }

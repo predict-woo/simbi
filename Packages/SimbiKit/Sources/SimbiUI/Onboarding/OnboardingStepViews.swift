@@ -224,18 +224,9 @@ struct AgentsStep: View {
             subtitle: "Pick a model and effort for each agent, or keep the defaults."
         ) {
             VStack(spacing: Design.rowGap) {
-                agentRow(
-                    "Transcript fixer", model: $model.draft.fixerModel,
-                    effort: $model.draft.fixerEffort)
-                agentRow(
-                    "File converter", model: $model.draft.converterModel,
-                    effort: $model.draft.converterEffort)
-                agentRow(
-                    "AI notes", model: $model.draft.summaryModel,
-                    effort: $model.draft.summaryEffort)
-                agentRow(
-                    "Note title", model: $model.draft.titleModel,
-                    effort: $model.draft.titleEffort)
+                ForEach(AgentRole.allCases) { role in
+                    agentRow(role)
+                }
             }
             .padding(Design.paneInset)
             .card()
@@ -249,13 +240,14 @@ struct AgentsStep: View {
         .task { await model.fetchModels() }
     }
 
-    private func agentRow(
-        _ title: String, model modelBinding: Binding<String?>, effort: Binding<String?>
-    ) -> some View {
-        HStack {
-            Text(title)
+    private func agentRow(_ role: AgentRole) -> some View {
+        let choice = Binding(
+            get: { model.draft[role] },
+            set: { model.draft[role] = $0 })
+        return HStack {
+            Text(role.title)
             Spacer()
-            Picker("Model", selection: modelBinding) {
+            Picker("Model", selection: choice.model) {
                 Text("Default").tag(String?.none)
                 ForEach(model.models.map(\.id), id: \.self) { id in
                     Text(id).tag(String?.some(id))
@@ -263,10 +255,11 @@ struct AgentsStep: View {
             }
             .labelsHidden()
             .fixedSize()
-            Picker("Effort", selection: effort) {
+            Picker("Effort", selection: choice.effort) {
                 Text("Default").tag(String?.none)
                 ForEach(
-                    CodexModels.efforts(for: modelBinding.wrappedValue, in: model.models).map(\.id),
+                    CodexModels.efforts(for: choice.wrappedValue.model, in: model.models)
+                        .map(\.id),
                     id: \.self
                 ) { id in
                     Text(id).tag(String?.some(id))

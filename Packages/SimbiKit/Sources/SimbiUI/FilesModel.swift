@@ -55,10 +55,10 @@ final class FilesModel {
 
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
-        let settings = SimbiSettings.current()
+        let choice = SimbiSettings.current()[.converter]
         self.converter = FileConverter(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-            model: settings.converterModel, effort: settings.converterEffort,
+            model: choice.model, effort: choice.effort,
             anydocPath: FileConverter.bundledAnydocPath,
             shouldArchiveOnJobEnd: { threadId in
                 !(await ThreadViewerManager.shared.isOpen(threadId: threadId))

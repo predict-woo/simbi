@@ -184,11 +184,11 @@ public final class RecordingController {
                     && noteState.fixerInstructionsHash
                         == AgentInstructions.fingerprint(fixerInstructions)
                 ? noteState.fixerThreadId : nil
-            let settings = SimbiSettings.current()
+            let choice = SimbiSettings.current()[.fixer]
             let fixer = TranscriptFixer(
                 noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                savedThreadId: savedThreadId, model: settings.fixerModel,
-                effort: settings.fixerEffort,
+                savedThreadId: savedThreadId, model: choice.model,
+                effort: choice.effort,
                 instructions: fixerInstructions)
             let activity = fixerActivity
             await fixer.setEventSink { event in

@@ -37,8 +37,8 @@ import Testing
         defer { try? FileManager.default.removeItem(at: root) }
 
         var draft = OnboardingState.Draft(rootURL: root)
-        draft.fixerModel = "gpt-5.2-codex"
-        draft.summaryEffort = "high"
+        draft[.fixer].model = "gpt-5.2-codex"
+        draft[.summary].effort = "high"
         try OnboardingState.apply(draft, defaults: defaults)
 
         // Non-default root persisted as the override.

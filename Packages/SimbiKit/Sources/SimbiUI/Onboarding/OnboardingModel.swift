@@ -52,14 +52,9 @@ final class OnboardingModel {
         if let settings = try? SimbiSettings.load(
             from: SimbiHome(rootURL: draft.rootURL).settingsFileURL)
         {
-            draft.fixerModel = settings.fixerModel
-            draft.fixerEffort = settings.fixerEffort
-            draft.converterModel = settings.converterModel
-            draft.converterEffort = settings.converterEffort
-            draft.summaryModel = settings.summaryModel
-            draft.summaryEffort = settings.summaryEffort
-            draft.titleModel = settings.titleModel
-            draft.titleEffort = settings.titleEffort
+            for role in AgentRole.allCases {
+                draft[role] = settings[role]
+            }
         }
         // The big download starts the moment the wizard exists, so the
         // download step near the end is usually already green. Preview
@@ -124,14 +119,9 @@ final class OnboardingModel {
             // path instead of the first-run bootstrap.
             let home = SimbiHome()
             var settings = SimbiSettings.current(home: home)
-            settings.fixerModel = draft.fixerModel
-            settings.fixerEffort = draft.fixerEffort
-            settings.converterModel = draft.converterModel
-            settings.converterEffort = draft.converterEffort
-            settings.summaryModel = draft.summaryModel
-            settings.summaryEffort = draft.summaryEffort
-            settings.titleModel = draft.titleModel
-            settings.titleEffort = draft.titleEffort
+            for role in AgentRole.allCases {
+                settings[role] = draft[role]
+            }
             try? settings.save(to: home.settingsFileURL)
             completed = true
             OnboardingPresenter.shared.dismiss()

@@ -1,5 +1,36 @@
 import Foundation
 
+/// The four Codex worker roles that take per-feature model/effort
+/// overrides (SPEC.md §5.5). One source for the row order and labels the
+/// Settings pane and the onboarding wizard render.
+public enum AgentRole: String, CaseIterable, Identifiable, Sendable {
+    case fixer, converter, summary, title
+
+    public var id: String { rawValue }
+
+    /// Row label; matches `AgentInstructions.title` vocabulary.
+    public var title: String {
+        switch self {
+        case .fixer: "Transcript fixer"
+        case .converter: "File converter"
+        case .summary: "AI notes"
+        case .title: "Note title"
+        }
+    }
+}
+
+/// One role's override pair. `nil` means "Default" (don't override the
+/// thread's model, or the model's own effort).
+public struct ModelChoice: Equatable, Sendable {
+    public var model: String?
+    public var effort: String?
+
+    public init(model: String? = nil, effort: String? = nil) {
+        self.model = model
+        self.effort = effort
+    }
+}
+
 /// App-global settings, stored as `~/Simbi/.simbi/settings.json` (SPEC.md §2.1, §5.5).
 ///
 /// Model fields are `nil` for "Default" (don't override the thread's model).
@@ -104,6 +135,35 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
     /// as the defaults.
     public static func current(home: SimbiHome = SimbiHome()) -> SimbiSettings {
         (try? load(from: home.settingsFileURL)) ?? .default
+    }
+
+    /// Role-keyed access to the per-feature override pairs; the flat
+    /// stored fields above stay the settings.json wire format.
+    public subscript(role: AgentRole) -> ModelChoice {
+        get {
+            switch role {
+            case .fixer: ModelChoice(model: fixerModel, effort: fixerEffort)
+            case .converter: ModelChoice(model: converterModel, effort: converterEffort)
+            case .summary: ModelChoice(model: summaryModel, effort: summaryEffort)
+            case .title: ModelChoice(model: titleModel, effort: titleEffort)
+            }
+        }
+        set {
+            switch role {
+            case .fixer:
+                fixerModel = newValue.model
+                fixerEffort = newValue.effort
+            case .converter:
+                converterModel = newValue.model
+                converterEffort = newValue.effort
+            case .summary:
+                summaryModel = newValue.model
+                summaryEffort = newValue.effort
+            case .title:
+                titleModel = newValue.model
+                titleEffort = newValue.effort
+            }
+        }
     }
 
     public func save(to url: URL) throws {

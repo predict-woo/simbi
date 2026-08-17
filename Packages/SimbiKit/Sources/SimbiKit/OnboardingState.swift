@@ -24,17 +24,16 @@ public enum OnboardingState {
     /// mid-wizard leaves no app state behind.
     public struct Draft: Sendable, Equatable {
         public var rootURL: URL
-        public var fixerModel: String?
-        public var fixerEffort: String?
-        public var converterModel: String?
-        public var converterEffort: String?
-        public var summaryModel: String?
-        public var summaryEffort: String?
-        public var titleModel: String?
-        public var titleEffort: String?
+        /// Per-role model/effort choices; absent roles read as "Default".
+        public var choices: [AgentRole: ModelChoice] = [:]
 
         public init(rootURL: URL = SimbiHome.defaultRootURL) {
             self.rootURL = rootURL
+        }
+
+        public subscript(role: AgentRole) -> ModelChoice {
+            get { choices[role] ?? ModelChoice() }
+            set { choices[role] = newValue }
         }
     }
 
@@ -47,14 +46,9 @@ public enum OnboardingState {
         let home = SimbiHome(rootURL: draft.rootURL)
         try home.bootstrap()
         var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
-        settings.fixerModel = draft.fixerModel
-        settings.fixerEffort = draft.fixerEffort
-        settings.converterModel = draft.converterModel
-        settings.converterEffort = draft.converterEffort
-        settings.summaryModel = draft.summaryModel
-        settings.summaryEffort = draft.summaryEffort
-        settings.titleModel = draft.titleModel
-        settings.titleEffort = draft.titleEffort
+        for role in AgentRole.allCases {
+            settings[role] = draft[role]
+        }
         try settings.save(to: home.settingsFileURL)
     }
 

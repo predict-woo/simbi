@@ -44,10 +44,10 @@ public final class TitleController {
 
     init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
-        let settings = SimbiSettings.current()
+        let choice = SimbiSettings.current()[.title]
         self.titler = NoteTitler(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-            model: settings.titleModel, effort: settings.titleEffort)
+            model: choice.model, effort: choice.effort)
     }
 
     /// Same check as the note view's degraded banner.
