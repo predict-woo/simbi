@@ -29,6 +29,13 @@ public final class SummaryController {
     /// AI Notes document (rewritten on disk by the summarizer thread)
     /// when it changes.
     private(set) var generationCount = 0
+    /// True while a run that began with no summary.md on disk is in
+    /// flight. This — not the watcher-backed summaryExists — is what keeps
+    /// the first-generation placeholder up: the thread writes summary.md
+    /// mid-turn, seconds before the turn completes and generationCount
+    /// reloads the editor, so a placeholder keyed to the file's existence
+    /// dropped early and flashed an empty editor across that gap.
+    private(set) var firstGenerationInFlight = false
 
     let noteFolderURL: URL
     private let summarizer: NoteSummarizer
@@ -140,12 +147,11 @@ public final class SummaryController {
                 Log.ui.error("deleting summary.md for fresh generation failed: \(error)")
             }
         }
-        status = .working
+        beginRun()
         Task {
             do {
                 try await summarizer.generate()
-                generationCount += 1
-                status = .idle
+                finishRun()
             } catch {
                 // The banner shows a fixed message; keep the real error
                 // (including a thread-reported FAILED reason) in the log
@@ -159,8 +165,27 @@ public final class SummaryController {
                         "summary generation failed for \(noteFolderURL.lastPathComponent):"
                             + " \(error)")
                 }
-                status = .failed("AI notes couldn't be updated.")
+                finishRun(failedWith: "AI notes couldn't be updated.")
             }
+        }
+    }
+
+    /// The synchronous state flips that bracket a run, split from
+    /// generate() so tests can drive a full run's transitions without a
+    /// live app-server. First-ness is read from disk here, after any
+    /// fresh-mode delete, so a regenerate counts as a first generation.
+    func beginRun() {
+        firstGenerationInFlight = !FileManager.default.fileExists(atPath: summaryFileURL.path)
+        status = .working
+    }
+
+    func finishRun(failedWith message: String? = nil) {
+        firstGenerationInFlight = false
+        if let message {
+            status = .failed(message)
+        } else {
+            generationCount += 1
+            status = .idle
         }
     }
 

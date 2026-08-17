@@ -246,7 +246,10 @@ struct NoteView: View {
                 action: recorder.status == .idle ? { summary.retry() } : nil
             )
         }
-        if (summary.status == .working && !summary.summaryExists) || Flags.uiPreviewSummaryLoading {
+        // Keyed to the run, not summary.md's existence: the thread writes
+        // the file mid-turn, so a file-keyed placeholder dropped seconds
+        // before generationCount reloaded the editor — an empty flash.
+        if summary.firstGenerationInFlight || Flags.uiPreviewSummaryLoading {
             firstGenerationPlaceholder
         } else {
             MarkdownEditor(
