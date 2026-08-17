@@ -14,7 +14,7 @@ public final class FileTreeWatcher {
     }
 
     private let stream: FSEventStreamRef
-    private let queue = DispatchQueue(label: "ac.clap.simbi.file-tree-watcher")
+    private let queue = DispatchQueue(label: "app.getsimbi.mac.file-tree-watcher")
 
     public init?(url: URL, latency: TimeInterval = 0.3, onChange: @escaping @Sendable () -> Void) {
         let callback = Callback(onChange)

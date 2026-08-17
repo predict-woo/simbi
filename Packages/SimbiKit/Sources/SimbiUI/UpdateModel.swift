@@ -5,7 +5,7 @@ import SimbiKit
 extension Notification.Name {
     /// Posted when the last live capture stops. The update coordinator uses
     /// it to fire a relaunch it postponed mid-recording.
-    public static let simbiRecordingDidEnd = Notification.Name("ac.clap.simbi.recordingDidEnd")
+    public static let simbiRecordingDidEnd = Notification.Name("app.getsimbi.mac.recordingDidEnd")
 }
 
 /// "Is any note recording right now?", made observable.

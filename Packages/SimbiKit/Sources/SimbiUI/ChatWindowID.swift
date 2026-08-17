@@ -9,5 +9,5 @@ public enum ChatWindowTabbing {
         prefix + noteFolderURL.standardizedFileURL.path
     }
 
-    private static let prefix = "ac.clap.simbi.note-chat:"
+    private static let prefix = "app.getsimbi.mac.note-chat:"
 }

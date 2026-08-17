@@ -2,7 +2,7 @@
 # The app target is a thin shell; all logic lives in Packages/SimbiKit.
 name: Simbi
 options:
-  bundleIdPrefix: ac.clap
+  bundleIdPrefix: app.getsimbi
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
@@ -67,7 +67,7 @@ targets:
         basedOnDependencyAnalysis: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ac.clap.simbi
+        PRODUCT_BUNDLE_IDENTIFIER: app.getsimbi.mac
         SWIFT_VERSION: "6.0"
         # App/AppIcon.icon (Icon Composer bundle); actool renders the
         # Liquid Glass icon on macOS 26 and a fallback .icns for older OSes.

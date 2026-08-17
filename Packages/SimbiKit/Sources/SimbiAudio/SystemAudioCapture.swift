@@ -38,7 +38,7 @@ public final class SystemAudioCapture: @unchecked Sendable {
     }
 
     private let options: Options
-    private let queue = DispatchQueue(label: "ac.clap.simbi.system-tap")
+    private let queue = DispatchQueue(label: "app.getsimbi.mac.system-tap")
     private var tapID = AudioObjectID(kAudioObjectUnknown)
     private var aggregateID = AudioObjectID(kAudioObjectUnknown)
     private var ioProcID: AudioDeviceIOProcID?
