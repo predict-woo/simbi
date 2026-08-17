@@ -72,15 +72,9 @@ final class FilesModel {
             })
         refresh()
         // Watch the note folder so external drops into files/ and converter
-        // output in context/ show up live — same pattern as TranscriptModel.
-        let (events, continuation) = AsyncStream.makeStream(of: Void.self)
-        watcher = FileTreeWatcher(url: noteFolderURL) {
-            continuation.yield()
-        }
-        Task { [weak self] in
-            for await _ in events {
-                self?.refresh()
-            }
+        // output in context/ show up live.
+        watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
+            self?.refresh()
         }
         Task { [weak self] in
             await CodexServices.appServer.addNotificationHandler { [weak self] method, params in

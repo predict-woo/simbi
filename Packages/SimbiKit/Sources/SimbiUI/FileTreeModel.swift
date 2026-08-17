@@ -15,7 +15,6 @@ public final class FileTreeModel {
     public private(set) var bootstrapError: Error?
 
     private var watcher: FileTreeWatcher?
-    private var watchTask: Task<Void, Never>?
 
     public init(home: SimbiHome = SimbiHome()) {
         self.home = home
@@ -34,20 +33,12 @@ public final class FileTreeModel {
         }
         refresh()
 
-        let (changes, continuation) = AsyncStream.makeStream(of: Void.self)
-        watcher = FileTreeWatcher(url: home.rootURL) {
-            continuation.yield()
-        }
-        watchTask = Task { [weak self] in
-            for await _ in changes {
-                self?.refresh()
-            }
+        watcher = FileTreeWatcher.observing(url: home.rootURL) { [weak self] in
+            self?.refresh()
         }
     }
 
     public func stop() {
-        watchTask?.cancel()
-        watchTask = nil
         watcher = nil
     }
 

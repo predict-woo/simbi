@@ -21,17 +21,8 @@ final class TranscriptModel {
         self.fileURL = VTT.fileURL(noteFolder: noteFolderURL)
         refresh()
         // Watch the note folder (the file may not exist yet at note-open).
-        // When the model deallocs, the watcher releases the continuation,
-        // the stream finishes, and the task ends — same pattern as
-        // FileTreeModel.
-        let (events, continuation) = AsyncStream.makeStream(of: Void.self)
-        watcher = FileTreeWatcher(url: noteFolderURL) {
-            continuation.yield()
-        }
-        Task { [weak self] in
-            for await _ in events {
-                self?.refresh()
-            }
+        watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
+            self?.refresh()
         }
     }
 

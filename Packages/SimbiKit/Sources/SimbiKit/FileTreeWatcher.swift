@@ -55,4 +55,30 @@ public final class FileTreeWatcher {
         FSEventStreamInvalidate(stream)
         FSEventStreamRelease(stream)  // context release callback frees Callback
     }
+
+    /// Watches `url` and delivers each coalesced change to `handler` on the
+    /// main actor — the stream-and-task plumbing every observing model used
+    /// to repeat. Hold the returned watcher for the watch's lifetime:
+    /// releasing it releases the internal stream's continuation, which
+    /// finishes the stream and ends the delivery task, so a `[weak self]`
+    /// handler leaks nothing.
+    public static func observing(
+        url: URL, latency: TimeInterval = 0.3,
+        handler: @escaping @MainActor () -> Void
+    ) -> FileTreeWatcher? {
+        let (events, continuation) = AsyncStream.makeStream(of: Void.self)
+        guard
+            let watcher = FileTreeWatcher(
+                url: url, latency: latency,
+                onChange: {
+                    continuation.yield()
+                })
+        else { return nil }
+        Task {
+            for await _ in events {
+                await handler()
+            }
+        }
+        return watcher
+    }
 }
