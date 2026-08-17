@@ -119,12 +119,11 @@ public final class RecordingController {
             noteFolderURL: noteFolderURL,
             transcriber: CodexTranscriber(),
             diarizer: SortformerStream())
-        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         self.hasRecording = state.sessionCount > 0 || state.activeSession != nil
         self.hasFixerThread = state.fixerThreadId != nil
         self.elapsed = TimeInterval(state.totalSamples) / 16000
-        let settings =
-            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+        let settings = SimbiSettings.current()
         self.micEnabled = settings.micEnabled
         self.micDeviceUID = settings.micDeviceUID
         self.systemAudioEnabled = settings.systemAudioEnabled
@@ -132,7 +131,7 @@ public final class RecordingController {
 
     private func persistSources() {
         let home = SimbiHome()
-        var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
+        var settings = SimbiSettings.current(home: home)
         settings.micEnabled = micEnabled
         settings.micDeviceUID = micDeviceUID
         settings.systemAudioEnabled = systemAudioEnabled
@@ -149,8 +148,8 @@ public final class RecordingController {
     /// live thread viewer. Fixer viewers never archive on close; the thread
     /// stays resumable with full context (spec 2026-08-09).
     func openFixerViewer() {
-        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
-        guard let threadId = state.fixerThreadId else { return }
+        guard let threadId = NoteRecordingState.current(noteFolder: noteFolderURL).fixerThreadId
+        else { return }
         ThreadViewerManager.shared.open(
             threadId: threadId,
             title: "Fixer: \(noteFolderURL.lastPathComponent)",
@@ -183,16 +182,15 @@ public final class RecordingController {
             // A thread created under older instructions — a contract
             // version bump or a user edit to FIXER.md — is retired; a
             // fresh thread with the current prompt starts instead.
-            let noteState = try? NoteRecordingState.load(noteFolder: noteFolderURL)
+            let noteState = NoteRecordingState.current(noteFolder: noteFolderURL)
             let fixerInstructions = AgentInstructions.fixer.resolve(
                 homeRootURL: SimbiHome().rootURL)
             let savedThreadId =
-                noteState?.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
-                    && noteState?.fixerInstructionsHash
+                noteState.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
+                    && noteState.fixerInstructionsHash
                         == AgentInstructions.fingerprint(fixerInstructions)
-                ? noteState?.fixerThreadId : nil
-            let settings =
-                (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+                ? noteState.fixerThreadId : nil
+            let settings = SimbiSettings.current()
             let fixer = TranscriptFixer(
                 noteFolderURL: noteFolderURL, client: CodexServices.appServer,
                 savedThreadId: savedThreadId, model: settings.fixerModel,
@@ -209,7 +207,7 @@ public final class RecordingController {
             // thread exists, the status stays .off, and the sparkles button
             // stays hidden (degraded state, SPEC.md §8).
             hasFixerThread =
-                ((try? NoteRecordingState.load(noteFolder: noteFolderURL))?.fixerThreadId) != nil
+                NoteRecordingState.current(noteFolder: noteFolderURL).fixerThreadId != nil
             if hasFixerThread {
                 fixerActivity.noteRecordingStarted()
             }

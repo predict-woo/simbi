@@ -32,6 +32,12 @@ public struct CodexInstallation: Sendable, Equatable {
         FileManager.default.isExecutableFile(atPath: binaryURL.path)
     }
 
+    /// Binary present AND credentials load — the one availability check
+    /// every degraded-state surface shares (SPEC.md §6).
+    public var isConnected: Bool {
+        isBinaryInstalled && loadAuth() != nil
+    }
+
     /// Loads credentials, or `nil` if absent/not a ChatGPT login.
     public func loadAuth() -> CodexAuth? {
         try? CodexAuth.load(from: authFileURL)

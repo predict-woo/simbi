@@ -18,7 +18,7 @@ final class TranscriptModel {
     private var watcher: FileTreeWatcher?
 
     init(noteFolderURL: URL) {
-        self.fileURL = noteFolderURL.appending(path: "transcript.vtt")
+        self.fileURL = VTT.fileURL(noteFolder: noteFolderURL)
         refresh()
         // Watch the note folder (the file may not exist yet at note-open).
         // When the model deallocs, the watcher releases the continuation,

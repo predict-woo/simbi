@@ -9,8 +9,7 @@ import SwiftUI
 /// tabs. This parent owns the single settings value (save-on-change) and
 /// the app-server model list; the panes are private views over bindings.
 public struct SettingsView: View {
-    @State private var settings: SimbiSettings =
-        (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+    @State private var settings: SimbiSettings = .current()
     @State private var models: [CodexModels.Model] = []
     @State private var modelsUnavailable = false
 

@@ -109,6 +109,12 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         noteFolder.appending(path: ".simbi/state.json")
     }
 
+    /// The note's state as stored right now; a missing or corrupt file
+    /// reads as a fresh state.
+    public static func current(noteFolder: URL) -> NoteRecordingState {
+        (try? load(noteFolder: noteFolder)) ?? NoteRecordingState()
+    }
+
     public static func load(noteFolder: URL) throws -> NoteRecordingState {
         let url = fileURL(noteFolder: noteFolder)
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -144,7 +150,7 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     {
         ioLock.lock()
         defer { ioLock.unlock() }
-        var state = (try? load(noteFolder: noteFolder)) ?? NoteRecordingState()
+        var state = current(noteFolder: noteFolder)
         mutate(&state)
         try state.save(noteFolder: noteFolder)
     }

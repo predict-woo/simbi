@@ -58,8 +58,7 @@ final class FilesModel {
 
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
-        let settings =
-            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+        let settings = SimbiSettings.current()
         self.converter = FileConverter(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: settings.converterModel, effort: settings.converterEffort,
@@ -98,7 +97,7 @@ final class FilesModel {
     /// the output file — done when context/<name>.md is non-empty, failed
     /// otherwise. App-owned jobs (activeJobs) keep their own bookkeeping.
     private func handleThreadEvent(method: String, params: Data) {
-        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         guard
             let effect = ConversionThreadEvents.effect(
                 method: method, params: params,
@@ -142,7 +141,7 @@ final class FilesModel {
     /// Right-click → View Codex Thread: attach a viewer terminal to the
     /// file's conversion thread (live-view spec §4).
     func openThreadViewer(_ name: String) {
-        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         guard let threadId = state.conversions[name]?.threadId else { return }
         ThreadViewerManager.shared.open(
             threadId: threadId, title: "Conversion: \(name)", noteFolderURL: noteFolderURL,
@@ -179,7 +178,7 @@ final class FilesModel {
             ((try? FileManager.default.contentsOfDirectory(atPath: filesURL.path)) ?? [])
             .filter { !$0.hasPrefix(".") }
             .sorted()
-        let state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         rows = names.map { name in
             let hasContext = FileManager.default.fileExists(
                 atPath: contextURL(for: name).path)

@@ -17,6 +17,25 @@ public enum VTTEntry: Equatable, Sendable {
 }
 
 public enum VTT {
+    /// A note's transcript file (SPEC.md §2.2 note-folder layout).
+    public static func fileURL(noteFolder: URL) -> URL {
+        noteFolder.appending(path: "transcript.vtt")
+    }
+
+    /// True when the note's transcript parses and contains at least one
+    /// cue — the "recording produced content" gate the auto-summary and
+    /// auto-title triggers share.
+    public static func transcriptHasCues(noteFolder: URL) -> Bool {
+        guard
+            let text = try? String(contentsOf: fileURL(noteFolder: noteFolder), encoding: .utf8),
+            let document = try? VTTParser.parse(text)
+        else { return false }
+        return document.entries.contains {
+            if case .cue = $0 { return true }
+            return false
+        }
+    }
+
     /// `HH:MM:SS.mmm`, milliseconds rounded (guide §1).
     public static func timestamp(_ seconds: TimeInterval) -> String {
         let totalMs = Int((seconds * 1000).rounded())

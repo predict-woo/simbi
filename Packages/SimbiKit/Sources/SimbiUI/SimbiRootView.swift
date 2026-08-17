@@ -242,7 +242,7 @@ private struct CodexStatusFooter: View {
     private let installation = CodexInstallation.standard
 
     var body: some View {
-        let available = installation.isBinaryInstalled && installation.loadAuth() != nil
+        let available = installation.isConnected
         Button {
             CodexStatusWindowManager.shared.open()
         } label: {

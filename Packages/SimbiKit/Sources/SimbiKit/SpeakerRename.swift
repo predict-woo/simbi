@@ -26,7 +26,7 @@ public enum SpeakerRename {
     /// Renames in the note's `transcript.vtt`, written atomically so the
     /// live renderer never sees a half-written file.
     public static func renameInFile(noteFolder: URL, from: String, to: String) throws {
-        let url = noteFolder.appending(path: "transcript.vtt")
+        let url = VTT.fileURL(noteFolder: noteFolder)
         let transcript = try String(contentsOf: url, encoding: .utf8)
         let renamed = try rename(transcript: transcript, from: from, to: to)
         try renamed.write(to: url, atomically: true, encoding: .utf8)

@@ -487,7 +487,7 @@ struct PlaybackBar: View {
     }
 
     private var transcriptURL: URL {
-        noteFolderURL.appending(path: "transcript.vtt")
+        VTT.fileURL(noteFolder: noteFolderURL)
     }
 
     /// Reads transcript.vtt from disk at click time (the file is the

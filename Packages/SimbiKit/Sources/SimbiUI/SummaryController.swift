@@ -40,8 +40,7 @@ public final class SummaryController {
 
     init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
-        let settings =
-            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+        let settings = SimbiSettings.current()
         self.summarizer = NoteSummarizer(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: settings.summaryModel, effort: settings.summaryEffort)
@@ -66,10 +65,9 @@ public final class SummaryController {
         FileManager.default.fileExists(atPath: summaryFileURL.path)
     }
 
-    /// Same two checks as the note view's degraded banner.
+    /// Same check as the note view's degraded banner.
     var codexAvailable: Bool {
-        CodexInstallation.standard.isBinaryInstalled
-            && CodexInstallation.standard.loadAuth() != nil
+        CodexInstallation.standard.isConnected
     }
 
     /// Degraded or empty recordings never auto-generate (spec §3); a run
@@ -84,7 +82,7 @@ public final class SummaryController {
 
     /// The recording controller's clean-stop hook.
     func recordingDidStop() {
-        let hasCues = transcriptHasCues()
+        let hasCues = VTT.transcriptHasCues(noteFolder: noteFolderURL)
         guard
             Self.shouldAutoGenerate(
                 transcriptHasCues: hasCues, codexAvailable: codexAvailable,
@@ -122,18 +120,6 @@ public final class SummaryController {
     func clearFailureOnClose() {
         if case .failed = status {
             status = .idle
-        }
-    }
-
-    private func transcriptHasCues() -> Bool {
-        guard
-            let text = try? String(
-                contentsOf: noteFolderURL.appending(path: "transcript.vtt"), encoding: .utf8),
-            let document = try? VTTParser.parse(text)
-        else { return false }
-        return document.entries.contains {
-            if case .cue = $0 { return true }
-            return false
         }
     }
 

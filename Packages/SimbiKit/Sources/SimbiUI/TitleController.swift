@@ -49,17 +49,15 @@ public final class TitleController {
 
     init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
-        let settings =
-            (try? SimbiSettings.load(from: SimbiHome().settingsFileURL)) ?? .default
+        let settings = SimbiSettings.current()
         self.titler = NoteTitler(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: settings.titleModel, effort: settings.titleEffort)
     }
 
-    /// Same two checks as the note view's degraded banner.
+    /// Same check as the note view's degraded banner.
     var codexAvailable: Bool {
-        CodexInstallation.standard.isBinaryInstalled
-            && CodexInstallation.standard.loadAuth() != nil
+        CodexInstallation.standard.isConnected
     }
 
     /// Quiet means no in-flight job holds paths into the note folder:
@@ -87,7 +85,8 @@ public final class TitleController {
         guard
             Self.shouldAutoGenerate(
                 titleIsDefault: NoteOperations.isDefaultNoteName(noteFolderURL.lastPathComponent),
-                transcriptHasCues: transcriptHasCues(), codexAvailable: codexAvailable,
+                transcriptHasCues: VTT.transcriptHasCues(noteFolder: noteFolderURL),
+                codexAvailable: codexAvailable,
                 alreadyWorking: working,
                 recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
         else { return }
@@ -138,17 +137,5 @@ public final class TitleController {
         let unique = NoteOperations.availableName(
             title, in: noteFolderURL.deletingLastPathComponent())
         renameNote(unique)
-    }
-
-    private func transcriptHasCues() -> Bool {
-        guard
-            let text = try? String(
-                contentsOf: noteFolderURL.appending(path: "transcript.vtt"), encoding: .utf8),
-            let document = try? VTTParser.parse(text)
-        else { return false }
-        return document.entries.contains {
-            if case .cue = $0 { return true }
-            return false
-        }
     }
 }

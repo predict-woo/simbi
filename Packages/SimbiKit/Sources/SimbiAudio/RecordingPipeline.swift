@@ -75,7 +75,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         self.outbox = TranscriptOutbox(
             fileURL: noteFolderURL.appending(path: "transcript.vtt"),
             noteName: noteFolderURL.lastPathComponent)
-        self.state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        self.state = NoteRecordingState.current(noteFolder: noteFolderURL)
     }
 
     /// Live updates for the record UI (elapsed + tentative speaker).
@@ -130,7 +130,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         guard !recording else { throw RecordingPipelineError.alreadyRecording }
         try await diarizer.prepare()
         try await vad.prepare()
-        state = (try? NoteRecordingState.load(noteFolder: noteFolderURL)) ?? .init()
+        state = NoteRecordingState.current(noteFolder: noteFolderURL)
 
         if state.activeSession != nil {
             try recoverFromCrash()
@@ -477,7 +477,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
         // 2. Clamp to the last cue's end so later sessions never overlap
         //    cues written just before the crash.
         var lastCueEndSec: TimeInterval = 0
-        let vttURL = noteFolderURL.appending(path: "transcript.vtt")
+        let vttURL = VTT.fileURL(noteFolder: noteFolderURL)
         if let text = try? String(contentsOf: vttURL, encoding: .utf8),
             let document = try? VTTParser.parse(text)
         {

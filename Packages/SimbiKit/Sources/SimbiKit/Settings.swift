@@ -100,6 +100,12 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
         try JSONDecoder().decode(SimbiSettings.self, from: Data(contentsOf: url))
     }
 
+    /// The settings as stored right now; a missing or corrupt file reads
+    /// as the defaults.
+    public static func current(home: SimbiHome = SimbiHome()) -> SimbiSettings {
+        (try? load(from: home.settingsFileURL)) ?? .default
+    }
+
     public func save(to url: URL) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

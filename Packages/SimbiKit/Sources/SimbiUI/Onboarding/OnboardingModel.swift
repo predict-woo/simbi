@@ -123,7 +123,7 @@ final class OnboardingModel {
             // apply live. A folder change follows the Settings relaunch
             // path instead of the first-run bootstrap.
             let home = SimbiHome()
-            var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
+            var settings = SimbiSettings.current(home: home)
             settings.fixerModel = draft.fixerModel
             settings.fixerEffort = draft.fixerEffort
             settings.converterModel = draft.converterModel
