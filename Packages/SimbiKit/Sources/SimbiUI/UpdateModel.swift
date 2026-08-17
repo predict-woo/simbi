@@ -43,7 +43,10 @@ public protocol UpdateCoordinating: AnyObject {
     /// Install the staged update and relaunch, subject to the recording gate.
     func installUpdate()
     func apply(mode: UpdateMode)
-    func apply(channel: UpdateChannel)
+    /// The channel changed in `UpdateModel.shared` — Sparkle reads the
+    /// value itself via `allowedChannels(for:)` on its next check; this
+    /// just prompts a check so the switch shows something promptly.
+    func channelDidChange()
 }
 
 /// View-facing update state. The Sparkle coordinator pushes into it; the
@@ -89,7 +92,7 @@ public final class UpdateModel {
         didSet {
             guard channel != oldValue else { return }
             UserDefaults.standard.set(channel.rawValue, forKey: Key.channel)
-            coordinator?.apply(channel: channel)
+            coordinator?.channelDidChange()
         }
     }
 

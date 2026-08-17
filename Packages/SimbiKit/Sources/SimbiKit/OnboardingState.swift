@@ -45,7 +45,7 @@ public enum OnboardingState {
         persistRootOverride(draft.rootURL, defaults: defaults)
         let home = SimbiHome(rootURL: draft.rootURL)
         try home.bootstrap()
-        var settings = (try? SimbiSettings.load(from: home.settingsFileURL)) ?? .default
+        var settings = SimbiSettings.current(home: home)
         for role in AgentRole.allCases {
             settings[role] = draft[role]
         }

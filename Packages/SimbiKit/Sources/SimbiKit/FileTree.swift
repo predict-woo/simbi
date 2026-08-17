@@ -84,11 +84,16 @@ public enum FileTreeScanner {
             return []
         }
 
+        // Folders and note leaves both land here — notes sort with folders,
+        // ahead of loose files.
         var folders: [FileTreeNode] = []
         var files: [FileTreeNode] = []
         for entry in entries {
+            // Read the value the directory listing prefetched BEFORE
+            // standardizing — a fresh URL would discard the cache.
+            let isDirectory =
+                (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             let url = entry.standardizedFileURL
-            let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
             let name = url.lastPathComponent
             if reservedNames.contains(name) { continue }
             if isDirectory {

@@ -8,15 +8,21 @@ public enum AgentRole: String, CaseIterable, Identifiable, Sendable {
 
     public var id: String { rawValue }
 
-    /// Row label; matches `AgentInstructions.title` vocabulary.
-    public var title: String {
+    /// The role's instruction file. `.converter` maps to `.ingest` — the
+    /// role predates the INGEST.md naming and its settings fields keep the
+    /// old word.
+    public var instructionsFile: AgentInstructions {
         switch self {
-        case .fixer: "Transcript fixer"
-        case .converter: "File converter"
-        case .summary: "AI notes"
-        case .title: "Note title"
+        case .fixer: .fixer
+        case .converter: .ingest
+        case .summary: .summary
+        case .title: .title
         }
     }
+
+    /// Row label — the instruction file's title, so the vocabulary can't
+    /// drift between the two enums.
+    public var title: String { instructionsFile.title }
 }
 
 /// One role's override pair. `nil` means "Default" (don't override the

@@ -257,10 +257,7 @@ struct DownloadStep: View {
                 model.retryDownload()
             }
             // Poll the gate while visible so Continue enables itself.
-            while !Task.isCancelled {
-                model.syncGates()
-                try? await Task.sleep(for: .seconds(1))
-            }
+            await model.pollGates()
         }
     }
 

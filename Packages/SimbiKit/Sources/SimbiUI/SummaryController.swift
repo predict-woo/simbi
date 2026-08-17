@@ -39,6 +39,15 @@ public final class SummaryController {
         self.summarizer = NoteSummarizer(
             noteFolderURL: noteFolderURL, client: CodexServices.appServer,
             model: choice.model, effort: choice.effort)
+        self.summaryExists = FileManager.default.fileExists(
+            atPath: NoteLayout.summaryURL(noteFolder: noteFolderURL).path)
+        watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
+            self?.refreshSummaryExists()
+        }
+    }
+
+    private func refreshSummaryExists() {
+        summaryExists = FileManager.default.fileExists(atPath: summaryFileURL.path)
     }
 
     var summaryFileURL: URL { NoteLayout.summaryURL(noteFolder: noteFolderURL) }
@@ -49,16 +58,13 @@ public final class SummaryController {
     /// that path already flushed both documents in onDisappear.
     var flushEditorsBeforeGenerate: (() -> Void)?
 
-    /// Observability caveat: this is a computed FileManager check, so
-    /// @Observable cannot track it — views re-evaluate it only when a
-    /// coincident observed write (`status`, `generationCount`) re-renders
-    /// them, which is exactly what every in-app generation does. A
-    /// summary.md created or deleted externally (Finder, git, a chat
-    /// thread) therefore won't change strip visibility until the note is
-    /// reopened or the next generation bumps those properties.
-    var summaryExists: Bool {
-        FileManager.default.fileExists(atPath: summaryFileURL.path)
-    }
+    /// Whether summary.md is on disk — its mere existence makes the tab
+    /// strip appear. Stored and watcher-refreshed so external creates and
+    /// deletes (Finder, git, a chat thread) flip the strip live, not just
+    /// in-app generations.
+    private(set) var summaryExists: Bool
+
+    private var watcher: FileTreeWatcher?
 
     /// The shared live availability model — the same source the note
     /// view's degraded banner and the sidebar footer observe.

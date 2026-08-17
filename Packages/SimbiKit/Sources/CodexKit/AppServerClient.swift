@@ -119,7 +119,6 @@ public actor AppServerClient {
         case binaryMissing
         case notAuthenticated
         case serverError(code: Int, message: String)
-        case malformedResponse
     }
 
     private let installation: CodexInstallation

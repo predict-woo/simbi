@@ -2,7 +2,7 @@ import Foundation
 
 /// JSON-RPC id — the app-server sends Int ids for its own requests, but the
 /// spec allows strings; echo back whatever arrived.
-public enum RPCID: Equatable, Sendable, Hashable {
+enum RPCID: Equatable, Sendable, Hashable {
     case int(Int)
     case string(String)
 

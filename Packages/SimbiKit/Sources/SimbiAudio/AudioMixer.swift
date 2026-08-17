@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 import os
 
 /// Mixes the two 16 kHz mono capture streams into ONE (SPEC.md §3.1: simple
@@ -25,6 +26,7 @@ public struct AudioMixer: Sendable {
         self.maxBacklogSamples = maxBacklogSamples
     }
 
+    /// Test seam: MixedCaptureTests asserts the backlog bound.
     public var backlog: Int { fifo.count - fifoStart }
 
     public mutating func pushSystem(_ samples: [Float]) {
@@ -86,6 +88,7 @@ public final class MixedCapture: @unchecked Sendable {
     /// Why system audio is off even though `micAndSystem` was requested.
     public private(set) var systemAudioFailure: String?
     /// True when the system tap is actually contributing to the stream.
+    /// Test seam: production reads only `systemAudioFailure`.
     public private(set) var systemAudioActive = false
 
     private let mic = MicCapture()
@@ -142,6 +145,7 @@ public final class MixedCapture: @unchecked Sendable {
             systemStream = try capture.start()
             system = capture
         } catch {
+            Log.recording.warning("system audio failed to start: \(error)")
             systemAudioFailure = failureMessage(for: error)
             return micStream
         }
@@ -175,11 +179,19 @@ public final class MixedCapture: @unchecked Sendable {
         systemAudioActive = false
     }
 
+    /// Banner copy by actual failure, not a one-size guess. The full
+    /// error is logged where this is called.
     private func failureMessage(for error: any Error) -> String {
         if case MixedCaptureError.systemAudioUnsupported = error {
             return "System audio needs macOS 14.4 or later. Recording the mic only."
         }
-        return "System audio unavailable (permission denied?). Recording the mic only."
+        // Tap creation refusal is the shape a TCC denial takes.
+        if #available(macOS 14.4, *),
+            case SystemAudioCapture.CaptureError.tapCreationFailed = error
+        {
+            return "System audio permission denied. Recording the mic only."
+        }
+        return "System audio unavailable. Recording the mic only."
     }
 }
 

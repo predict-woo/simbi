@@ -86,6 +86,15 @@ final class OnboardingModel {
         }
     }
 
+    /// 1 Hz gate re-sync while a step is visible (the download step's
+    /// Continue button enables itself); cancellation on disappear stops it.
+    func pollGates() async {
+        while !Task.isCancelled {
+            syncGates()
+            try? await Task.sleep(for: .seconds(1))
+        }
+    }
+
     /// Model list for the agents step; Codex is connected by the time
     /// this step shows, but failure still degrades to Default-only.
     func fetchModels() async {

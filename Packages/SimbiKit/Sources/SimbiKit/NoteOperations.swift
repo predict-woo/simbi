@@ -8,15 +8,11 @@ public enum NoteOperationError: Error, Equatable {
 
 /// Plain file-system operations behind the sidebar's context menu (SPEC.md §6).
 public enum NoteOperations {
-    /// Creates a note folder (a folder containing an empty `note.md`).
+    /// Creates a note folder: a plain folder plus the empty `note.md`
+    /// marker that makes it a note.
     @discardableResult
     public static func createNote(named name: String, in parent: URL) throws -> URL {
-        guard !isInsideNoteFolder(parent) else { throw NoteOperationError.insideNoteFolder }
-        let url = parent.appending(path: name, directoryHint: .isDirectory)
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw NoteOperationError.alreadyExists(url)
-        }
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        let url = try createFolder(named: name, in: parent)
         try Data().write(to: url.appending(path: FileTreeScanner.noteMarkerName))
         return url
     }

@@ -125,12 +125,11 @@ extension SparkleCoordinator: UpdateCoordinating {
         updater.automaticallyDownloadsUpdates = mode.downloadsAutomatically
     }
 
-    func apply(channel: UpdateChannel) {
-        // `allowedChannels(for:)` is read on the next check; run one now so
-        // switching to Beta shows something without waiting a day. Sparkle
-        // logs an error if asked to check in the background while automatic
-        // checks are off, so respect that.
-        _ = channel
+    func channelDidChange() {
+        // `allowedChannels(for:)` reads the new channel on the next check;
+        // run one now so switching to Beta shows something without waiting
+        // a day. Sparkle logs an error if asked to check in the background
+        // while automatic checks are off, so respect that.
         guard let updater, updater.automaticallyChecksForUpdates else { return }
         updater.checkForUpdatesInBackground()
     }

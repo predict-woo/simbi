@@ -14,7 +14,8 @@ public struct SampleRingBuffer: Sendable {
 
     /// Absolute index one past the newest sample.
     public var writeHead: Int { base + storage.count }
-    /// Absolute index of the oldest retained sample.
+    /// Absolute index of the oldest retained sample. `oldestRetained`
+    /// and `retainedCount` are test seams: eviction assertions only.
     public var oldestRetained: Int { base }
     public var retainedCount: Int { storage.count }
 

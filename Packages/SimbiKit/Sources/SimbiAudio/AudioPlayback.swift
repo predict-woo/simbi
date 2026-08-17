@@ -4,6 +4,13 @@
 import Foundation
 import os
 
+public enum AudioPlaybackError: Error, Equatable {
+    /// The 16 kHz mono pipeline format failed to construct — an
+    /// environment problem, not a file problem (mirrors the capture
+    /// classes' `converterUnavailable`).
+    case pipelineFormatUnavailable
+}
+
 /// Plays a note's `audio.webm` (SPEC.md §3.1). AVFoundation can't read
 /// WebM, so this is our own small path: cluster-index seek + libopus decode
 /// → PCM buffers scheduled on an `AVAudioPlayerNode` with bounded
@@ -38,7 +45,7 @@ public final class AudioPlayback: @unchecked Sendable {
     public init(fileURL: URL, manualRenderingForTest: Bool = false) throws {
         self.fileURL = fileURL
         guard let format = AudioResampling.pipelineFormat
-        else { throw OpusWebMError.decoderCreateFailed(0) }
+        else { throw AudioPlaybackError.pipelineFormatUnavailable }
         self.format = format
         engine.attach(node)
         engine.connect(node, to: engine.mainMixerNode, format: format)

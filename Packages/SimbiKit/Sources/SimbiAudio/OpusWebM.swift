@@ -200,7 +200,9 @@ public final class OpusWebMDecoder {
     /// array serves tests and the audio spike's diagnostics.
     public let clusterIndex: [ClusterEntry]
 
-    /// Start time of the last packet in the file, or nil for an empty file.
+    /// Start time of the last packet in the file, or nil for an empty
+    /// file. Production resumes via `endMilliseconds`; this raw value is
+    /// a test seam.
     public let lastPacketTime: TimeInterval?
 
     /// Timeline end (ms) for resuming: last packet start + one frame.
@@ -234,7 +236,8 @@ public final class OpusWebMDecoder {
 
     /// Decodes from the cluster containing `startTime` to end of file.
     /// Returns 16 kHz mono samples and the timeline time of the first
-    /// returned sample.
+    /// returned sample. Test seam: production streams via `packets(from:)`
+    /// (playback) — whole-file decode would hold long recordings in memory.
     public func decode(
         from startTime: TimeInterval = 0
     ) throws -> (

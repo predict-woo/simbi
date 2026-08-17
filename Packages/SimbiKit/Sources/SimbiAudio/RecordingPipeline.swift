@@ -42,6 +42,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
     /// is for cross-restart recovery and must skip segments that are merely
     /// still uploading (their pending files are live, not orphaned).
     private var trackedCues: Set<Int> = []
+    private static let uploadMaxConcurrent = 2
     private static let uploadMaxAttempts = 3
     private static let uploadBackoff: [Duration] = [.seconds(1), .seconds(4)]
     private static let authRetryDelay: Duration = .seconds(30)
@@ -384,8 +385,6 @@ public actor RecordingPipeline: TranscriptFixerHost {
                 try flushSegment(command)
             }
         }
-        nextRecordFrame = max(nextRecordFrame, engine.frontier)
-
         for command in engine.stop() {
             try flushSegment(command)
         }
@@ -553,7 +552,7 @@ extension RecordingPipeline {
     }
 
     private func kickUploads() {
-        while !uploadsPaused, uploadsInFlight < 2, !uploadQueue.isEmpty {
+        while !uploadsPaused, uploadsInFlight < Self.uploadMaxConcurrent, !uploadQueue.isEmpty {
             let cueIndex = uploadQueue.removeFirst()
             uploadsInFlight += 1
             Task { await self.runUpload(cueIndex: cueIndex) }

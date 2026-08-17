@@ -22,7 +22,8 @@ public enum DiarizerPreset {
     /// Samples covered by one diarizer output frame.
     public static var frameSamples: Int { config.subsamplingFactor * config.melStride }
 
-    /// ~1.04 s: how far finalized predictions lag realtime.
+    /// ~1.04 s: how far finalized predictions lag realtime. Test seam:
+    /// the preset tests pin it; the pipeline uses frame counts instead.
     public static var outputLatency: TimeInterval {
         TimeInterval(config.chunkLen + config.chunkRightContext) * frameDuration
     }
