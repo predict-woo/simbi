@@ -188,7 +188,12 @@ public actor RecordingPipeline: TranscriptFixerHost {
         recording = true
 
         if let fixer {
-            try? await fixer.recordingStarted()
+            do {
+                try await fixer.recordingStarted()
+            } catch {
+                // Degraded mode by contract: recording continues without the fixer.
+                Log.recording.warning("fixer thread failed to start: \(error)")
+            }
             let fingerprint = await fixer.instructionsFingerprint
             if let threadId = await fixer.threadId,
                 threadId != state.fixerThreadId
@@ -198,7 +203,11 @@ public actor RecordingPipeline: TranscriptFixerHost {
                 state.fixerThreadId = threadId
                 state.fixerInstructionsVersion = TranscriptFixer.instructionsVersion
                 state.fixerInstructionsHash = fingerprint
-                try? state.saveRecording(noteFolder: noteFolderURL)
+                do {
+                    try state.saveRecording(noteFolder: noteFolderURL)
+                } catch {
+                    Log.recording.error("saving fixer thread id to state.json failed: \(error)")
+                }
             }
         }
     }
@@ -318,7 +327,12 @@ public actor RecordingPipeline: TranscriptFixerHost {
         // (a throw above must not leave a gap in the numbering) and expose
         // the cue to the outbox and upload queue.
         state.nextCueIndex += 1
-        try? state.saveRecording(noteFolder: noteFolderURL)
+        do {
+            try state.saveRecording(noteFolder: noteFolderURL)
+        } catch {
+            Log.recording.error(
+                "saving nextCueIndex \(state.nextCueIndex) to state.json failed: \(error)")
+        }
         trackedCues.insert(cueIndex)
         outbox.reserveCue(
             index: cueIndex, start: startSec, end: endSec,
@@ -411,7 +425,11 @@ public actor RecordingPipeline: TranscriptFixerHost {
             let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
             guard let data = try? Data(contentsOf: jsonURL),
                 let sidecar = try? JSONDecoder().decode(PendingSegment.self, from: data)
-            else { continue }
+            else {
+                Log.recording.warning(
+                    "pending sidecar \(jsonURL.lastPathComponent) unreadable; segment skipped")
+                continue
+            }
             trackedCues.insert(cueIndex)
             outbox.reserveCue(
                 index: sidecar.cueIndex, start: sidecar.startSec, end: sidecar.endSec,
@@ -430,14 +448,19 @@ public actor RecordingPipeline: TranscriptFixerHost {
     /// root), so the live file keeps this actor as its single writer.
     public func fixerWillStartPass() {
         let worktree = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
-        try? FileManager.default.createDirectory(at: worktree, withIntermediateDirectories: true)
         let live =
             (try? String(
                 contentsOf: noteFolderURL.appending(path: "transcript.vtt"), encoding: .utf8))
             ?? VTT.header(noteName: noteFolderURL.lastPathComponent)
         fixerSnapshot = live
-        try? live.write(
-            to: worktree.appending(path: "transcript.vtt"), atomically: true, encoding: .utf8)
+        do {
+            try FileManager.default.createDirectory(
+                at: worktree, withIntermediateDirectories: true)
+            try live.write(
+                to: worktree.appending(path: "transcript.vtt"), atomically: true, encoding: .utf8)
+        } catch {
+            Log.recording.error("copying transcript into fixer worktree failed: \(error)")
+        }
     }
 
     /// Diffs the fixer's edited copy against the snapshot and replays the
@@ -451,13 +474,17 @@ public actor RecordingPipeline: TranscriptFixerHost {
         fixerSnapshot = nil
         let copyURL = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
             .appending(path: "transcript.vtt")
-        guard let after = try? String(contentsOf: copyURL, encoding: .utf8) else { return 0 }
+        guard let after = try? String(contentsOf: copyURL, encoding: .utf8) else {
+            Log.recording.warning("fixer worktree transcript unreadable; merge skipped")
+            return 0
+        }
         let edits = TranscriptOutbox.fixerEdits(before: before, after: after)
         guard !edits.isEmpty else { return 0 }
         do {
             try outbox.applyEdits(edits)
             return edits.count
         } catch {
+            Log.recording.error("applying \(edits.count) fixer edits failed: \(error)")
             return 0
         }
     }
@@ -470,8 +497,13 @@ public actor RecordingPipeline: TranscriptFixerHost {
         // 1. Scan the surviving clusters (a truncated trailing cluster
         //    simply fails to parse and is excluded).
         var recoveredSamples = 0
-        if let probe = try? OpusWebMDecoder(fileURL: audioFileURL) {
+        do {
+            let probe = try OpusWebMDecoder(fileURL: audioFileURL)
             recoveredSamples = Int(probe.endMilliseconds) * 16
+        } catch {
+            Log.recording.warning(
+                "crash recovery: audio.webm unreadable, timeline recovered from cues only:"
+                    + " \(error)")
         }
 
         // 2. Clamp to the last cue's end so later sessions never overlap
@@ -530,8 +562,15 @@ extension RecordingPipeline {
         for attempt in 1...Self.uploadMaxAttempts {
             do {
                 let text = try await transcriber.transcribe(webmFile: webmURL)
-                try? FileManager.default.removeItem(at: webmURL)
-                try? FileManager.default.removeItem(at: jsonURL)
+                for url in [webmURL, jsonURL] {
+                    do {
+                        try FileManager.default.removeItem(at: url)
+                    } catch {
+                        Log.recording.warning(
+                            "removing uploaded segment \(url.lastPathComponent) failed"
+                                + " (will re-upload after relaunch): \(error)")
+                    }
+                }
                 uploadFinished(cueIndex: cueIndex, text: text)
                 return
             } catch let error as TranscriptionClient.TranscriptionError {
@@ -556,17 +595,30 @@ extension RecordingPipeline {
         // Terminal failure: the timeline stays complete with [inaudible];
         // the encoded segment moves to failed/ for post-hoc retry tooling
         // (pending/ must only hold cues not yet rendered to the VTT).
+        Log.recording.error(
+            "cue \(cueIndex) upload failed after \(Self.uploadMaxAttempts) attempts;"
+                + " rendering [inaudible] and moving segment to failed/")
         let failedDir = noteFolderURL.appending(path: ".simbi/failed")
-        try? FileManager.default.createDirectory(at: failedDir, withIntermediateDirectories: true)
-        for url in [webmURL, jsonURL] {
-            try? FileManager.default.moveItem(
-                at: url, to: failedDir.appending(path: url.lastPathComponent))
+        do {
+            try FileManager.default.createDirectory(
+                at: failedDir, withIntermediateDirectories: true)
+            for url in [webmURL, jsonURL] {
+                try FileManager.default.moveItem(
+                    at: url, to: failedDir.appending(path: url.lastPathComponent))
+            }
+        } catch {
+            Log.recording.error("moving cue \(cueIndex) segment to failed/ failed: \(error)")
         }
         uploadFinished(cueIndex: cueIndex, text: "[inaudible]")
     }
 
     private func uploadFinished(cueIndex: Int, text: String) {
-        try? outbox.fulfillCue(index: cueIndex, text: text)
+        do {
+            try outbox.fulfillCue(index: cueIndex, text: text)
+        } catch {
+            Log.recording.error(
+                "appending cue \(cueIndex) to transcript.vtt failed; text dropped: \(error)")
+        }
         uploadsInFlight -= 1
         kickUploads()
         if inspector.isActive {

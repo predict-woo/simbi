@@ -146,7 +146,10 @@ public final class TranscriptOutbox {
         }
         guard changed else { return }
         let updated = out.joined(separator: "\n")
-        guard (try? VTTParser.parse(updated)) != nil else { return }
+        guard (try? VTTParser.parse(updated)) != nil else {
+            Log.recording.error("fixer merge produced unparseable VTT; edits discarded")
+            return
+        }
         try updated.write(to: fileURL, atomically: true, encoding: .utf8)
     }
 

@@ -110,8 +110,12 @@ public actor TranscriptFixer {
     public func recordingStarted() async throws {
         stopping = false
         // The thread's cwd; must exist before thread/start.
-        try? FileManager.default.createDirectory(
-            at: Self.worktreeURL(noteFolder: noteFolderURL), withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(
+                at: Self.worktreeURL(noteFolder: noteFolderURL), withIntermediateDirectories: true)
+        } catch {
+            Log.codex.error("creating fixer worktree failed: \(error)")
+        }
         if !bound {
             bound = true
             await client.addNotificationHandler { [weak self] method, paramsData in
@@ -131,6 +135,8 @@ public actor TranscriptFixer {
                 _ = try await client.request(
                     method: "thread/resume", params: ["threadId": threadId])
             } catch {
+                // Designed fallback: a stopped thread resumes only after unarchiving.
+                Log.codex.info("thread/resume failed; unarchiving and retrying: \(error)")
                 _ = try? await client.request(
                     method: "thread/unarchive", params: ["threadId": threadId])
                 _ = try await client.request(
@@ -196,7 +202,13 @@ public actor TranscriptFixer {
             from == to
             ? "Cue \(to) is new — review and fix."
             : "Cues \(from)..\(to) are new — review and fix."
-        try? await startTurn(text: text)
+        do {
+            try await startTurn(text: text)
+        } catch {
+            Log.codex.error(
+                "fixer ping for cues \(from)..\(to) failed; they stay unfixed until the"
+                    + " next pass: \(error)")
+        }
     }
 
     private func startTurn(text: String) async throws {

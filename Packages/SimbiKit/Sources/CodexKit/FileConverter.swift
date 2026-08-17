@@ -67,10 +67,13 @@ public actor FileConverter {
     public func convert(
         fileName: String, onThreadStarted: @Sendable (String) async -> Void = { _ in }
     ) async throws {
-        _ = try await runner.run(
+        let message = try await runner.run(
             instructions: instructions(fileName: fileName),
             threadName: "[simbi] convert: \(fileName)",
             onThreadStarted: onThreadStarted)
+        if let message, let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {
+            throw CodexWorkerError.reportedFailure(reason)
+        }
 
         let output = noteFolderURL.appending(path: "context/\(fileName).md")
         let size =

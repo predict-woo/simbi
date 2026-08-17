@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SimbiAudio
+import SimbiKit
 
 /// UI-facing playback state for one note's `audio.webm` (SPEC.md §6:
 /// player bar + click-to-seek playback in the transcript pane).
@@ -28,8 +29,11 @@ final class PlaybackController {
     }
 
     func refreshDuration() {
-        guard let playback = try? ensurePlayback() else { return }
-        duration = playback.duration
+        do {
+            duration = try ensurePlayback().duration
+        } catch {
+            Log.ui.warning("opening audio.webm for playback failed: \(error)")
+        }
     }
 
     /// Player-bar play/pause: resumes at the paused position, restarts
@@ -59,6 +63,7 @@ final class PlaybackController {
                 }
             }
         } catch {
+            Log.ui.error("playback failed: \(error)")
             isPlaying = false
         }
     }

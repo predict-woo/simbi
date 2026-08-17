@@ -368,8 +368,12 @@ struct NoteView: View {
                 onSeek: recorder.status == .idle && playback.hasAudio
                     ? { playback.play(from: $0) } : nil,
                 onRenameSpeaker: { from, to in
-                    try? SpeakerRename.renameInFile(
-                        noteFolder: noteFolderURL, from: from, to: to)
+                    do {
+                        try SpeakerRename.renameInFile(
+                            noteFolder: noteFolderURL, from: from, to: to)
+                    } catch {
+                        Log.ui.error("renaming speaker \(from) to \(to) failed: \(error)")
+                    }
                 },
                 flash: transcriptFlash
             )

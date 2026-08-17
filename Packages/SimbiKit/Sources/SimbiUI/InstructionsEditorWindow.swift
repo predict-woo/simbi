@@ -45,8 +45,12 @@ public final class InstructionsEditorWindowManager {
             window.document.text = file.defaultContents
             window.document.saveNow()
         } else {
-            try? file.defaultContents.write(
-                to: file.url(homeRootURL: homeRootURL), atomically: true, encoding: .utf8)
+            do {
+                try file.defaultContents.write(
+                    to: file.url(homeRootURL: homeRootURL), atomically: true, encoding: .utf8)
+            } catch {
+                Log.ui.error("resetting \(file.fileName) failed: \(error)")
+            }
         }
     }
 
@@ -56,7 +60,11 @@ public final class InstructionsEditorWindowManager {
     private func materialize(_ file: AgentInstructions) {
         let url = file.url(homeRootURL: homeRootURL)
         guard !FileManager.default.fileExists(atPath: url.path) else { return }
-        try? file.defaultContents.write(to: url, atomically: true, encoding: .utf8)
+        do {
+            try file.defaultContents.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            Log.ui.error("recreating \(file.fileName) failed: \(error)")
+        }
     }
 
     fileprivate func windowWillClose(_ window: InstructionsEditorWindow) {

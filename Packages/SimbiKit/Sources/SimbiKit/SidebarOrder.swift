@@ -27,11 +27,20 @@ public enum SidebarOrder {
     public static func write(_ names: [String], in folder: URL) {
         let url = fileURL(in: folder)
         guard !names.isEmpty else {
-            try? FileManager.default.removeItem(at: url)
+            if FileManager.default.fileExists(atPath: url.path) {
+                do {
+                    try FileManager.default.removeItem(at: url)
+                } catch {
+                    Log.files.error("SidebarOrder: removing \(url.path) failed: \(error)")
+                }
+            }
             return
         }
-        if let data = try? JSONEncoder().encode(names) {
-            try? data.write(to: url, options: .atomic)
+        do {
+            let data = try JSONEncoder().encode(names)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            Log.files.error("SidebarOrder: writing \(url.path) failed: \(error)")
         }
     }
 

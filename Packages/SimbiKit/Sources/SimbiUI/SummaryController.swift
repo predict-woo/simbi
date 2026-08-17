@@ -126,8 +126,12 @@ public final class SummaryController {
         // can't resurrect the file; the open editor keeps the old text in
         // memory, so a failed run is recoverable by editing or closing the
         // note (both save the held text back to disk).
-        if fresh {
-            try? FileManager.default.removeItem(at: summaryFileURL)
+        if fresh, FileManager.default.fileExists(atPath: summaryFileURL.path) {
+            do {
+                try FileManager.default.removeItem(at: summaryFileURL)
+            } catch {
+                Log.ui.error("deleting summary.md for fresh generation failed: \(error)")
+            }
         }
         status = .working
         Task {
@@ -137,15 +141,16 @@ public final class SummaryController {
                 status = .idle
             } catch {
                 // The banner shows a fixed message; keep the real error
-                // (including a thread-reported FAILED reason) visible in
-                // the console for diagnosis.
+                // (including a thread-reported FAILED reason) in the log
+                // for diagnosis.
                 if case CodexWorkerError.reportedFailure(let reason) = error {
-                    print(
-                        "SummaryController: summarizer reported failure for "
-                            + "\(noteFolderURL.path): \(reason)")
+                    Log.ui.error(
+                        "summarizer reported failure for \(noteFolderURL.lastPathComponent):"
+                            + " \(reason)")
                 } else {
-                    print(
-                        "SummaryController: generation failed for \(noteFolderURL.path): \(error)")
+                    Log.ui.error(
+                        "summary generation failed for \(noteFolderURL.lastPathComponent):"
+                            + " \(error)")
                 }
                 status = .failed("AI notes couldn't be updated.")
             }

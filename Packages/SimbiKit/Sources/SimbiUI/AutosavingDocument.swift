@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SimbiKit
 
 /// Loads and autosaves one text file: debounced saves while editing, an
 /// explicit `saveNow()` on the closing paths. The one document class
@@ -36,6 +37,10 @@ final class AutosavingDocument {
     /// that never had AI notes must not gain an empty file.
     func saveNow() {
         if text.isEmpty && !FileManager.default.fileExists(atPath: fileURL.path) { return }
-        try? text.write(to: fileURL, atomically: true, encoding: .utf8)
+        do {
+            try text.write(to: fileURL, atomically: true, encoding: .utf8)
+        } catch {
+            Log.files.error("autosaving \(fileURL.lastPathComponent) failed: \(error)")
+        }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Failures shared by the one-shot Codex worker actors (file converter,
 /// summarizer, titler). Public because callers (SimbiUI) pattern-match
@@ -152,8 +153,12 @@ actor CodexWorkerTurnRunner {
             // viewer window holds the thread open.
             Task { [client, shouldArchive = spec.shouldArchiveOnEnd] in
                 guard await shouldArchive(threadId) else { return }
-                _ = try? await client.request(
-                    method: "thread/archive", params: ["threadId": threadId])
+                do {
+                    _ = try await client.request(
+                        method: "thread/archive", params: ["threadId": threadId])
+                } catch {
+                    Log.codex.warning("archiving worker thread \(threadId) failed: \(error)")
+                }
             }
         }
 

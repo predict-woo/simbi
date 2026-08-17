@@ -129,7 +129,11 @@ public final class RecordingController {
         settings.micEnabled = micEnabled
         settings.micDeviceUID = micDeviceUID
         settings.systemAudioEnabled = systemAudioEnabled
-        try? settings.save(to: home.settingsFileURL)
+        do {
+            try settings.save(to: home.settingsFileURL)
+        } catch {
+            Log.ui.error("persisting recording sources to settings.json failed: \(error)")
+        }
     }
 
     /// Pipeline Inspector stream for this note's pipeline (the pipeline

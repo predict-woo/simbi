@@ -122,7 +122,11 @@ final class OnboardingModel {
             for role in AgentRole.allCases {
                 settings[role] = draft[role]
             }
-            try? settings.save(to: home.settingsFileURL)
+            do {
+                try settings.save(to: home.settingsFileURL)
+            } catch {
+                Log.ui.error("saving onboarding model choices failed: \(error)")
+            }
             completed = true
             OnboardingPresenter.shared.dismiss()
             return

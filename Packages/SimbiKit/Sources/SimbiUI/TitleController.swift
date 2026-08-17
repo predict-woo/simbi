@@ -92,7 +92,7 @@ public final class TitleController {
                 let title = try await titler.generateTitle()
                 await awaitQuietThenApply(title)
             } catch {
-                print("TitleController: titling failed for \(noteFolderURL.path): \(error)")
+                Log.ui.error("titling failed for \(noteFolderURL.lastPathComponent): \(error)")
             }
         }
     }
@@ -109,7 +109,7 @@ public final class TitleController {
             return await self.quietOrAbandoned()
         }
         guard ended else {
-            print("TitleController: note never went quiet, keeping default name")
+            Log.ui.info("note never went quiet, keeping default name")
             return
         }
         applyGeneratedTitle(title, currentFolderName: noteFolderURL.lastPathComponent)

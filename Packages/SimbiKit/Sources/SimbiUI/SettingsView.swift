@@ -28,13 +28,18 @@ public struct SettingsView: View {
         }
         .frame(width: 460)
         .onChange(of: settings) {
-            try? settings.save(to: SimbiHome().settingsFileURL)
+            do {
+                try settings.save(to: SimbiHome().settingsFileURL)
+            } catch {
+                Log.ui.error("saving settings.json failed: \(error)")
+            }
         }
         .task {
             do {
                 models = try await CodexModels.list(client: CodexServices.appServer)
                 modelsUnavailable = models.isEmpty
             } catch {
+                Log.ui.warning("fetching model list failed: \(error)")
                 modelsUnavailable = true
             }
         }
@@ -157,7 +162,13 @@ private struct GeneralSettingsPane: View {
         let helper = Process()
         helper.executableURL = URL(filePath: "/bin/sh")
         helper.arguments = ["-c", #"sleep 0.5; /usr/bin/open "$0""#, Bundle.main.bundlePath]
-        try? helper.run()
+        do {
+            try helper.run()
+        } catch {
+            // Quitting anyway would strand the user without a relaunch.
+            Log.ui.error("relaunch helper failed to start; staying open: \(error)")
+            return
+        }
         NSApp.terminate(nil)
     }
 }

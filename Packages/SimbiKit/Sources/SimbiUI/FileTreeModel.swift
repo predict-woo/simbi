@@ -30,6 +30,7 @@ public final class FileTreeModel {
             try home.bootstrap()
         } catch {
             bootstrapError = error
+            Log.files.error("bootstrapping \(home.rootURL.path) failed: \(error)")
         }
         refresh()
 
@@ -84,22 +85,29 @@ public final class FileTreeModel {
             name = suggested
         }
         name = NoteOperations.availableName(name, in: parent)
-        if let url = try? NoteOperations.createNote(named: name, in: parent) {
+        do {
+            let url = try NoteOperations.createNote(named: name, in: parent)
             refresh()
             selection = url
+        } catch {
+            Log.files.error("creating note \(name) failed: \(error)")
         }
     }
 
     public func createFolder(in folder: URL? = nil) {
         let parent = folder ?? targetFolderForNewItems
         let name = NoteOperations.availableName("New Folder", in: parent)
-        if (try? NoteOperations.createFolder(named: name, in: parent)) != nil {
+        do {
+            _ = try NoteOperations.createFolder(named: name, in: parent)
             refresh()
+        } catch {
+            Log.files.error("creating folder \(name) failed: \(error)")
         }
     }
 
     public func rename(_ url: URL, to newName: String) {
-        if let renamed = try? NoteOperations.rename(url, to: newName) {
+        do {
+            let renamed = try NoteOperations.rename(url, to: newName)
             SidebarOrder.renamed(
                 from: url.lastPathComponent,
                 to: renamed.lastPathComponent,
@@ -111,11 +119,18 @@ public final class FileTreeModel {
             // on every rename of the selected note.
             retargetSelection(from: url, to: renamed)
             refresh()
+        } catch {
+            Log.files.error(
+                "renaming \(url.lastPathComponent) to \(newName) failed: \(error)")
         }
     }
 
     public func trash(_ url: URL) {
-        try? NoteOperations.trash(url)
+        do {
+            try NoteOperations.trash(url)
+        } catch {
+            Log.files.error("trashing \(url.lastPathComponent) failed: \(error)")
+        }
         SidebarOrder.removed(url.lastPathComponent, in: url.deletingLastPathComponent())
         refresh()
     }

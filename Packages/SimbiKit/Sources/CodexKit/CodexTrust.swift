@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Pre-trusts a note folder in `~/.codex/config.toml` so the chat TUI
 /// skips its "Do you trust the contents of this directory?" gate on every
@@ -25,7 +26,13 @@ public enum CodexTrust {
         guard !existing.contains("\"\(path)\"") else { return }
         let separator = existing.isEmpty || existing.hasSuffix("\n") ? "\n" : "\n\n"
         let entry = "\(separator)[projects.\"\(path)\"]\ntrust_level = \"trusted\"\n"
-        try? (existing + entry).write(to: configURL, atomically: true, encoding: .utf8)
+        do {
+            try (existing + entry).write(to: configURL, atomically: true, encoding: .utf8)
+        } catch {
+            Log.codex.error(
+                "pre-trusting \(directory.lastPathComponent) in config.toml failed"
+                    + " (chat will show the trust prompt): \(error)")
+        }
     }
 
     /// TOML basic-string escaping for the quoted key (note names can

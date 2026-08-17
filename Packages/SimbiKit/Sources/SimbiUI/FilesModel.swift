@@ -53,6 +53,19 @@ final class FilesModel {
         filesURL.appending(path: name)
     }
 
+    /// All conversion-status writes funnel through here so a failed
+    /// state.json save is logged instead of silently dropped.
+    private nonisolated static func updateState(
+        noteFolder: URL, _ mutate: (inout NoteRecordingState) -> Void
+    ) {
+        do {
+            try NoteRecordingState.update(noteFolder: noteFolder, mutate)
+        } catch {
+            Log.files.error(
+                "updating conversion state for \(noteFolder.lastPathComponent) failed: \(error)")
+        }
+    }
+
     private init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
         let choice = SimbiSettings.current()[.converter]
@@ -97,7 +110,7 @@ final class FilesModel {
         switch effect {
         case .turnBegan(let file):
             externalTurns.insert(file)
-            try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+            Self.updateState(noteFolder: noteFolderURL) {
                 $0.conversions[file]?.status = .converting
             }
         case .turnEnded(let file):
@@ -105,7 +118,7 @@ final class FilesModel {
             let size =
                 (try? FileManager.default.attributesOfItem(
                     atPath: contextURL(for: file).path)[.size] as? Int) ?? 0
-            try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+            Self.updateState(noteFolder: noteFolderURL) {
                 $0.conversions[file]?.status = size > 0 ? .done : .failed
             }
         }
@@ -144,7 +157,7 @@ final class FilesModel {
     }
 
     func retry(_ name: String) {
-        try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+        Self.updateState(noteFolder: noteFolderURL) {
             $0.conversions[name] = nil
         }
         refresh()
@@ -154,11 +167,15 @@ final class FilesModel {
     /// conversion record so a re-added file with the same name converts
     /// fresh. Trash (not unlink) so a slip is recoverable, like Finder.
     func delete(_ name: String) {
-        try? FileManager.default.trashItem(
-            at: fileURL(for: name), resultingItemURL: nil)
-        try? FileManager.default.trashItem(
-            at: contextURL(for: name), resultingItemURL: nil)
-        try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+        for url in [fileURL(for: name), contextURL(for: name)]
+        where FileManager.default.fileExists(atPath: url.path) {
+            do {
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            } catch {
+                Log.files.error("trashing \(url.lastPathComponent) failed: \(error)")
+            }
+        }
+        Self.updateState(noteFolder: noteFolderURL) {
             $0.conversions[name] = nil
         }
         refresh()
@@ -199,23 +216,24 @@ final class FilesModel {
 
     private func dispatch(_ name: String) {
         activeJobs.insert(name)
-        try? NoteRecordingState.update(noteFolder: noteFolderURL) {
+        Self.updateState(noteFolder: noteFolderURL) {
             $0.conversions[name] = .init(status: .converting)
         }
         Task {
             let folder = noteFolderURL
             do {
                 try await converter.convert(fileName: name) { threadId in
-                    try? NoteRecordingState.update(noteFolder: folder) {
+                    Self.updateState(noteFolder: folder) {
                         $0.conversions[name]?.threadId = threadId
                     }
                 }
-                try? NoteRecordingState.update(noteFolder: folder) {
+                Self.updateState(noteFolder: folder) {
                     $0.conversions[name] = .init(
                         status: .done, threadId: $0.conversions[name]?.threadId)
                 }
             } catch {
-                try? NoteRecordingState.update(noteFolder: folder) {
+                Log.files.error("converting \(name) failed: \(error)")
+                Self.updateState(noteFolder: folder) {
                     $0.conversions[name] = .init(
                         status: .failed, threadId: $0.conversions[name]?.threadId)
                 }

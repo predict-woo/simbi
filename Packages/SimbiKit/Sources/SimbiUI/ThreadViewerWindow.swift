@@ -56,7 +56,13 @@ public final class ThreadViewerManager {
             // terminal, which is the error UI).
             _ = try? await CodexServices.appServer.request(
                 method: "thread/unarchive", params: ["threadId": threadId])
-            guard let endpoint = try? await CodexServices.appServer.endpoint() else { return }
+            let endpoint: String
+            do {
+                endpoint = try await CodexServices.appServer.endpoint()
+            } catch {
+                Log.codex.error("thread viewer for \(threadId) has no endpoint: \(error)")
+                return
+            }
             let window = ThreadViewerWindow(
                 threadId: threadId, title: title, noteFolderURL: noteFolderURL,
                 endpoint: endpoint,
@@ -77,8 +83,12 @@ public final class ThreadViewerManager {
         // archive (they stay inspectable and resume across sessions).
         guard archivesOnClose, !isBusy() else { return }
         Task {
-            _ = try? await CodexServices.appServer.request(
-                method: "thread/archive", params: ["threadId": threadId])
+            do {
+                _ = try await CodexServices.appServer.request(
+                    method: "thread/archive", params: ["threadId": threadId])
+            } catch {
+                Log.codex.warning("archiving viewed thread \(threadId) failed: \(error)")
+            }
         }
     }
 }

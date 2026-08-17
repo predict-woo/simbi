@@ -1,4 +1,5 @@
 import Foundation
+import SimbiKit
 
 /// Ties the websocket server child's lifetime to the app's. The old stdio
 /// transport got this for free (the child exited on stdin EOF); `--listen`
@@ -74,7 +75,12 @@ final class AppServerJanitor: @unchecked Sendable {
         let out = Pipe()
         ps.standardOutput = out
         ps.standardError = FileHandle.nullDevice
-        guard (try? ps.run()) != nil else { return }
+        do {
+            try ps.run()
+        } catch {
+            Log.codex.warning("orphan app-server sweep skipped, ps failed to run: \(error)")
+            return
+        }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         ps.waitUntilExit()
         guard let listing = String(data: data, encoding: .utf8) else { return }
@@ -390,15 +396,27 @@ public actor AppServerClient {
     }
 
     private func respond(id: RPCID, result: [String: any Sendable]) {
-        Task { try? await self.write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result]) }
+        Task {
+            do {
+                try await self.write(["jsonrpc": "2.0", "id": id.jsonValue, "result": result])
+            } catch {
+                Log.codex.error("replying to server request \(id.jsonValue) failed: \(error)")
+            }
+        }
     }
 
     private func respondMethodNotFound(id: RPCID, method: String) {
         Task {
-            try? await self.write([
-                "jsonrpc": "2.0", "id": id.jsonValue,
-                "error": ["code": -32601, "message": "unhandled server request: \(method)"],
-            ])
+            do {
+                try await self.write([
+                    "jsonrpc": "2.0", "id": id.jsonValue,
+                    "error": ["code": -32601, "message": "unhandled server request: \(method)"],
+                ])
+            } catch {
+                Log.codex.error(
+                    "rejecting server request \(method) failed (server may hang on it):"
+                        + " \(error)")
+            }
         }
     }
 
