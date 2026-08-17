@@ -14,7 +14,7 @@ final class OnboardingModel {
     private(set) var flow = OnboardingFlow()
     var draft = OnboardingState.Draft()
     let permissions = OnboardingPermissions()
-    let codexSetup = CodexSetupModel()
+    let codexSetup = CodexSetupModel.shared
     private(set) var models: [CodexModels.Model] = []
     private(set) var modelsUnavailable = false
     /// Non-nil while the Finish apply has failed; shown as a StatusBanner.

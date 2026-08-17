@@ -5,14 +5,23 @@ import Observation
 import SimbiKit
 import SwiftUI
 
-/// Live Codex-connection state for the welcome pane's setup card.
+/// The app's one live source of Codex-connection truth (SPEC.md §6).
 /// Polls two cheap file checks (the bundled binary and `~/.codex/auth.json`)
-/// every 2 s while the pane is visible, so the card advances by itself as
-/// the user installs the ChatGPT app and signs in. No subprocess, no
-/// app-server probe — the same signals `CodexStatusFooter` trusts.
+/// every 2 s, so every surface that observes `shared.state` — welcome card,
+/// onboarding, degraded banners, sidebar footer, the auto-summary/-title
+/// gates — advances by itself as the user installs the ChatGPT app and
+/// signs in. No subprocess, no app-server probe.
 @MainActor
 @Observable
 final class CodexSetupModel {
+    /// The app-wide instance; its poll loop runs for the process lifetime.
+    /// Direct `CodexSetupModel()` construction is for tests only.
+    static let shared: CodexSetupModel = {
+        let model = CodexSetupModel()
+        Task { await model.poll() }
+        return model
+    }()
+
     private(set) var state: CodexSetupState
 
     private let isInstalled: () -> Bool
@@ -41,22 +50,11 @@ final class CodexSetupModel {
         state = CodexSetupState.resolve(isInstalled: isInstalled(), isSignedIn: isSignedIn())
     }
 
-    /// Run from the welcome pane's `.task` — cancellation on disappear
-    /// stops the polling with it.
-    func poll() async {
+    private func poll() async {
         while !Task.isCancelled {
             refresh()
             try? await Task.sleep(for: .seconds(2))
         }
-    }
-
-    /// One-shot, preview-aware state for surfaces that don't poll
-    /// (the transcript pane's first-note hint).
-    static func detectState() -> CodexSetupState {
-        previewState()
-            ?? CodexSetupState.resolve(
-                isInstalled: CodexInstallation.standard.isBinaryInstalled,
-                isSignedIn: CodexInstallation.standard.loadAuth() != nil)
     }
 
     /// Screenshot mode: `SIMBI_UI_PREVIEW=1` plus

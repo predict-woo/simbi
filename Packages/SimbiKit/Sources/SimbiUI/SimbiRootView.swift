@@ -239,10 +239,8 @@ private struct SidebarScrollProbe: NSViewRepresentable {
 /// Degraded-state indicator (SPEC.md §6): recording still works without
 /// Codex; transcription and intelligence don't.
 private struct CodexStatusFooter: View {
-    private let installation = CodexInstallation.standard
-
     var body: some View {
-        let available = installation.isConnected
+        let available = CodexSetupModel.shared.state == .connected
         Button {
             CodexStatusWindowManager.shared.open()
         } label: {

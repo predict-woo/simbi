@@ -64,6 +64,15 @@ final class FakeDiarizer: DiarizerStream, @unchecked Sendable {
     }
 }
 
+/// Canned transcriber: every segment "transcribes" instantly to a fixed
+/// string, no network. The pipeline requires an explicit transcriber, so
+/// every test names this fake the way production names CodexTranscriber.
+struct FakeTranscriber: Transcriber {
+    var text: String = "[fake transcription]"
+
+    func transcribe(webmFile: URL) async throws -> String { text }
+}
+
 /// Scripted VAD: verdict per completed 4096-sample chunk via `script`
 /// (session-local chunk index), like the real Silero wrapper (§1/§3.1).
 final class FakeVad: VadStream, @unchecked Sendable {
@@ -153,7 +162,8 @@ struct RecordingPipelineTests {
             return speech * 2 >= 4096
         }
         let pipeline = RecordingPipeline(
-            noteFolderURL: noteFolder, diarizer: diarizer, vad: vad)
+            noteFolderURL: noteFolder, transcriber: FakeTranscriber(),
+            diarizer: diarizer, vad: vad)
 
         try await pipeline.start()
         // 150 frames = 12.00 s, ingested in 10-frame batches.
@@ -247,7 +257,8 @@ struct RecordingPipelineTests {
 
         let diarizer = FakeDiarizer { _ in .speech(slot: 0) }
         let pipeline = RecordingPipeline(
-            noteFolderURL: noteFolder, diarizer: diarizer, vad: FakeVad { _ in true })
+            noteFolderURL: noteFolder, transcriber: FakeTranscriber(),
+            diarizer: diarizer, vad: FakeVad { _ in true })
         try await pipeline.start()
         try await pipeline.ingest(samples: tone(frames: 30))
         // Simulate a crash: no stop(); state.json still has activeSession.
@@ -256,7 +267,8 @@ struct RecordingPipelineTests {
 
         // A fresh pipeline (relaunch) starts a new session; recovery runs.
         let pipeline2 = RecordingPipeline(
-            noteFolderURL: noteFolder, diarizer: FakeDiarizer { _ in .speech(slot: 0) },
+            noteFolderURL: noteFolder, transcriber: FakeTranscriber(),
+            diarizer: FakeDiarizer { _ in .speech(slot: 0) },
             vad: FakeVad { _ in true })
         try await pipeline2.start()
         try await pipeline2.ingest(samples: tone(frames: 25))
@@ -277,5 +289,35 @@ struct RecordingPipelineTests {
             return false
         }
         #expect(sessionEnds.count == 2)
+    }
+
+    @Test("re-subscribing to liveUpdates finishes the previous stream")
+    func liveUpdatesResubscribeFinishesOldStream() async throws {
+        let noteFolder = try makeNoteFolder()
+        defer { try? FileManager.default.removeItem(at: noteFolder) }
+        let pipeline = RecordingPipeline(
+            noteFolderURL: noteFolder,
+            transcriber: FakeTranscriber(),
+            diarizer: FakeDiarizer { _ in .silence },
+            vad: FakeVad { _ in false })
+
+        let first = await pipeline.liveUpdates()
+        _ = await pipeline.liveUpdates()
+
+        // The first consumer's iteration must end, not hang forever.
+        let firstStreamEnded = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                for await _ in first {}
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return false
+            }
+            let winner = await group.next() ?? false
+            group.cancelAll()
+            return winner
+        }
+        #expect(firstStreamEnded)
     }
 }

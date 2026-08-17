@@ -102,4 +102,21 @@ struct TerminalChatLaunchTests {
         #expect(text.contains("no files yet"))
         #expect(!text.contains("currently contains"))
     }
+
+    @Test("hidden files never reach the chat inventory")
+    func inventorySkipsHiddenFiles() throws {
+        let temp = try makeNote(files: [
+            "note.md": "hi",
+            ".DS_Store": "junk",
+            "files/deck.pdf": "pdf",
+            "files/.DS_Store": "junk",
+            "context/deck.pdf.md": "md",
+        ])
+        defer { temp.cleanup() }
+        let text = TerminalChatLaunch.developerInstructions(
+            noteFolderURL: temp.note, homeRootURL: temp.home)
+        #expect(text.contains("`files/deck.pdf`"))
+        #expect(text.contains("`context/deck.pdf.md`"))
+        #expect(!text.contains(".DS_Store"))
+    }
 }

@@ -153,7 +153,7 @@ struct PipelineInspectorTapTests {
         // sample 38·1280 = 48640 → chunks 0–11.
         let vad = FakeVad { chunk in chunk < 12 }
         let pipeline = RecordingPipeline(
-            noteFolderURL: noteFolder, transcriber: StubTranscriber(),
+            noteFolderURL: noteFolder, transcriber: FakeTranscriber(),
             diarizer: diarizer, vad: vad)
 
         let stream = await pipeline.inspectorUpdates()
@@ -182,7 +182,7 @@ struct PipelineInspectorTapTests {
                 break
             }
         }
-        #expect(sawText == "[transcription arrives in M3]")
+        #expect(sawText == "[fake transcription]")
 
         // Released records are contiguous from frame 0 and mirror the fakes.
         let records = updates.flatMap(\.records)
@@ -212,7 +212,7 @@ struct PipelineInspectorTapTests {
         let diarizer = FakeDiarizer { frame in frame < 30 ? .speech(slot: 1) : .silence }
         let vad = FakeVad { chunk in chunk < 10 }
         let pipeline = RecordingPipeline(
-            noteFolderURL: noteFolder, transcriber: StubTranscriber(),
+            noteFolderURL: noteFolder, transcriber: FakeTranscriber(),
             diarizer: diarizer, vad: vad)
         try await pipeline.start()
         try await pipeline.ingest(samples: [Float](repeating: 0.1, count: 60 * 1280))

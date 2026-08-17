@@ -169,7 +169,6 @@ struct CodexStep: View {
         ) {
             codexRow
         }
-        .task { await model.codexSetup.poll() }
         .onChange(of: model.codexSetup.state) { model.syncGates() }
     }
 

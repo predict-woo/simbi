@@ -24,7 +24,7 @@ final class CodexStatusModel {
         loadTask?.cancel()
         phase = .loading
         loadTask = Task {
-            switch CodexSetupModel.detectState() {
+            switch CodexSetupModel.shared.state {
             case .notInstalled:
                 phase = .unavailable("Codex is unavailable. Is the ChatGPT app installed?")
                 return

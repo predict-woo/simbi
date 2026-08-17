@@ -10,7 +10,7 @@ import SwiftUI
 /// `SIMBI_UI_PREVIEW=1 SIMBI_UI_PREVIEW_WELCOME=1` forces it for design
 /// review regardless of library contents (see SimbiKit's `Flags`).
 struct WelcomeView: View {
-    @State private var setup = CodexSetupModel()
+    private var setup: CodexSetupModel { .shared }
     let createNote: () -> Void
 
     var body: some View {
@@ -30,7 +30,6 @@ struct WelcomeView: View {
         }
         .frame(maxWidth: 420)
         .padding(Design.paneInset)
-        .task { await setup.poll() }
     }
 
     /// The pane's one prominent action swaps with setup state: while the

@@ -70,11 +70,14 @@ public struct TerminalChatLaunch: Sendable, Equatable {
     }
 
     /// Top-level note files plus one level of `context/` and `files/`,
-    /// sorted for stable output.
+    /// sorted for stable output. Hidden files (.DS_Store, .simbi) never
+    /// reach the prompt.
     private static func inventory(noteFolderURL: URL) -> [String] {
         let fm = FileManager.default
         func names(in dir: URL, prefix: String = "") -> [String] {
-            ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.isDirectoryKey]))
+            ((try? fm.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey],
+                options: .skipsHiddenFiles))
                 ?? [])
                 .filter { !((try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false) }
                 .map { prefix + $0.lastPathComponent }

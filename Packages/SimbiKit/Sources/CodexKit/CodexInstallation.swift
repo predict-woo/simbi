@@ -32,12 +32,6 @@ public struct CodexInstallation: Sendable, Equatable {
         FileManager.default.isExecutableFile(atPath: binaryURL.path)
     }
 
-    /// Binary present AND credentials load — the one availability check
-    /// every degraded-state surface shares (SPEC.md §6).
-    public var isConnected: Bool {
-        isBinaryInstalled && loadAuth() != nil
-    }
-
     /// Where "Get ChatGPT" sends the user.
     public static let downloadURL = URL(string: "https://chatgpt.com/download")!
 

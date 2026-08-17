@@ -68,7 +68,7 @@ public actor RecordingPipeline: TranscriptFixerHost {
 
     public init(
         noteFolderURL: URL,
-        transcriber: Transcriber = StubTranscriber(),
+        transcriber: Transcriber,
         diarizer: DiarizerStream,
         vad: VadStream = SileroVadStream()
     ) {
@@ -83,8 +83,12 @@ public actor RecordingPipeline: TranscriptFixerHost {
     }
 
     /// Live updates for the record UI (elapsed + tentative speaker).
+    /// Re-subscribing finishes the previous stream so an old consumer's
+    /// `for await` ends instead of suspending forever (same contract as
+    /// `InspectorTap.subscribe`).
     public func liveUpdates() -> AsyncStream<RecordingLiveUpdate> {
-        AsyncStream { continuation in
+        liveContinuation?.finish()
+        return AsyncStream { continuation in
             self.liveContinuation = continuation
         }
     }

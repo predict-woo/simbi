@@ -50,9 +50,10 @@ public final class TitleController {
             model: choice.model, effort: choice.effort)
     }
 
-    /// Same check as the note view's degraded banner.
+    /// The shared live availability model — the same source the note
+    /// view's degraded banner and the sidebar footer observe.
     var codexAvailable: Bool {
-        CodexInstallation.standard.isConnected
+        CodexSetupModel.shared.state == .connected
     }
 
     /// Quiet means no in-flight job holds paths into the note folder:

@@ -60,9 +60,10 @@ public final class SummaryController {
         FileManager.default.fileExists(atPath: summaryFileURL.path)
     }
 
-    /// Same check as the note view's degraded banner.
+    /// The shared live availability model — the same source the note
+    /// view's degraded banner and the sidebar footer observe.
     var codexAvailable: Bool {
-        CodexInstallation.standard.isConnected
+        CodexSetupModel.shared.state == .connected
     }
 
     /// Degraded or empty recordings never auto-generate (spec §3); a run

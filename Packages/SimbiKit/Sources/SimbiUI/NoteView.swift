@@ -316,17 +316,17 @@ struct NoteView: View {
 
     /// §6 degraded states: recording works without Codex, but transcription
     /// and agent features need the ChatGPT app + a signed-in auth.json.
+    /// Observes the shared model, so the banner clears live on sign-in
+    /// (and `SIMBI_UI_PREVIEW_CODEX` forces any state for screenshots).
     private var degradedBanner: String? {
-        if Flags.uiPreview {
+        switch CodexSetupModel.shared.state {
+        case .notInstalled:
             return "ChatGPT app not found. Transcription and Codex features are disabled."
-        }
-        if !CodexInstallation.standard.isBinaryInstalled {
-            return "ChatGPT app not found. Transcription and Codex features are disabled."
-        }
-        if CodexInstallation.standard.loadAuth() == nil {
+        case .signedOut:
             return "Not signed in to ChatGPT. Transcription will queue on disk until you sign in."
+        case .connected:
+            return nil
         }
-        return nil
     }
 
     private var transcriptPane: some View {

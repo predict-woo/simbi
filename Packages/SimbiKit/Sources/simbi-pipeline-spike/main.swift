@@ -92,8 +92,12 @@ session1.append(contentsOf: [Float](repeating: 0, count: 16000))
 
 // --real: M3 mode — upload segments to the real transcribe endpoint.
 let useRealTranscriber = CommandLine.arguments.contains("--real")
+struct SilentTranscriber: Transcriber {
+    func transcribe(webmFile: URL) async throws -> String { "[spike: no upload]" }
+}
+
 let transcriber: any Transcriber =
-    useRealTranscriber ? CodexTranscriber() : StubTranscriber()
+    useRealTranscriber ? CodexTranscriber() : SilentTranscriber()
 print("transcriber: \(useRealTranscriber ? "REAL backend-api/transcribe" : "stub")")
 let pipeline = RecordingPipeline(
     noteFolderURL: noteFolder, transcriber: transcriber, diarizer: SortformerStream())

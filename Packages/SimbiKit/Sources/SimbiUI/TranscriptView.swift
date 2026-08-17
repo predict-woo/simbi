@@ -167,7 +167,7 @@ struct TranscriptView: View {
                     VStack(spacing: Design.innerGap) {
                         Text("Press Record to capture the room")
                         Text("Simbi transcribes and labels each speaker as they talk.")
-                        if CodexSetupModel.detectState() != .connected {
+                        if CodexSetupModel.shared.state != .connected {
                             Text("Transcription needs the ChatGPT app. See the sidebar footer.")
                                 .foregroundStyle(Color.statusWarning)
                         }
