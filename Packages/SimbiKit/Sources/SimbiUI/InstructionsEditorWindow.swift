@@ -3,38 +3,6 @@ import Observation
 import SimbiKit
 import SwiftUI
 
-/// Loads and autosaves one agent instruction file (FIXER.md etc.) — the
-/// NoteDocument pattern pointed at an arbitrary markdown file.
-@MainActor
-@Observable
-final class InstructionsDocument {
-    let file: AgentInstructions
-    let fileURL: URL
-    var text: String
-
-    private var saveTask: Task<Void, Never>?
-
-    init(file: AgentInstructions, homeRootURL: URL) {
-        self.file = file
-        self.fileURL = file.url(homeRootURL: homeRootURL)
-        self.text = file.contents(homeRootURL: homeRootURL)
-    }
-
-    /// Debounced autosave; a pending save is superseded by the next edit.
-    func scheduleAutosave() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
-    }
-
-    func saveNow() {
-        try? text.write(to: fileURL, atomically: true, encoding: .utf8)
-    }
-}
-
 /// Owns the agent-instructions editor windows (one per file, focused on
 /// reopen) and the Settings actions on the files themselves. Plain AppKit
 /// windows like the chat windows: no scene persistence, no restoration.
@@ -53,8 +21,13 @@ public final class InstructionsEditorWindowManager {
             return
         }
         materialize(file)
+        // Starts from the file's effective contents (the built-in default
+        // when the file is missing or blank).
         let window = InstructionsEditorWindow(
-            document: InstructionsDocument(file: file, homeRootURL: homeRootURL),
+            file: file,
+            document: AutosavingDocument(
+                fileURL: file.url(homeRootURL: homeRootURL),
+                initialText: file.contents(homeRootURL: homeRootURL)),
             manager: self)
         windows[file] = window
         window.makeKeyAndOrderFront(nil)
@@ -87,17 +60,22 @@ public final class InstructionsEditorWindowManager {
     }
 
     fileprivate func windowWillClose(_ window: InstructionsEditorWindow) {
-        windows.removeValue(forKey: window.document.file)
+        windows.removeValue(forKey: window.file)
     }
 }
 
 /// One instruction file's editor: the note markdown editor as the whole
 /// content view.
 final class InstructionsEditorWindow: NSWindow, NSWindowDelegate {
-    let document: InstructionsDocument
+    let file: AgentInstructions
+    let document: AutosavingDocument
     private weak var manager: InstructionsEditorWindowManager?
 
-    init(document: InstructionsDocument, manager: InstructionsEditorWindowManager) {
+    init(
+        file: AgentInstructions, document: AutosavingDocument,
+        manager: InstructionsEditorWindowManager
+    ) {
+        self.file = file
         self.document = document
         self.manager = manager
         super.init(
@@ -105,7 +83,7 @@ final class InstructionsEditorWindow: NSWindow, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false)
-        title = "Instructions: \(document.file.fileName)"
+        title = "Instructions: \(file.fileName)"
         // The manager keeps the strong reference; never restore these —
         // same rules as the chat windows.
         isReleasedWhenClosed = false
@@ -114,7 +92,7 @@ final class InstructionsEditorWindow: NSWindow, NSWindowDelegate {
         delegate = self
         contentMinSize = NSSize(width: 440, height: 320)
         contentView = NSHostingView(
-            rootView: InstructionsEditorView(document: document))
+            rootView: InstructionsEditorView(file: file, document: document))
         center()
     }
 
@@ -125,7 +103,8 @@ final class InstructionsEditorWindow: NSWindow, NSWindowDelegate {
 }
 
 private struct InstructionsEditorView: View {
-    @Bindable var document: InstructionsDocument
+    let file: AgentInstructions
+    @Bindable var document: AutosavingDocument
 
     var body: some View {
         VStack(spacing: 0) {
@@ -152,7 +131,7 @@ private struct InstructionsEditorView: View {
     }
 
     private var variablesHint: String {
-        let variables = document.file.variables
+        let variables = file.variables
         guard !variables.isEmpty else {
             return "This file has no variables."
         }

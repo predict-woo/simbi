@@ -7,59 +7,18 @@ import SimbiKit
 import SplitViewKit
 import SwiftUI
 
-/// Loads and autosaves one named markdown file in a note folder
-/// (`note.md` by default; the AI Notes tab loads `summary.md`).
-@MainActor
-@Observable
-final class NoteDocument {
-    let noteFolderURL: URL
-    let fileName: String
-    var text: String
-
-    private var saveTask: Task<Void, Never>?
-
-    var fileURL: URL {
-        noteFolderURL.appending(path: fileName)
-    }
-
-    init(noteFolderURL: URL, fileName: String = FileTreeScanner.noteMarkerName) {
-        self.noteFolderURL = noteFolderURL
-        let fileURL = noteFolderURL.appending(path: fileName)
-        self.fileName = fileName
-        self.text = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
-    }
-
-    /// Debounced autosave; a pending save is superseded by the next edit.
-    func scheduleAutosave() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
-    }
-
-    func saveNow() {
-        // Never materialize a missing file for empty content: the AI Notes
-        // document saves on close like note.md does, but summary.md's mere
-        // existence is state (it makes the tab strip appear), so a note
-        // that never had AI notes must not gain an empty file.
-        if text.isEmpty && !FileManager.default.fileExists(atPath: fileURL.path) { return }
-        try? text.write(to: fileURL, atomically: true, encoding: .utf8)
-    }
-}
-
 /// The note view: title, `note.md` editor, recording controls and the live
 /// transcript pane (SPEC.md §6).
 struct NoteView: View {
-    @State private var document: NoteDocument
+    let noteFolderURL: URL
+    @State private var document: AutosavingDocument
     @State private var recorder: RecordingController
     @State private var transcript: TranscriptModel
     @State private var files: FilesModel
     @State private var playback: PlaybackController
     @State private var summary: SummaryController
     @State private var titleController: TitleController
-    @State private var aiDocument: NoteDocument
+    @State private var aiDocument: AutosavingDocument
     @State private var selectedTab: EditorTab = .myNotes
     @State private var transcriptFlash: CueFlash?
     @State private var renameDialogShown = false
@@ -70,7 +29,10 @@ struct NoteView: View {
     let renameNote: (String) -> Void
 
     init(noteFolderURL: URL, renameNote: @escaping (String) -> Void) {
-        self._document = State(initialValue: NoteDocument(noteFolderURL: noteFolderURL))
+        self.noteFolderURL = noteFolderURL
+        self._document = State(
+            initialValue: AutosavingDocument(
+                fileURL: noteFolderURL.appending(path: FileTreeScanner.noteMarkerName)))
         self._recorder = State(initialValue: RecordingController.shared(noteFolderURL: noteFolderURL))
         self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
         self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
@@ -79,7 +41,8 @@ struct NoteView: View {
         self._titleController = State(
             initialValue: TitleController.shared(noteFolderURL: noteFolderURL))
         self._aiDocument = State(
-            initialValue: NoteDocument(noteFolderURL: noteFolderURL, fileName: "summary.md"))
+            initialValue: AutosavingDocument(
+                fileURL: noteFolderURL.appending(path: "summary.md")))
         self.renameNote = renameNote
     }
 
@@ -127,7 +90,7 @@ struct NoteView: View {
             Hairline().offset(y: -1)
         }
         .frame(minWidth: 480)
-        .navigationTitle(document.noteFolderURL.lastPathComponent)
+        .navigationTitle(noteFolderURL.lastPathComponent)
         // Clicking the toolbar title opens the same rename dialog as the
         // sidebar's context menu. SwiftUI's binding navigationTitle is
         // documented to make the title editable but does nothing on macOS,
@@ -135,7 +98,7 @@ struct NoteView: View {
         // layout — so an AppKit click hook on the title view it is.
         .background(
             ToolbarTitleClickCatcher {
-                renameText = document.noteFolderURL.lastPathComponent
+                renameText = noteFolderURL.lastPathComponent
                 renameDialogShown = true
             }
         )
@@ -158,7 +121,7 @@ struct NoteView: View {
                 // here, not in the root toolbar, so it exists only while
                 // a note is open (same as the chat button).
                 Button("Show in Finder", systemImage: "folder") {
-                    NSWorkspace.shared.open(document.noteFolderURL)
+                    NSWorkspace.shared.open(noteFolderURL)
                 }
                 .help("Show this note's files in Finder")
             }
@@ -350,7 +313,7 @@ struct NoteView: View {
     /// one window; reopening focuses it, new chats come from its + button.
     private var chatButton: some View {
         Button {
-            ChatWindowManager.shared.openOrFocus(noteFolderURL: document.noteFolderURL)
+            ChatWindowManager.shared.openOrFocus(noteFolderURL: noteFolderURL)
         } label: {
             Label("Chat", systemImage: "bubble.left.and.bubble.right")
         }
@@ -400,7 +363,7 @@ struct NoteView: View {
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
             if (recorder.status == .idle && playback.hasAudio) || Flags.uiPreview {
-                PlaybackBar(playback: playback, noteFolderURL: document.noteFolderURL)
+                PlaybackBar(playback: playback, noteFolderURL: noteFolderURL)
                 Divider()
             }
             TranscriptView(
@@ -412,7 +375,7 @@ struct NoteView: View {
                     ? { playback.play(from: $0) } : nil,
                 onRenameSpeaker: { from, to in
                     try? SpeakerRename.renameInFile(
-                        noteFolder: document.noteFolderURL, from: from, to: to)
+                        noteFolder: noteFolderURL, from: from, to: to)
                 },
                 flash: transcriptFlash
             )
