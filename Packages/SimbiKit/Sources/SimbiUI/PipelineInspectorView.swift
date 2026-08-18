@@ -40,7 +40,7 @@ enum Inspector {
 
     static func speakerColor(_ slot: Int?) -> Color {
         guard let slot else { return Color.primary.opacity(0.12) }
-        return Design.speakerPalette[slot % Design.speakerPalette.count]
+        return Design.speakerColor(slot: slot)
     }
 
     static func speakerName(_ slot: Int?) -> String {

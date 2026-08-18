@@ -282,12 +282,12 @@ struct RecordingStatusStrip: View {
             HStack(spacing: Design.iconGap) {
                 Image(systemName: "waveform")
                     .font(.meta)
-                SpeakerChip(name: name)
+                SpeakerChip(name: name, color: Design.speakerColor(slot: slot))
             }
-            .foregroundStyle(Design.speakerColor(name))
+            .foregroundStyle(Design.speakerColor(slot: slot))
             .padding(.horizontal, 8)
             .padding(.vertical, Design.innerGap)
-            .background(Design.speakerTint(name), in: Capsule())
+            .background(Design.speakerTint(slot: slot), in: Capsule())
         } else {
             Text("Listening…")
                 .font(.meta)

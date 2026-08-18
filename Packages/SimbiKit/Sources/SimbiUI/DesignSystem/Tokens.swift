@@ -69,31 +69,44 @@ enum Design {
 
     // MARK: Speakers
 
-    /// Speaker hues, softer than the default system rainbow (and none of
-    /// them red — red belongs to the record control). Slot order is stable
-    /// so "Speaker N" keeps its color across sessions.
-    static let speakerPalette: [Color] = [.indigo, .teal, .orange, .purple]
+    /// Speaker colors live on an OKLCH wheel: one lightness for every
+    /// speaker (so no voice reads louder than another), hues spaced by the
+    /// golden angle so any number of speakers stays maximally separated.
+    /// The anchor hue is indigo. Each hue takes the target chroma, backing
+    /// off to the sRGB gamut boundary only where it must (cyan, hue ≈ 200,
+    /// is the bottleneck at this lightness) — vivid everywhere, grey
+    /// nowhere.
+    static let speakerLightness = 0.65
+    static let speakerChromaTarget = 0.18
+    private static let speakerBaseHue = 265.0
+    private static let goldenAngle = 137.5
 
-    static func speakerColor(_ name: String) -> Color {
-        if let slot = SpeakerLabel.slot(name: name) {
-            return speakerPalette[slot % speakerPalette.count]
-        }
-        return speakerPalette[stableHash(name) % speakerPalette.count]
+    static func speakerHue(slot: Int) -> Double {
+        (speakerBaseHue + Double(slot) * goldenAngle).truncatingRemainder(dividingBy: 360)
+    }
+
+    static func speakerChroma(hue: Double) -> Double {
+        min(speakerChromaTarget, OKLCH.maxChroma(lightness: speakerLightness, hue: hue))
+    }
+
+    static func speakerColor(slot: Int) -> Color {
+        let hue = speakerHue(slot: slot)
+        return OKLCH.color(
+            lightness: speakerLightness, chroma: speakerChroma(hue: hue), hue: hue)
     }
 
     /// Soft fill for speaker capsules and the active-cue highlight.
-    static func speakerTint(_ name: String) -> Color {
-        speakerColor(name).opacity(0.12)
+    static func speakerTint(slot: Int) -> Color {
+        speakerColor(slot: slot).opacity(0.12)
     }
 
-    /// Deterministic string hash (djb2). `String.hashValue` is seeded per
-    /// process, which made renamed speakers change color on every launch.
-    private static func stableHash(_ string: String) -> Int {
-        var hash = 5381
-        for byte in string.utf8 {
-            hash = ((hash << 5) &+ hash) &+ Int(byte)
-        }
-        return abs(hash)
+    /// Wheel slots for a transcript's speakers: alphabetical (numeric-aware,
+    /// so "Speaker 2" sorts before "Speaker 10"), duplicates collapsed.
+    /// Purely positional — renaming a speaker may re-deal colors, but two
+    /// distinct names can never collide on one hue.
+    static func speakerSlots(names: some Sequence<String>) -> [String: Int] {
+        let sorted = Set(names).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($1, $0) })
     }
 
     // MARK: Time

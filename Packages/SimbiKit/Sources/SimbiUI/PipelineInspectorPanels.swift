@@ -36,7 +36,7 @@ struct InspectorFrontEndRow: View {
             }
             box("Wrapped Sortformer", subtitle: "6-frame bursts · ≤ 13 fr lag") {
                 let finalized = latest?.sortFramesFinalized ?? 0
-                MeterBar(fraction: burstProgress(latest), tint: Design.speakerPalette[0])
+                MeterBar(fraction: burstProgress(latest), tint: Design.speakerColor(slot: 0))
                 labelRow("next burst", trailing: "finalized: \(finalized) fr")
                 slotBars
             }
@@ -325,7 +325,7 @@ struct InspectorMetersRow: View {
     @ViewBuilder
     private func speakerChip(_ slot: Int?, empty: String) -> some View {
         if let slot {
-            SpeakerChip(name: Inspector.speakerName(slot))
+            SpeakerChip(name: Inspector.speakerName(slot), color: Inspector.speakerColor(slot))
         } else {
             Text(empty)
                 .font(.micro)
@@ -412,8 +412,10 @@ struct InspectorFlushLane: View {
                     .font(.canvasLabel.weight(.semibold))
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
-                if segment.speaker != nil {
-                    SpeakerChip(name: Inspector.speakerName(segment.speaker))
+                if let speaker = segment.speaker {
+                    SpeakerChip(
+                        name: Inspector.speakerName(speaker),
+                        color: Inspector.speakerColor(speaker))
                 }
                 Spacer()
                 Text(String(format: "%.1f s", duration))

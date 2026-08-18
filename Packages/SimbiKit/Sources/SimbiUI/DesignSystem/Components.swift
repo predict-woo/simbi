@@ -49,7 +49,7 @@ struct StatusBanner: View {
 /// transcript rows and the recording header's live indicator.
 struct SpeakerChip: View {
     let name: String
-    var color: Color { Design.speakerColor(name) }
+    let color: Color
 
     var body: some View {
         HStack(spacing: Design.iconGap) {

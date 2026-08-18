@@ -99,12 +99,16 @@ struct TranscriptView: View {
         Group {
             if let document = model.document, !document.entries.isEmpty {
                 let activeRow = activeRow(in: document.entries)
+                let speakerSlots = Design.speakerSlots(names: speakers(in: document.entries))
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: Design.rowGap) {
                             ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
-                                entryView(entry, row: index, isActive: index == activeRow)
-                                    .id(index)
+                                entryView(
+                                    entry, row: index, isActive: index == activeRow,
+                                    speakerSlots: speakerSlots
+                                )
+                                .id(index)
                             }
                         }
                         .scrollTargetLayout()
@@ -177,6 +181,18 @@ struct TranscriptView: View {
         }
     }
 
+    /// Every speaker in the transcript; alphabetical order over this set is
+    /// what deals the wheel colors.
+    private func speakers(in entries: [VTTEntry]) -> Set<String> {
+        var names = Set<String>()
+        for entry in entries {
+            if case .cue(_, _, _, let speaker, _, _) = entry {
+                names.insert(speaker)
+            }
+        }
+        return names
+    }
+
     /// The cue containing the playback position, if any (positions inside
     /// gaps or session markers highlight nothing).
     private func activeRow(in entries: [VTTEntry]) -> Int? {
@@ -192,16 +208,19 @@ struct TranscriptView: View {
     }
 
     @ViewBuilder
-    private func entryView(_ entry: VTTEntry, row: Int, isActive: Bool) -> some View {
+    private func entryView(
+        _ entry: VTTEntry, row: Int, isActive: Bool, speakerSlots: [String: Int]
+    ) -> some View {
         switch entry {
         case .cue(_, let start, _, let speaker, let text, let continuation):
+            let slot = speakerSlots[speaker] ?? 0
             VStack(alignment: .leading, spacing: Design.innerGap) {
                 HStack(spacing: 8) {
                     Button {
                         renameText = speaker
                         renameTarget = RenameTarget(name: speaker, row: row)
                     } label: {
-                        SpeakerChip(name: speaker)
+                        SpeakerChip(name: speaker, color: Design.speakerColor(slot: slot))
                     }
                     .buttonStyle(.plain)
                     .disabled(onRenameSpeaker == nil)
@@ -258,7 +277,7 @@ struct TranscriptView: View {
             .background {
                 if isActive || row == flashedRow {
                     RoundedRectangle(cornerRadius: Design.Radius.row)
-                        .fill(Design.speakerTint(speaker))
+                        .fill(Design.speakerTint(slot: slot))
                         .padding(.horizontal, -8)
                         .padding(.vertical, -4)
                 }
