@@ -56,13 +56,17 @@ public struct CodexAccountStatus: Equatable, Sendable {
 
     /// Both requests over the shared app-server client.
     public static func fetch(client: AppServerClient) async throws -> CodexAccountStatus {
-        let accountData = try await client.request(method: "account/read", params: [:])
+        let account = try await fetchAccount(client: client)
         let limitsData = try await client.request(method: "account/rateLimits/read", params: [:])
         let parsed = parseRateLimits(limitsData)
         return CodexAccountStatus(
-            account: parseAccount(accountData),
+            account: account,
             limits: parsed.limits,
             resetCreditsAvailable: parsed.resetCreditsAvailable)
+    }
+
+    public static func fetchAccount(client: AppServerClient) async throws -> Account? {
+        parseAccount(try await client.request(method: "account/read", params: [:]))
     }
 
     static func parseAccount(_ data: Data) -> Account? {

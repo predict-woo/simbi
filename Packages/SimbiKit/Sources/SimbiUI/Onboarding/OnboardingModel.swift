@@ -28,30 +28,36 @@ final class OnboardingModel {
     /// already latched, so the folder step is read-only and Finish only
     /// saves settings.
     let isRerun: Bool
+    private let shouldApplyPlanDefaults: Bool
+    private var didApplyPlanDefaults = false
 
     var step: OnboardingStep { flow.step }
     var canContinue: Bool { flow.canAdvance() }
     var isFinal: Bool { flow.isFinal }
 
     init() {
-        isRerun = OnboardingPresenter.shared.isRerun
-        if isRerun {
-            draft.rootURL = SimbiHome.activeRootURL
+        let rerun = OnboardingPresenter.shared.isRerun
+        let rootURL: URL
+        if rerun {
+            rootURL = SimbiHome.activeRootURL
         } else {
             // A version-bump re-onboard on an existing install must show
             // the folder actually in use, not the factory default.
             // `resolvedRootURL()` reads the stored override without
             // touching the `activeRootURL` latch.
-            draft.rootURL = SimbiHome.resolvedRootURL()
+            rootURL = SimbiHome.resolvedRootURL()
         }
         // Seed the draft from existing settings when a home already
         // exists (re-run, or a first run over a previous install), so
         // Finish never clobbers configured models with empty defaults.
         // NOTE: reads the draft root directly, never `SimbiHome()` — the
         // first-run path must not latch `activeRootURL` before apply.
-        if let settings = try? SimbiSettings.load(
-            from: SimbiHome(rootURL: draft.rootURL).settingsFileURL)
-        {
+        let settings = try? SimbiSettings.load(
+            from: SimbiHome(rootURL: rootURL).settingsFileURL)
+        isRerun = rerun
+        shouldApplyPlanDefaults = !rerun && settings == nil
+        draft.rootURL = rootURL
+        if let settings {
             for role in AgentRole.allCases {
                 draft[role] = settings[role]
             }
@@ -99,8 +105,30 @@ final class OnboardingModel {
     /// this step shows, but failure still degrades to Default-only.
     func fetchModels() async {
         guard models.isEmpty else { return }
+        let applyDefaults = shouldApplyPlanDefaults && !didApplyPlanDefaults
+        didApplyPlanDefaults = true
+        let planType =
+            applyDefaults
+            ? try? await CodexAccountStatus.fetchAccount(client: CodexServices.appServer)?.planType
+            : nil
         models = await CodexModels.availableModels(client: CodexServices.appServer)
         modelsUnavailable = models.isEmpty
+        if applyDefaults {
+            let choice = Self.defaultChoice(for: planType)
+            for role in AgentRole.allCases { draft[role] = choice }
+        }
+    }
+
+    nonisolated static func defaultChoice(for planType: String?) -> ModelChoice {
+        switch planType?.lowercased() {
+        case "prolite", "pro", "self_serve_business_usage_based", "ent26",
+            "enterprise_cbp_automation", "enterprise_cbp_usage_based":
+            ModelChoice(model: "gpt-5.6-sol", effort: "high")
+        case "plus", "team", "self_serve_business_prolite", "business", "enterprise", "edu":
+            ModelChoice(model: "gpt-5.6-luna", effort: "high")
+        default:
+            ModelChoice(model: "gpt-5.6-luna", effort: "medium")
+        }
     }
 
     func retryDownload() {

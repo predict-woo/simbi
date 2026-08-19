@@ -55,4 +55,25 @@ import Testing
         #expect(backFromStar)
         #expect(flow.step == .download)
     }
+
+    @Test func agentDefaultsFollowAccountUsageTier() {
+        let goOrLower: [String?] = [nil, "unknown", "free", "go"]
+        for plan in goOrLower {
+            let choice = OnboardingModel.defaultChoice(for: plan)
+            #expect(choice.model == "gpt-5.6-luna" && choice.effort == "medium")
+        }
+
+        for plan in ["plus", "team", "self_serve_business_prolite", "business", "enterprise", "edu"] {
+            let choice = OnboardingModel.defaultChoice(for: plan)
+            #expect(choice.model == "gpt-5.6-luna" && choice.effort == "high")
+        }
+
+        for plan in [
+            "prolite", "pro", "self_serve_business_usage_based", "ent26",
+            "enterprise_cbp_automation", "enterprise_cbp_usage_based",
+        ] {
+            let choice = OnboardingModel.defaultChoice(for: plan)
+            #expect(choice.model == "gpt-5.6-sol" && choice.effort == "high")
+        }
+    }
 }
