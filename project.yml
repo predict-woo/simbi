@@ -85,6 +85,13 @@ targets:
         # ~/.codex/auth.json, and write ~/Simbi.
         ENABLE_APP_SANDBOX: NO
         CODE_SIGN_STYLE: Automatic
+        # Local builds sign with the Apple Development cert instead of
+        # falling back to ad-hoc: an ad-hoc signature's TCC identity is the
+        # per-build CDHash, so macOS re-prompts for Desktop/Documents access
+        # after every rebuild. The release workflow overrides team and
+        # identity on the xcodebuild command line; CI builds with
+        # CODE_SIGNING_ALLOWED=NO.
+        DEVELOPMENT_TEAM: 6R4NXX9679
         DEAD_CODE_STRIPPING: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
     info:
