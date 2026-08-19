@@ -180,34 +180,41 @@ public final class RecordingController {
             // A thread created under older instructions — a contract
             // version bump or a user edit to FIXER.md — is retired; a
             // fresh thread with the current prompt starts instead.
-            let noteState = NoteRecordingState.current(noteFolder: noteFolderURL)
-            let fixerInstructions = AgentInstructions.fixer.resolve(
-                homeRootURL: SimbiHome().rootURL)
-            let savedThreadId =
-                noteState.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
-                    && noteState.fixerInstructionsHash
-                        == AgentInstructions.fingerprint(fixerInstructions)
-                ? noteState.fixerThreadId : nil
-            let choice = SimbiSettings.current()[.fixer]
-            let fixer = TranscriptFixer(
-                noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                savedThreadId: savedThreadId, model: choice.model,
-                effort: choice.effort,
-                instructions: fixerInstructions)
-            let activity = fixerActivity
-            await fixer.setEventSink { event in
-                Task { @MainActor in activity.handle(event) }
+            let settings = SimbiSettings.current()
+            if settings.transcriptFixerEnabled {
+                let noteState = NoteRecordingState.current(noteFolder: noteFolderURL)
+                let fixerInstructions = AgentInstructions.fixer.resolve(
+                    homeRootURL: SimbiHome().rootURL)
+                let savedThreadId =
+                    noteState.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
+                        && noteState.fixerInstructionsHash
+                            == AgentInstructions.fingerprint(fixerInstructions)
+                    ? noteState.fixerThreadId : nil
+                let choice = settings[.fixer]
+                let fixer = TranscriptFixer(
+                    noteFolderURL: noteFolderURL, client: CodexServices.appServer,
+                    savedThreadId: savedThreadId, model: choice.model,
+                    effort: choice.effort,
+                    instructions: fixerInstructions)
+                let activity = fixerActivity
+                await fixer.setEventSink { event in
+                    Task { @MainActor in activity.handle(event) }
+                }
+                await pipeline.attachFixer(fixer)
+            } else {
+                await pipeline.attachFixer(nil)
             }
-            await pipeline.attachFixer(fixer)
             try await pipeline.start()
             // Refresh right after pipeline.start(): that's where the fixer
             // thread is (or isn't) created. When codex is unavailable no
             // thread exists, the status stays .off, and the sparkles button
             // stays hidden (degraded state, SPEC.md §8).
-            hasFixerThread =
-                NoteRecordingState.current(noteFolder: noteFolderURL).fixerThreadId != nil
-            if hasFixerThread {
-                fixerActivity.noteRecordingStarted()
+            if settings.transcriptFixerEnabled {
+                hasFixerThread =
+                    NoteRecordingState.current(noteFolder: noteFolderURL).fixerThreadId != nil
+                if hasFixerThread {
+                    fixerActivity.noteRecordingStarted()
+                }
             }
             let capture = MixedCapture()
             self.capture = capture

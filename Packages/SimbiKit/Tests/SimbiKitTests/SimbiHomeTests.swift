@@ -36,13 +36,16 @@ struct SimbiHomeTests {
         let agentsFileURL = AgentInstructions.agents.url(homeRootURL: home.rootURL)
         try "user edits".write(to: agentsFileURL, atomically: true, encoding: .utf8)
         var settings = SimbiSettings.default
+        settings.transcriptFixerEnabled = false
+        settings.aiNotesEnabled = false
+        settings.noteTitleEnabled = false
         settings.fixerModel = "gpt-5.4"
         try settings.save(to: home.settingsFileURL)
 
         try home.bootstrap()
 
         #expect(try String(contentsOf: agentsFileURL, encoding: .utf8) == "user edits")
-        #expect(try SimbiSettings.load(from: home.settingsFileURL).fixerModel == "gpt-5.4")
+        #expect(try SimbiSettings.load(from: home.settingsFileURL) == settings)
     }
 }
 

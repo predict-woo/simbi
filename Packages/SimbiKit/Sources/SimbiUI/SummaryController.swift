@@ -83,10 +83,10 @@ public final class SummaryController {
     /// already in flight is never doubled; an active recording never
     /// triggers (spec §3: no trigger while recording).
     nonisolated static func shouldAutoGenerate(
-        transcriptHasCues: Bool, codexAvailable: Bool, alreadyWorking: Bool,
+        enabled: Bool, transcriptHasCues: Bool, codexAvailable: Bool, alreadyWorking: Bool,
         recordingActive: Bool
     ) -> Bool {
-        transcriptHasCues && codexAvailable && !alreadyWorking && !recordingActive
+        enabled && transcriptHasCues && codexAvailable && !alreadyWorking && !recordingActive
     }
 
     /// The recording controller's clean-stop hook.
@@ -94,6 +94,7 @@ public final class SummaryController {
         let hasCues = VTT.transcriptHasCues(noteFolder: noteFolderURL)
         guard
             Self.shouldAutoGenerate(
+                enabled: SimbiSettings.current().aiNotesEnabled,
                 transcriptHasCues: hasCues, codexAvailable: codexAvailable,
                 alreadyWorking: status == .working,
                 recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
@@ -109,7 +110,7 @@ public final class SummaryController {
     /// summary.md is deleted so the thread writes from scratch, discarding
     /// any hand edits. Only the recording-stop trigger updates in place.
     func regenerate() {
-        guard status != .working, codexAvailable,
+        guard SimbiSettings.current().aiNotesEnabled, status != .working, codexAvailable,
             !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
         else { return }
         generate(fresh: true)
@@ -118,7 +119,7 @@ public final class SummaryController {
     /// The failed banner's Try Again: repeats the attempt without deleting
     /// anything, so a failed in-place update stays an in-place update.
     func retry() {
-        guard status != .working, codexAvailable,
+        guard SimbiSettings.current().aiNotesEnabled, status != .working, codexAvailable,
             !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
         else { return }
         generate()

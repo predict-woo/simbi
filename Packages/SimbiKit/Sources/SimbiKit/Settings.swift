@@ -43,6 +43,9 @@ public struct ModelChoice: Equatable, Sendable {
 /// Decoding is resilient: missing keys fall back to defaults so old settings
 /// files keep working as fields are added.
 public struct SimbiSettings: Codable, Equatable, Sendable {
+    public var transcriptFixerEnabled: Bool
+    public var aiNotesEnabled: Bool
+    public var noteTitleEnabled: Bool
     public var fixerModel: String?
     public var converterModel: String?
     public var summaryModel: String?
@@ -62,6 +65,9 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
     public static let `default` = SimbiSettings()
 
     public init(
+        transcriptFixerEnabled: Bool = true,
+        aiNotesEnabled: Bool = true,
+        noteTitleEnabled: Bool = true,
         fixerModel: String? = nil,
         converterModel: String? = nil,
         summaryModel: String? = nil,
@@ -74,6 +80,9 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
         micDeviceUID: String? = nil,
         systemAudioEnabled: Bool = true
     ) {
+        self.transcriptFixerEnabled = transcriptFixerEnabled
+        self.aiNotesEnabled = aiNotesEnabled
+        self.noteTitleEnabled = noteTitleEnabled
         self.fixerModel = fixerModel
         self.converterModel = converterModel
         self.summaryModel = summaryModel
@@ -90,6 +99,7 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         // chatModel existed before the terminal chat; old files may still
         // carry it and it is simply ignored on decode.
+        case transcriptFixerEnabled, aiNotesEnabled, noteTitleEnabled
         case fixerModel, converterModel, summaryModel, titleModel
         case fixerEffort, converterEffort, summaryEffort, titleEffort
         case micEnabled, micDeviceUID, systemAudioEnabled
@@ -99,6 +109,11 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        transcriptFixerEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .transcriptFixerEnabled) ?? true
+        aiNotesEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiNotesEnabled) ?? true
+        noteTitleEnabled =
+            try container.decodeIfPresent(Bool.self, forKey: .noteTitleEnabled) ?? true
         fixerModel = try container.decodeIfPresent(String.self, forKey: .fixerModel)
         converterModel = try container.decodeIfPresent(String.self, forKey: .converterModel)
         summaryModel = try container.decodeIfPresent(String.self, forKey: .summaryModel)
@@ -120,6 +135,9 @@ public struct SimbiSettings: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(transcriptFixerEnabled, forKey: .transcriptFixerEnabled)
+        try container.encode(aiNotesEnabled, forKey: .aiNotesEnabled)
+        try container.encode(noteTitleEnabled, forKey: .noteTitleEnabled)
         try container.encodeIfPresent(fixerModel, forKey: .fixerModel)
         try container.encodeIfPresent(converterModel, forKey: .converterModel)
         try container.encodeIfPresent(summaryModel, forKey: .summaryModel)

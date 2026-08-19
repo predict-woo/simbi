@@ -69,10 +69,10 @@ public final class TitleController {
     /// otherwise the same gates as AI notes: cues exist, Codex works, no
     /// run in flight, no active recording.
     nonisolated static func shouldAutoGenerate(
-        titleIsDefault: Bool, transcriptHasCues: Bool, codexAvailable: Bool,
+        enabled: Bool, titleIsDefault: Bool, transcriptHasCues: Bool, codexAvailable: Bool,
         alreadyWorking: Bool, recordingActive: Bool
     ) -> Bool {
-        titleIsDefault && transcriptHasCues && codexAvailable && !alreadyWorking
+        enabled && titleIsDefault && transcriptHasCues && codexAvailable && !alreadyWorking
             && !recordingActive
     }
 
@@ -80,6 +80,7 @@ public final class TitleController {
     func recordingDidStop() {
         guard
             Self.shouldAutoGenerate(
+                enabled: SimbiSettings.current().noteTitleEnabled,
                 titleIsDefault: NoteOperations.isDefaultNoteName(noteFolderURL.lastPathComponent),
                 transcriptHasCues: VTT.transcriptHasCues(noteFolder: noteFolderURL),
                 codexAvailable: codexAvailable,

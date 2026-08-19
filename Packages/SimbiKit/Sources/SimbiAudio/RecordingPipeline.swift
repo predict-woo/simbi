@@ -126,9 +126,9 @@ public actor RecordingPipeline: TranscriptFixerHost {
     public var isTranscriptDrained: Bool { outbox.isDrained }
 
     /// Attaches the note's fixer before `start()`.
-    public func attachFixer(_ fixer: TranscriptFixer) async {
+    public func attachFixer(_ fixer: TranscriptFixer?) async {
         self.fixer = fixer
-        await fixer.setHost(self)
+        await fixer?.setHost(self)
     }
 
     // MARK: - Start / resume (§10.2)

@@ -168,6 +168,11 @@ private struct CodexSettingsPane: View {
 
     var body: some View {
         Form {
+            Section("Agent features") {
+                Toggle("Transcript fixer", isOn: $settings.transcriptFixerEnabled)
+                Toggle("AI notes", isOn: $settings.aiNotesEnabled)
+                Toggle("Note title", isOn: $settings.noteTitleEnabled)
+            }
             Section("Models") {
                 ForEach(AgentRole.allCases) { role in
                     modelRow(role)

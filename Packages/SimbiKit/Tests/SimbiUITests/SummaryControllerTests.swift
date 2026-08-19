@@ -9,24 +9,33 @@ struct SummaryControllerTests {
     func autoGate() {
         #expect(
             SummaryController.shouldAutoGenerate(
-                transcriptHasCues: true, codexAvailable: true, alreadyWorking: false,
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false,
                 recordingActive: false))
         #expect(
             !SummaryController.shouldAutoGenerate(
-                transcriptHasCues: false, codexAvailable: true, alreadyWorking: false,
+                enabled: false, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false, recordingActive: false))
+        #expect(
+            !SummaryController.shouldAutoGenerate(
+                enabled: true, transcriptHasCues: false, codexAvailable: true,
+                alreadyWorking: false,
                 recordingActive: false))
         #expect(
             !SummaryController.shouldAutoGenerate(
-                transcriptHasCues: true, codexAvailable: false, alreadyWorking: false,
+                enabled: true, transcriptHasCues: true, codexAvailable: false,
+                alreadyWorking: false,
                 recordingActive: false))
         #expect(
             !SummaryController.shouldAutoGenerate(
-                transcriptHasCues: true, codexAvailable: true, alreadyWorking: true,
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: true,
                 recordingActive: false))
         // Spec §3: no trigger while recording, ever.
         #expect(
             !SummaryController.shouldAutoGenerate(
-                transcriptHasCues: true, codexAvailable: true, alreadyWorking: false,
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false,
                 recordingActive: true))
     }
 

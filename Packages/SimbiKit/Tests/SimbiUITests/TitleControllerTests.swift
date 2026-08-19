@@ -9,28 +9,38 @@ struct TitleControllerTests {
     func autoGate() {
         #expect(
             TitleController.shouldAutoGenerate(
-                titleIsDefault: true, transcriptHasCues: true, codexAvailable: true,
+                enabled: true, titleIsDefault: true, transcriptHasCues: true,
+                codexAvailable: true,
                 alreadyWorking: false, recordingActive: false))
+        #expect(
+            !TitleController.shouldAutoGenerate(
+                enabled: false, titleIsDefault: true, transcriptHasCues: true,
+                codexAvailable: true, alreadyWorking: false, recordingActive: false))
         // A renamed note is never touched — the whole point of the feature.
         #expect(
             !TitleController.shouldAutoGenerate(
-                titleIsDefault: false, transcriptHasCues: true, codexAvailable: true,
+                enabled: true, titleIsDefault: false, transcriptHasCues: true,
+                codexAvailable: true,
                 alreadyWorking: false, recordingActive: false))
         #expect(
             !TitleController.shouldAutoGenerate(
-                titleIsDefault: true, transcriptHasCues: false, codexAvailable: true,
+                enabled: true, titleIsDefault: true, transcriptHasCues: false,
+                codexAvailable: true,
                 alreadyWorking: false, recordingActive: false))
         #expect(
             !TitleController.shouldAutoGenerate(
-                titleIsDefault: true, transcriptHasCues: true, codexAvailable: false,
+                enabled: true, titleIsDefault: true, transcriptHasCues: true,
+                codexAvailable: false,
                 alreadyWorking: false, recordingActive: false))
         #expect(
             !TitleController.shouldAutoGenerate(
-                titleIsDefault: true, transcriptHasCues: true, codexAvailable: true,
+                enabled: true, titleIsDefault: true, transcriptHasCues: true,
+                codexAvailable: true,
                 alreadyWorking: true, recordingActive: false))
         #expect(
             !TitleController.shouldAutoGenerate(
-                titleIsDefault: true, transcriptHasCues: true, codexAvailable: true,
+                enabled: true, titleIsDefault: true, transcriptHasCues: true,
+                codexAvailable: true,
                 alreadyWorking: false, recordingActive: true))
     }
 
