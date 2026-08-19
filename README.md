@@ -59,6 +59,24 @@ separate Simbi account or API key is needed.
   pending transcript segments are queued on disk. A quit, crash, or lost
   connection does not throw away the recording.
 
+## Simbi doesn't reinvent the wheel
+
+The hard parts are already solved, and solved well. Simbi assembles mature
+open-source projects and spends its own code on the glue: mixing two audio
+sources onto one timeline, deciding where to cut speech, and keeping every note
+a plain folder.
+
+- [Codex CLI](https://github.com/openai/codex) for agent threads
+- [Ghostty](https://github.com/ghostty-org/ghostty) for the embedded terminal
+- [FluidAudio](https://github.com/FluidInference/FluidAudio) for on-device
+  speech processing
+- [anydoc](https://github.com/firecrawl/anydoc) for file conversion
+- [swift-markdown-engine](https://github.com/nodes-app/swift-markdown-engine) for
+  Markdown editing
+- [Sparkle](https://github.com/sparkle-project/Sparkle) for app updates
+
+See [Third-Party Licenses](THIRD-PARTY-LICENSES.md) for the complete list.
+
 ## Every note is just a folder
 
 ```text
