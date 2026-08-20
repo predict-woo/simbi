@@ -15,6 +15,7 @@ struct NoteView: View {
     @State private var recorder: RecordingController
     @State private var transcript: TranscriptModel
     @State private var files: FilesModel
+    @State private var importer: ImportController
     @State private var playback: PlaybackController
     @State private var summary: SummaryController
     @State private var titleController: TitleController
@@ -36,6 +37,9 @@ struct NoteView: View {
         self._recorder = State(initialValue: RecordingController.shared(noteFolderURL: noteFolderURL))
         self._transcript = State(initialValue: TranscriptModel(noteFolderURL: noteFolderURL))
         self._files = State(initialValue: FilesModel.shared(noteFolderURL: noteFolderURL))
+        // Created on note open so a relaunch mid-import recovers (rollback
+        // or background resume) without waiting for a files/ refresh.
+        self._importer = State(initialValue: ImportController.shared(noteFolderURL: noteFolderURL))
         self._playback = State(initialValue: PlaybackController(noteFolderURL: noteFolderURL))
         self._summary = State(initialValue: SummaryController.shared(noteFolderURL: noteFolderURL))
         self._titleController = State(
@@ -356,6 +360,7 @@ struct NoteView: View {
                 Divider()
             }
             RecordingStatusStrip(recorder: recorder)
+            importStatusStrip
             // The player bar lives above the transcript whenever the note
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
@@ -386,6 +391,31 @@ struct NoteView: View {
             .bottomFloatingBar { RecordingBar(recorder: recorder) }
         }
         .background(.background.secondary)
+    }
+
+    /// Media-import status above the transcript, in the recording strip's
+    /// container styling (same paddings, divider, meta type). Renders
+    /// nothing while idle, exactly like RecordingStatusStrip.
+    @ViewBuilder private var importStatusStrip: some View {
+        if case .importing(let file, let detail) = importer.status {
+            HStack(spacing: Design.rowGap) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(file)
+                    .font(.metaSemibold)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(detail)
+                    .font(.meta)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.horizontal, Design.paneInset)
+            .padding(.vertical, Design.stripPadding)
+            Divider()
+        }
     }
 
     /// Preview pins the denied state so the banner can be screenshotted.

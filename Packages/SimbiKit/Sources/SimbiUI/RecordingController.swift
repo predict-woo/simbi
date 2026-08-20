@@ -169,6 +169,15 @@ public final class RecordingController {
 
     private func start() async {
         status = .preparing
+        // An import owns the note's timeline (state.json sessionCount /
+        // totalSamples) while it runs; a concurrent recording would clobber
+        // it. The other direction holds too: ImportController's worker
+        // waits while this note is capturing.
+        guard !ImportController.isImporting(noteFolderURL: noteFolderURL) else {
+            status = .failed(
+                "A file import is transcribing into this note. Wait for it to finish first.")
+            return
+        }
         if micEnabled {
             guard await AVCaptureDevice.requestAccess(for: .audio) else {
                 status = .failed("Microphone access denied. Enable it in System Settings.")
