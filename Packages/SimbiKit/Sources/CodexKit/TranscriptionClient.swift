@@ -19,7 +19,7 @@ public struct TranscriptionClient: Sendable {
 
     public static let endpoint = URL(string: "https://chatgpt.com/backend-api/transcribe")!
     public static let userAgent = "Codex Desktop/26.707.72221 (Mac OS; arm64)"
-    public static let requestTimeout: TimeInterval = 30
+    public static let requestTimeout: TimeInterval = 60
 
     private let installation: CodexInstallation
 

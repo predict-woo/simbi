@@ -153,6 +153,13 @@ let package = Package(
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
             ]
         ),
+        // Media-import spike: (a) --length-check probes the transcribe
+        // endpoint with 1/2/5/10-minute clips (the 10-min block size bet);
+        // (b) default mode runs the full import pipeline headlessly (Task 9).
+        .executableTarget(
+            name: "simbi-import-spike",
+            dependencies: ["SimbiKit", "SimbiAudio", "CodexKit"]
+        ),
         .testTarget(name: "SimbiKitTests", dependencies: ["SimbiKit"]),
         .testTarget(name: "SimbiUITests", dependencies: ["SimbiUI", "CodexKit"]),
         .testTarget(
