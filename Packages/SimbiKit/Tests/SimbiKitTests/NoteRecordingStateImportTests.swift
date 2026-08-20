@@ -40,6 +40,22 @@ struct NoteRecordingStateImportTests {
         #expect(loaded.nextCueIndex == 5)
     }
 
+    @Test("decodes an activeImport written without audioTouched as untouched")
+    func audioTouchedForwardCompatible() throws {
+        let folder = try tempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = NoteRecordingState.fileURL(noteFolder: folder)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(
+            #"{"activeImport": {"fileName": "talk.mp4", "n": 2, "baseSamples": 80000, "phase": 1}}"#
+                .utf8
+        ).write(to: url)
+        let loaded = try NoteRecordingState.load(noteFolder: folder)
+        #expect(loaded.activeImport?.audioTouched == false)
+        #expect(loaded.activeImport?.phase == 1)
+    }
+
     @Test("saveRecording adopts on-disk imports and activeImport")
     func saveRecordingAdopts() throws {
         let folder = try tempFolder()

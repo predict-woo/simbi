@@ -49,12 +49,30 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         public var baseSamples: Int
         /// 1 = writing audio/analyzing (rollback on crash); 2 = uploading (resume).
         public var phase: Int
+        /// True once phase 1 has opened the encoder on audio.webm — the
+        /// point after which bytes may have landed. Rollback truncates the
+        /// file only past this point; before it the file's bytes are
+        /// someone else's (e.g. a crashed live session's real audio).
+        public var audioTouched: Bool
 
-        public init(fileName: String, n: Int, baseSamples: Int, phase: Int) {
+        public init(
+            fileName: String, n: Int, baseSamples: Int, phase: Int, audioTouched: Bool = false
+        ) {
             self.fileName = fileName
             self.n = n
             self.baseSamples = baseSamples
             self.phase = phase
+            self.audioTouched = audioTouched
+        }
+
+        // Forward-compatible decoding, same pattern as the outer state.
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            fileName = try container.decode(String.self, forKey: .fileName)
+            n = try container.decode(Int.self, forKey: .n)
+            baseSamples = try container.decode(Int.self, forKey: .baseSamples)
+            phase = try container.decode(Int.self, forKey: .phase)
+            audioTouched = try container.decodeIfPresent(Bool.self, forKey: .audioTouched) ?? false
         }
     }
 

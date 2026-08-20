@@ -26,6 +26,12 @@ private struct FakeAnalyzer: OfflineAnalyzing {
     func analyze(_ samples: [Float]) async throws -> [ImportFrameRecord] { records }
 }
 
+private struct ThrowingPrepareAnalyzer: OfflineAnalyzing {
+    struct PrepareFailed: Error {}
+    func prepare() async throws { throw PrepareFailed() }
+    func analyze(_ samples: [Float]) async throws -> [ImportFrameRecord] { [] }
+}
+
 private struct StubTranscriber: Transcriber {
     func transcribe(webmFile: URL) async throws -> String { "[import test]" }
 }
@@ -151,7 +157,8 @@ struct ImportPipelinePhase1Tests {
         try NoteRecordingState.update(noteFolder: note) {
             $0.totalSamples = 5 * 16000
             $0.sessionCount = 1
-            $0.activeImport = .init(fileName: "crash.mp4", n: 2, baseSamples: 5 * 16000, phase: 1)
+            $0.activeImport = .init(
+                fileName: "crash.mp4", n: 2, baseSamples: 5 * 16000, phase: 1, audioTouched: true)
             $0.imports["crash.mp4"] = .init(status: .analyzing)
         }
         let enc2 = try OpusWebMEncoder(fileURL: audioURL, mode: .append(baseMilliseconds: 5000))
@@ -164,6 +171,55 @@ struct ImportPipelinePhase1Tests {
         #expect(state.totalSamples == 5 * 16000)
         let probe = try OpusWebMDecoder(fileURL: audioURL)
         #expect(abs(Int(probe.endMilliseconds) - 5000) <= 40)
+    }
+
+    @Test("import refuses while a crashed live session awaits recovery")
+    func recordingRecoveryPending() async throws {
+        let note = try makeNote()
+        defer { try? FileManager.default.removeItem(at: note) }
+        // A live recording crashed mid-first-session: audio.webm holds the
+        // session's real audio, but totals were never advanced and
+        // activeSession is stale. An import must refuse outright — its
+        // rollback would otherwise truncate the unrecovered audio.
+        let audioURL = NoteLayout.audioURL(noteFolder: note)
+        let enc = try OpusWebMEncoder(fileURL: audioURL, mode: .create)
+        try enc.append(samples: pcm(seconds: 5))
+        try enc.finish()
+        try NoteRecordingState.update(noteFolder: note) {
+            $0.totalSamples = 0
+            $0.sessionCount = 0
+            $0.activeSession = .init(n: 1, baseSamples: 0, wallStart: .now)
+        }
+        let bytesBefore = try Data(contentsOf: audioURL)
+        let pipeline = ImportPipeline(
+            noteFolderURL: note, transcriber: StubTranscriber(),
+            decoder: FakeDecoder(batches: [pcm(seconds: 2)], thenThrow: false),
+            analyzer: FakeAnalyzer(records: []))
+        await #expect(throws: ImportPipelineError.recordingRecoveryPending) {
+            try await pipeline.run(fileName: "clip.wav")
+        }
+        #expect(try Data(contentsOf: audioURL) == bytesBefore)
+        let state = try NoteRecordingState.load(noteFolder: note)
+        #expect(state.activeSession != nil)
+        #expect(state.activeImport == nil)
+        #expect(state.imports["clip.wav"]?.status == .failed)
+    }
+
+    @Test("a prepare failure still records the file as failed")
+    func prepareFailureRecordsFailed() async throws {
+        let note = try makeNote()
+        defer { try? FileManager.default.removeItem(at: note) }
+        let pipeline = ImportPipeline(
+            noteFolderURL: note, transcriber: StubTranscriber(),
+            decoder: FakeDecoder(batches: [pcm(seconds: 1)], thenThrow: false),
+            analyzer: ThrowingPrepareAnalyzer())
+        await #expect(throws: (any Error).self) {
+            try await pipeline.run(fileName: "clip.wav")
+        }
+        let state = try NoteRecordingState.load(noteFolder: note)
+        #expect(state.imports["clip.wav"]?.status == .failed)
+        #expect(state.activeImport == nil)
+        #expect(!FileManager.default.fileExists(atPath: NoteLayout.audioURL(noteFolder: note).path))
     }
 
     @Test("an empty decode throws noAudio and rolls back")
@@ -323,5 +379,51 @@ struct ImportPipelinePhase2Tests {
         let state = try NoteRecordingState.load(noteFolder: note)
         #expect(state.activeImport == nil)
         #expect(state.imports["crash.m4a"]?.status == .done)
+    }
+
+    @Test("run refuses over a leftover phase-2 marker until it is drained")
+    func runRefusesOverLeftoverPhase2Marker() async throws {
+        let note = try makeNote()
+        defer { try? FileManager.default.removeItem(at: note) }
+        // Same leftover as the resume test: audio + state committed, one
+        // pending segment on disk, marker at phase 2. A new run() must not
+        // overwrite the marker — that would orphan the pending sidecars
+        // into a future live session.
+        let audio = pcm(seconds: 10)
+        let enc = try OpusWebMEncoder(
+            fileURL: NoteLayout.audioURL(noteFolder: note), mode: .create)
+        try enc.append(samples: audio)
+        try enc.finish()
+        let pendingDir = NoteLayout.pendingDirURL(noteFolder: note)
+        try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
+        let seg = try OpusWebMEncoder(
+            fileURL: pendingDir.appending(path: "1.webm"), mode: .create)
+        try seg.append(samples: Array(audio.prefix(5 * 16000)))
+        try seg.finish()
+        let sidecar = PendingSegment(
+            cueIndex: 1, startSec: 0, endSec: 5, speaker: 0, continuation: false)
+        try PersistedJSON.encoder().encode(sidecar)
+            .write(to: pendingDir.appending(path: "1.json"), options: .atomic)
+        try NoteRecordingState.update(noteFolder: note) {
+            $0.totalSamples = audio.count
+            $0.sessionCount = 1
+            $0.nextCueIndex = 2
+            $0.activeImport = .init(fileName: "crash.m4a", n: 1, baseSamples: 0, phase: 2)
+            $0.imports["crash.m4a"] = .init(status: .transcribing)
+        }
+        let pipeline = ImportPipeline(
+            noteFolderURL: note, transcriber: StubTranscriber(),
+            decoder: FakeDecoder(batches: [pcm(seconds: 2)], thenThrow: false),
+            analyzer: FakeAnalyzer(records: []))
+        await #expect(throws: ImportPipelineError.resumePending) {
+            try await pipeline.run(fileName: "other.wav")
+        }
+        let state = try NoteRecordingState.load(noteFolder: note)
+        #expect(
+            state.activeImport
+                == .init(fileName: "crash.m4a", n: 1, baseSamples: 0, phase: 2))
+        #expect(state.imports["crash.m4a"]?.status == .transcribing)
+        #expect(FileManager.default.fileExists(atPath: pendingDir.appending(path: "1.json").path))
+        #expect(FileManager.default.fileExists(atPath: pendingDir.appending(path: "1.webm").path))
     }
 }

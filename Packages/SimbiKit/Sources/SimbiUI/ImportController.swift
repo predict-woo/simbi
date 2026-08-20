@@ -47,36 +47,45 @@ public final class ImportController {
             transcriber: CodexTranscriber(),
             decoder: MediaFileDecoder(),
             analyzer: OfflineSpeechAnalyzer())
-        // Relaunch recovery: a phase-1 marker rolls back; a phase-2 marker
-        // resumes uploading in the background.
+        recoverLeftoverImportIfNeeded()
+    }
+
+    /// Recovery for a marker left by a crash or an in-session failure: a
+    /// phase-1 marker rolls back; a phase-2 marker resumes uploading in
+    /// the background. Called from init (relaunch) and from retry — the
+    /// pipeline refuses to run over a leftover phase-2 marker
+    /// (`resumePending`), so the drain must be kicked before re-importing.
+    /// No-op while an import owns the worker slot: the marker then belongs
+    /// to the running import, not to a leftover.
+    private func recoverLeftoverImportIfNeeded() {
+        guard current == nil else { return }
         let state = NoteRecordingState.current(noteFolder: noteFolderURL)
-        if let active = state.activeImport {
-            if active.phase == 1 {
+        guard let active = state.activeImport else { return }
+        if active.phase == 1 {
+            do {
+                try ImportPipeline.rollbackStalePhase1(noteFolder: noteFolderURL)
+            } catch {
+                Log.files.error("rolling back stale import failed: \(error)")
+            }
+        } else {
+            let file = active.fileName
+            // The resume owns the worker machinery exactly like a
+            // normal import: holding `current` makes an enqueue during
+            // the resume defer into the queue instead of colliding
+            // with the pipeline's running flag, and status stays
+            // .importing for the whole drain so the recorder guard
+            // keeps holding.
+            current = file
+            status = .importing(file: file, detail: "Resuming transcription")
+            Task { [pipeline] in
                 do {
-                    try ImportPipeline.rollbackStalePhase1(noteFolder: noteFolderURL)
+                    try await pipeline.resumePhase2()
                 } catch {
-                    Log.files.error("rolling back stale import failed: \(error)")
+                    Log.files.error("resuming import of \(file) failed: \(error)")
                 }
-            } else {
-                let file = active.fileName
-                // The resume owns the worker machinery exactly like a
-                // normal import: holding `current` makes an enqueue during
-                // the resume defer into the queue instead of colliding
-                // with the pipeline's running flag, and status stays
-                // .importing for the whole drain so the recorder guard
-                // keeps holding.
-                current = file
-                status = .importing(file: file, detail: "Resuming transcription")
-                Task { [pipeline] in
-                    do {
-                        try await pipeline.resumePhase2()
-                    } catch {
-                        Log.files.error("resuming import of \(file) failed: \(error)")
-                    }
-                    self.status = .idle
-                    self.current = nil
-                    self.pump()
-                }
+                self.status = .idle
+                self.current = nil
+                self.pump()
             }
         }
     }
@@ -89,8 +98,11 @@ public final class ImportController {
         pump()
     }
 
-    /// Clears a failed record so the file re-imports.
+    /// Clears a failed record so the file re-imports. A leftover phase-2
+    /// marker (its run died after committing audio) is drained first; the
+    /// re-import then queues behind the resume via `current`.
     func retry(_ fileName: String) {
+        recoverLeftoverImportIfNeeded()
         do {
             try NoteRecordingState.update(noteFolder: noteFolderURL) {
                 $0.imports[fileName] = nil

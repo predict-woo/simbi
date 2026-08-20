@@ -70,17 +70,32 @@ public actor ImportPipeline {
         guard !running else { throw ImportPipelineError.importAlreadyRunning }
         running = true
         defer { running = false }
-        try await analyzer.prepare()
-
-        var base = 0
-        var session = 0
-        try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
-            base = state.totalSamples
-            session = state.sessionCount + 1
-            state.activeImport = .init(fileName: fileName, n: session, baseSamples: base, phase: 1)
-            state.imports[fileName] = .init(status: .analyzing)
-        }
         do {
+            // Pre-flight, under the state lock, before the marker or any
+            // file is touched: a crashed live session must be recovered
+            // first (audio.webm holds its real audio past totalSamples, so
+            // a rollback here would truncate it), and a leftover phase-2
+            // marker must drain via resumePhase2 first (overwriting it with
+            // a fresh phase-1 marker would orphan its pending sidecars).
+            var preflight: ImportPipelineError?
+            try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+                if state.activeSession != nil {
+                    preflight = .recordingRecoveryPending
+                } else if state.activeImport?.phase == 2 {
+                    preflight = .resumePending
+                }
+            }
+            if let preflight { throw preflight }
+            try await analyzer.prepare()
+            var base = 0
+            var session = 0
+            try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+                base = state.totalSamples
+                session = state.sessionCount + 1
+                state.activeImport = .init(
+                    fileName: fileName, n: session, baseSamples: base, phase: 1)
+                state.imports[fileName] = .init(status: .analyzing)
+            }
             let (pcm, entries) = try await runPhase1(fileName: fileName, base: base)
             try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
                 state.totalSamples = base + pcm.count
@@ -101,10 +116,12 @@ public actor ImportPipeline {
             // rollback both no-op once the marker says phase 2 — committed
             // audio must survive, and a leftover phase-2 marker is exactly
             // what tells the next note open to resume draining pending
-            // uploads via resumePhase2).
+            // uploads via resumePhase2 — and no-op again when nothing was
+            // written yet: pre-flight refusals and prepare failures happen
+            // before the marker exists).
             try? Self.rollbackStalePhase1(noteFolder: noteFolderURL)
             try? NoteRecordingState.update(noteFolder: noteFolderURL) { state in
-                state.imports[fileName]?.status = .failed
+                state.imports[fileName] = .init(status: .failed)
             }
             emit(fileName, .failed("\(error)"))
             throw error
@@ -130,6 +147,12 @@ public actor ImportPipeline {
             else { throw ImportPipelineError.audioFileMismatch }
             encoder = try OpusWebMEncoder(
                 fileURL: audioFileURL, mode: .append(baseMilliseconds: UInt64(expectedMs)))
+        }
+        // Only past this point may bytes land in audio.webm; before the
+        // flag flips (e.g. the bookkeeping probe threw), rollback must not
+        // touch the file — its contents are not this import's to undo.
+        try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+            state.activeImport?.audioTouched = true
         }
         var pcm: [Float] = []
         for try await batch in decoder.decode(url: fileURL) {
@@ -358,12 +381,18 @@ public actor ImportPipeline {
     }
 
     /// Relaunch recovery for a phase-1 marker: truncate audio.webm back to
-    /// baseSamples, mark the file failed, clear the marker. No-op otherwise.
+    /// baseSamples (only when the import actually touched the file), mark
+    /// the file failed, clear the marker. No-op otherwise.
     public static func rollbackStalePhase1(noteFolder: URL) throws {
         let state = NoteRecordingState.current(noteFolder: noteFolder)
         guard let active = state.activeImport, active.phase == 1 else { return }
         let audioURL = NoteLayout.audioURL(noteFolder: noteFolder)
-        if active.baseSamples == 0 {
+        if !active.audioTouched {
+            // Phase 1 died before its encoder ever opened audio.webm (the
+            // bookkeeping probe threw, say): whatever the file holds is not
+            // this import's — truncating would cut real audio, e.g. a
+            // crashed live session's. Clear the marker, leave the bytes.
+        } else if active.baseSamples == 0 {
             try? FileManager.default.removeItem(at: audioURL)
         } else if FileManager.default.fileExists(atPath: audioURL.path) {
             // The appended session's first cluster starts exactly at the
@@ -390,4 +419,10 @@ public enum ImportPipelineError: Error, Equatable {
     case importAlreadyRunning
     case audioFileMismatch
     case noAudio
+    /// A crashed live session awaits recovery (`state.activeSession` is
+    /// stale); importing now would corrupt its unrecovered audio.
+    case recordingRecoveryPending
+    /// A leftover phase-2 marker must drain via `resumePhase2()` before a
+    /// new import may claim the marker.
+    case resumePending
 }
