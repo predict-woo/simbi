@@ -59,6 +59,13 @@ public final class ImportController {
                 }
             } else {
                 let file = active.fileName
+                // The resume owns the worker machinery exactly like a
+                // normal import: holding `current` makes an enqueue during
+                // the resume defer into the queue instead of colliding
+                // with the pipeline's running flag, and status stays
+                // .importing for the whole drain so the recorder guard
+                // keeps holding.
+                current = file
                 status = .importing(file: file, detail: "Resuming transcription")
                 Task { [pipeline] in
                     do {
@@ -67,6 +74,8 @@ public final class ImportController {
                         Log.files.error("resuming import of \(file) failed: \(error)")
                     }
                     self.status = .idle
+                    self.current = nil
+                    self.pump()
                 }
             }
         }
