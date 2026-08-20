@@ -39,6 +39,38 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         }
     }
 
+    /// A media import mid-flight. Still present when the note is opened
+    /// means the app died mid-import — phase decides recovery.
+    public struct ActiveImport: Codable, Equatable, Sendable {
+        public var fileName: String
+        /// Session number this import occupies.
+        public var n: Int
+        /// Note-timeline base (samples) before the import appended audio.
+        public var baseSamples: Int
+        /// 1 = writing audio/analyzing (rollback on crash); 2 = uploading (resume).
+        public var phase: Int
+
+        public init(fileName: String, n: Int, baseSamples: Int, phase: Int) {
+            self.fileName = fileName
+            self.n = n
+            self.baseSamples = baseSamples
+            self.phase = phase
+        }
+    }
+
+    /// One media-file import job, keyed by the file's name inside `files/`.
+    public struct MediaImport: Codable, Equatable, Sendable {
+        public enum Status: String, Codable, Sendable {
+            case analyzing, transcribing, done, failed
+        }
+
+        public var status: Status
+
+        public init(status: Status) {
+            self.status = status
+        }
+    }
+
     /// Next cue index to assign (monotonic across sessions, starts at 1).
     public var nextCueIndex: Int
     /// Number of completed sessions.
@@ -62,13 +94,18 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     public var fixerInstructionsHash: String?
     /// File-import conversion jobs by `files/` file name (SPEC.md §5.3).
     public var conversions: [String: FileConversion]
+    /// The media import in flight, if any (two-phase crash-recovery marker).
+    public var activeImport: ActiveImport?
+    /// Media-file import jobs by `files/` file name.
+    public var imports: [String: MediaImport]
 
     public init(
         nextCueIndex: Int = 1, sessionCount: Int = 0, totalSamples: Int = 0,
         lastSessionEnd: Date? = nil, activeSession: ActiveSession? = nil,
         fixerThreadId: String? = nil, fixerInstructionsVersion: Int = 0,
         fixerInstructionsHash: String? = nil,
-        conversions: [String: FileConversion] = [:]
+        conversions: [String: FileConversion] = [:],
+        activeImport: ActiveImport? = nil, imports: [String: MediaImport] = [:]
     ) {
         self.nextCueIndex = nextCueIndex
         self.sessionCount = sessionCount
@@ -79,6 +116,8 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         self.fixerInstructionsVersion = fixerInstructionsVersion
         self.fixerInstructionsHash = fixerInstructionsHash
         self.conversions = conversions
+        self.activeImport = activeImport
+        self.imports = imports
     }
 
     // Forward-compatible decoding, same pattern as SimbiSettings.
@@ -97,6 +136,9 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         conversions =
             try container.decodeIfPresent([String: FileConversion].self, forKey: .conversions)
             ?? [:]
+        activeImport = try container.decodeIfPresent(ActiveImport.self, forKey: .activeImport)
+        imports =
+            try container.decodeIfPresent([String: MediaImport].self, forKey: .imports) ?? [:]
     }
 
     public static func fileURL(noteFolder: URL) -> URL {
@@ -126,10 +168,11 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
         try PersistedJSON.encoder().encode(self).write(to: url, options: .atomic)
     }
 
-    // Two writers share state.json: the recording pipeline (which holds its
-    // copy in memory for a whole session) and the file-import path (which
-    // owns only `conversions`). Both go through this lock so neither
-    // clobbers the other's fields.
+    // Three writers share state.json: the recording pipeline (which holds
+    // its copy in memory for a whole session), the converter path (which
+    // owns only `conversions`) and the media-import path (which owns
+    // `imports` and `activeImport`). All go through this lock so none
+    // clobbers the others' fields.
     private static let ioLock = NSLock()
 
     /// Locked load → mutate → save, for writers that own only part of the
@@ -147,13 +190,15 @@ public struct NoteRecordingState: Codable, Equatable, Sendable {
     }
 
     /// Saves the recording pipeline's bookkeeping, adopting whatever
-    /// conversion records are on disk — the file-import path may have
-    /// written since this copy was loaded.
+    /// conversion and import records are on disk — the converter and
+    /// media-import paths may have written since this copy was loaded.
     public mutating func saveRecording(noteFolder: URL) throws {
         Self.ioLock.lock()
         defer { Self.ioLock.unlock() }
         if let disk = try? Self.load(noteFolder: noteFolder) {
             conversions = disk.conversions
+            imports = disk.imports
+            activeImport = disk.activeImport
         }
         try save(noteFolder: noteFolder)
     }
