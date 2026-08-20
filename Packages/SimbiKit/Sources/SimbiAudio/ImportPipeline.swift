@@ -1,3 +1,4 @@
+import CodexKit
 import Foundation
 import SimbiKit
 
@@ -143,16 +144,217 @@ public actor ImportPipeline {
         return (pcm, ImportBlockBuilder.build(records: records))
     }
 
-    // Task 7 replaces this placeholder with cue reservation + uploads.
+    // MARK: - Phase 2 (reserve → encode → upload at 5 → drain)
+
+    // The upload worker deliberately mirrors RecordingPipeline's §9.2
+    // extension — same retry/backoff/auth-pause/failed-dir semantics, kept
+    // side-by-side comparable on purpose (see the media-import spec's reuse
+    // rationale) — at concurrency `ImportConstants.uploadMaxConcurrent`,
+    // plus drain tracking so `run` can block until every cue is rendered.
+
+    private var uploadQueue: [Int] = []
+    private var uploadsInFlight = 0
+    private var uploadsPaused = false
+    private var remainingUploads = 0
+    private var uploadsDone = 0
+    private var uploadsTotal = 0
+    private var activeFileName = ""
+    private var drainContinuation: CheckedContinuation<Void, Never>?
+    private static let uploadMaxAttempts = 3
+    private static let uploadBackoff: [Duration] = [.seconds(1), .seconds(4)]
+    private static let authRetryDelay: Duration = .seconds(30)
+
+    /// Reserve session/gap/cue entries in timeline order, encode each block
+    /// into `.simbi/pending/`, upload, and block until the queue drains.
+    /// With auth degraded the drain never resolves and `run` never returns —
+    /// that is correct: the pending queue is disk-safe and a relaunch
+    /// resumes via `resumePhase2`.
     private func runPhase2AndDrain(
         fileName: String, entries: [ImportTimelineEntry], pcm: [Float],
         base: Int, session: Int
-    ) async throws {}
+    ) async throws {
+        let baseSec = Self.seconds(base)
+        let endSec = baseSec + Self.seconds(pcm.count)
+        func noteTime(_ frame: Int) -> TimeInterval {
+            baseSec + TimeInterval(frame) * DiarizerPreset.frameDuration
+        }
+        try FileManager.default.createDirectory(
+            at: pendingDirURL, withIntermediateDirectories: true)
+        activeFileName = fileName
+        uploadsTotal = entries.reduce(0) { if case .block = $1 { $0 + 1 } else { $0 } }
+        uploadsDone = 0
+        try outbox.append(.sessionStart(n: session, wallClock: .now, offset: baseSec))
+        for entry in entries {
+            switch entry {
+            case .gap(let start, let end):
+                try outbox.append(.gap(start: noteTime(start), end: noteTime(end)))
+            case .block(let block):
+                var cueIndex = 0
+                try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+                    cueIndex = state.nextCueIndex
+                    state.nextCueIndex += 1
+                }
+                let sliceStart = block.startFrame * CutConstants.frameSamples
+                let sliceEnd = min(block.endFrame * CutConstants.frameSamples, pcm.count)
+                let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
+                let segmentEncoder = try OpusWebMEncoder(fileURL: webmURL, mode: .create)
+                try segmentEncoder.append(samples: Array(pcm[sliceStart..<sliceEnd]))
+                try segmentEncoder.finish()
+                let start = noteTime(block.startFrame)
+                let end = min(noteTime(block.endFrame), endSec)
+                let sidecar = PendingSegment(
+                    cueIndex: cueIndex, startSec: start, endSec: end,
+                    speaker: block.speaker, continuation: false)
+                try PersistedJSON.encoder().encode(sidecar)
+                    .write(to: pendingDirURL.appending(path: "\(cueIndex).json"), options: .atomic)
+                outbox.reserveCue(
+                    index: cueIndex, start: start, end: end,
+                    speaker: SpeakerLabel.name(slot: block.speaker), continuation: false)
+                remainingUploads += 1
+                enqueueUpload(cueIndex)
+            }
+        }
+        try outbox.append(.sessionEnd(n: session, wallClock: .now, offset: endSec))
+        emit(fileName, .transcribing(done: 0, total: uploadsTotal))
+        await waitForDrain()
+    }
 
     /// Relaunch recovery for a phase-2 marker: re-enqueue pending segments,
     /// drain, clear the marker. No-op without a phase-2 marker.
     public func resumePhase2() async throws {
-        // Filled in Task 7.
+        guard !running else { return }
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
+        guard let active = state.activeImport, active.phase == 2 else { return }
+        running = true
+        defer { running = false }
+        activeFileName = active.fileName
+        let pendingIndices =
+            ((try? FileManager.default.contentsOfDirectory(
+                at: pendingDirURL, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+            .compactMap { Int($0.deletingPathExtension().lastPathComponent) }
+            .sorted()
+        if !pendingIndices.isEmpty {
+            uploadsTotal = pendingIndices.count
+            uploadsDone = 0
+            for cueIndex in pendingIndices {
+                let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
+                guard let data = try? Data(contentsOf: jsonURL),
+                    let sidecar = try? JSONDecoder().decode(PendingSegment.self, from: data)
+                else { continue }
+                outbox.reserveCue(
+                    index: sidecar.cueIndex, start: sidecar.startSec, end: sidecar.endSec,
+                    speaker: SpeakerLabel.name(slot: sidecar.speaker),
+                    continuation: sidecar.continuation)
+                remainingUploads += 1
+                enqueueUpload(sidecar.cueIndex)
+            }
+            // The in-memory session-end note died with the crashed process;
+            // close the session behind the re-enqueued cues (same move as
+            // RecordingPipeline.start()'s re-enqueue path).
+            try outbox.append(
+                .sessionEnd(
+                    n: state.sessionCount, wallClock: state.lastSessionEnd ?? .now,
+                    offset: Self.seconds(state.totalSamples)))
+            await waitForDrain()
+        }
+        try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+            if let name = state.activeImport?.fileName {
+                state.imports[name]?.status = .done
+            }
+            state.activeImport = nil
+        }
+        emit(active.fileName, .finished)
+    }
+
+    private func waitForDrain() async {
+        guard remainingUploads > 0 else { return }
+        await withCheckedContinuation { continuation in
+            drainContinuation = continuation
+        }
+    }
+
+    private func enqueueUpload(_ cueIndex: Int) {
+        uploadQueue.append(cueIndex)
+        kickUploads()
+    }
+
+    private func kickUploads() {
+        while !uploadsPaused, uploadsInFlight < ImportConstants.uploadMaxConcurrent,
+            !uploadQueue.isEmpty
+        {
+            let cueIndex = uploadQueue.removeFirst()
+            uploadsInFlight += 1
+            Task { await self.runUpload(cueIndex: cueIndex) }
+        }
+    }
+
+    private func runUpload(cueIndex: Int) async {
+        let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
+        let jsonURL = pendingDirURL.appending(path: "\(cueIndex).json")
+        for attempt in 1...Self.uploadMaxAttempts {
+            do {
+                let text = try await transcriber.transcribe(webmFile: webmURL)
+                for url in [webmURL, jsonURL] {
+                    try? FileManager.default.removeItem(at: url)
+                }
+                uploadFinished(cueIndex: cueIndex, text: text)
+                return
+            } catch let error as TranscriptionClient.TranscriptionError {
+                switch error {
+                case .authUnavailable, .authRejected:
+                    pauseUploads(requeuing: cueIndex)
+                    return
+                case .requestFailed, .malformedResponse:
+                    break
+                }
+            } catch {}
+            if attempt < Self.uploadMaxAttempts {
+                try? await Task.sleep(for: Self.uploadBackoff[attempt - 1])
+            }
+        }
+        Log.recording.error(
+            "import cue \(cueIndex) failed after \(Self.uploadMaxAttempts) attempts; [inaudible]")
+        let failedDir = NoteLayout.failedDirURL(noteFolder: noteFolderURL)
+        try? FileManager.default.createDirectory(at: failedDir, withIntermediateDirectories: true)
+        for url in [webmURL, jsonURL] {
+            try? FileManager.default.moveItem(
+                at: url, to: failedDir.appending(path: url.lastPathComponent))
+        }
+        uploadFinished(cueIndex: cueIndex, text: "[inaudible]")
+    }
+
+    private func uploadFinished(cueIndex: Int, text: String) {
+        do {
+            try outbox.fulfillCue(index: cueIndex, text: text)
+        } catch {
+            Log.recording.error("appending import cue \(cueIndex) failed: \(error)")
+        }
+        uploadsInFlight -= 1
+        uploadsDone += 1
+        remainingUploads -= 1
+        emit(activeFileName, .transcribing(done: uploadsDone, total: uploadsTotal))
+        kickUploads()
+        if remainingUploads == 0 {
+            drainContinuation?.resume()
+            drainContinuation = nil
+        }
+    }
+
+    private func pauseUploads(requeuing cueIndex: Int) {
+        uploadQueue.insert(cueIndex, at: 0)
+        uploadsInFlight -= 1
+        guard !uploadsPaused else { return }
+        uploadsPaused = true
+        Task {
+            try? await Task.sleep(for: Self.authRetryDelay)
+            self.resumeUploads()
+        }
+    }
+
+    private func resumeUploads() {
+        uploadsPaused = false
+        kickUploads()
     }
 
     /// Relaunch recovery for a phase-1 marker: truncate audio.webm back to
