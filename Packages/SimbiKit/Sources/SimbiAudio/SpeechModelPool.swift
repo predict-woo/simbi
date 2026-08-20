@@ -57,9 +57,16 @@ public final class SpeechModelPool: @unchecked Sendable {
         let models: SortformerModels
     }
 
+    /// OfflineSortformerDiarizer is not Sendable; it serializes internally
+    /// behind its own lock, so the one shared instance crosses tasks safely.
+    private struct OfflineDiarizerCheckout: @unchecked Sendable {
+        let diarizer: OfflineSortformerDiarizer
+    }
+
     private let lock = NSLock()
     private var sortformerLoad: Task<Checkout, Error>?
     private var vadLoad: Task<VadManager, Error>?
+    private var offlineDiarizerLoad: Task<OfflineDiarizerCheckout, Error>?
 
     /// Warm-up progress for the onboarding download step; only `warmUp()`
     /// drives it.
@@ -110,6 +117,30 @@ public final class SpeechModelPool: @unchecked Sendable {
             return try await load.value
         } catch {
             lock.withLock { vadLoad = nil }
+            throw error
+        }
+    }
+
+    /// Offline Sortformer for file import (fused whole-window graph, its
+    /// own HuggingFace bundle). Loaded lazily on first import — never part
+    /// of app-launch warm-up. The instance serializes internally, so one
+    /// shared diarizer serves every import. A failed load is dropped so
+    /// the next call retries.
+    func offlineDiarizer() async throws -> OfflineSortformerDiarizer {
+        let load: Task<OfflineDiarizerCheckout, Error> = lock.withLock {
+            if let load = offlineDiarizerLoad { return load }
+            let load = Task {
+                let diarizer = OfflineSortformerDiarizer()
+                try await diarizer.initializeFromHuggingFace()
+                return OfflineDiarizerCheckout(diarizer: diarizer)
+            }
+            offlineDiarizerLoad = load
+            return load
+        }
+        do {
+            return try await load.value.diarizer
+        } catch {
+            lock.withLock { offlineDiarizerLoad = nil }
             throw error
         }
     }
