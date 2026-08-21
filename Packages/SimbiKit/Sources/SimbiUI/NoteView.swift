@@ -446,6 +446,20 @@ struct NoteView: View {
                     .font(.meta)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
+                // The fixer pass gets the recorder strip's sparkles
+                // affordance: pulse while working, click to watch the
+                // live Codex thread.
+                if importer.fixingTranscript {
+                    Button {
+                        importer.openFixerViewer()
+                    } label: {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.tint)
+                            .modifier(PulseEffect(active: true))
+                    }
+                    .buttonStyle(HoverCircleButtonStyle())
+                    .help("Transcript fixer is working. Click to watch its Codex thread")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, Design.paneInset)

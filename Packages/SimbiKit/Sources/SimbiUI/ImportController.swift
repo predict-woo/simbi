@@ -43,6 +43,9 @@ public final class ImportController {
     /// done) — the note view routes it into the same summary/title
     /// triggers a stopped recording fires.
     var onImportFinished: (() -> Void)?
+    /// True while the end-of-import fixer pass runs; the strip shows the
+    /// sparkles button then, and the thread viewer reads it as busy.
+    private(set) var fixingTranscript = false
     let noteFolderURL: URL
     private let pipeline: ImportPipeline
     private var queue: [URL] = []
@@ -163,6 +166,7 @@ public final class ImportController {
                     } else {
                         self.decodingAudio = false
                     }
+                    self.fixingTranscript = progress.stage == .fixing
                     self.status = .importing(
                         file: progress.fileName, detail: Self.detail(progress.stage))
                 }
@@ -176,6 +180,7 @@ public final class ImportController {
             }
             progressTask.cancel()
             decodingAudio = false
+            fixingTranscript = false
             status = failure.map { .failed(message: $0) } ?? .idle
             current = nil
             if failure == nil {
@@ -183,6 +188,21 @@ public final class ImportController {
             }
             pump()
         }
+    }
+
+    /// The strip's sparkles button during the end-of-import fixer pass:
+    /// opens the note's fixer thread in the live viewer — the same thread
+    /// (and the same viewer contract) as the recorder's fixer button.
+    /// Fixer viewers never archive on close; the thread stays resumable.
+    func openFixerViewer() {
+        guard let threadId = NoteRecordingState.current(noteFolder: noteFolderURL).fixerThreadId
+        else { return }
+        ThreadViewerManager.shared.open(
+            threadId: threadId,
+            title: "Fixer: \(noteFolderURL.lastPathComponent)",
+            noteFolderURL: noteFolderURL,
+            archivesOnClose: false,
+            isBusy: { [weak self] in self?.fixingTranscript ?? false })
     }
 
     private static func failureMessage(for error: Error, fileName: String) -> String {
