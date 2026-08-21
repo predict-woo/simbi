@@ -137,6 +137,13 @@ struct NoteView: View {
                 summary?.recordingDidStop()
                 titleController?.recordingDidStop()
             }
+            // A finished import is a finished recording as far as AI notes
+            // and auto-titling are concerned — same triggers, same gating
+            // (both controllers check their own settings internally).
+            importer.onImportFinished = { [weak summary, weak titleController] in
+                summary?.recordingDidStop()
+                titleController?.recordingDidStop()
+            }
             titleController.renameNote = renameNote
             // All three controllers are app-lifetime singletons for this
             // note, so capturing them here stays valid across view
@@ -306,7 +313,7 @@ struct NoteView: View {
         {
             transcriptFlash = CueFlash(row: row)
         }
-        if recorder.status == .idle && playback.hasAudio {
+        if recorder.status == .idle && playback.hasAudio && !importer.decodingAudio {
             playback.play(from: seconds)
         }
     }
@@ -365,7 +372,7 @@ struct NoteView: View {
             // The player bar lives above the transcript whenever the note
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
-            if (recorder.status == .idle && playback.hasAudio) || Flags.uiPreview {
+            if (recorder.status == .idle && playback.hasAudio && !importer.decodingAudio) || Flags.uiPreview {
                 PlaybackBar(playback: playback, noteFolderURL: noteFolderURL)
                 Divider()
             }
@@ -374,7 +381,7 @@ struct NoteView: View {
                 playbackPosition: playback.isPlaying ? playback.position : nil,
                 // Click a cue to play from it — same recording guard as
                 // the player bar.
-                onSeek: recorder.status == .idle && playback.hasAudio
+                onSeek: recorder.status == .idle && playback.hasAudio && !importer.decodingAudio
                     ? { playback.play(from: $0) } : nil,
                 onRenameSpeaker: { from, to in
                     do {

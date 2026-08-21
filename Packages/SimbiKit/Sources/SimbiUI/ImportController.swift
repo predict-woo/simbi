@@ -35,6 +35,14 @@ public final class ImportController {
     }
 
     public private(set) var status: Status = .idle
+    /// True while an import is still writing audio.webm (decode phase):
+    /// the playback bar must stay hidden then — the timeline is growing
+    /// under the player. False from the diarizing stage on (audio final).
+    public private(set) var decodingAudio = false
+    /// Fired after an import fully completes (uploads drained, fixer pass
+    /// done) — the note view routes it into the same summary/title
+    /// triggers a stopped recording fires.
+    var onImportFinished: (() -> Void)?
     let noteFolderURL: URL
     private let pipeline: ImportPipeline
     private var queue: [URL] = []
@@ -125,8 +133,36 @@ public final class ImportController {
                 try? await Task.sleep(for: .seconds(2))
             }
             status = .importing(file: fileName, detail: "Analyzing")
+            // Fixer per settings, exactly like RecordingController.start():
+            // reuse the note's saved thread unless the instructions
+            // changed; disabled = nil = the pipeline skips the pass.
+            let settings = SimbiSettings.current()
+            if settings.transcriptFixerEnabled {
+                let noteState = NoteRecordingState.current(noteFolder: noteFolderURL)
+                let fixerInstructions = AgentInstructions.fixer.resolve(
+                    homeRootURL: SimbiHome().rootURL)
+                let savedThreadId =
+                    noteState.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
+                        && noteState.fixerInstructionsHash
+                            == AgentInstructions.fingerprint(fixerInstructions)
+                    ? noteState.fixerThreadId : nil
+                let choice = settings[.fixer]
+                await pipeline.attachFixer(
+                    TranscriptFixer(
+                        noteFolderURL: noteFolderURL, client: CodexServices.appServer,
+                        savedThreadId: savedThreadId, model: choice.model,
+                        effort: choice.effort, instructions: fixerInstructions))
+            } else {
+                await pipeline.attachFixer(nil)
+            }
+            decodingAudio = true
             let progressTask = Task { [pipeline] in
                 for await progress in await pipeline.progressUpdates() {
+                    if case .analyzing = progress.stage {
+                        self.decodingAudio = true
+                    } else {
+                        self.decodingAudio = false
+                    }
                     self.status = .importing(
                         file: progress.fileName, detail: Self.detail(progress.stage))
                 }
@@ -139,8 +175,12 @@ public final class ImportController {
                 failure = Self.failureMessage(for: error, fileName: fileName)
             }
             progressTask.cancel()
+            decodingAudio = false
             status = failure.map { .failed(message: $0) } ?? .idle
             current = nil
+            if failure == nil {
+                onImportFinished?()
+            }
             pump()
         }
     }
@@ -167,8 +207,12 @@ public final class ImportController {
         switch stage {
         case .analyzing(let seconds):
             return "Analyzing: \(Int(seconds / 60))m \(Int(seconds) % 60)s decoded"
+        case .diarizing:
+            return "Identifying speakers"
         case .transcribing(let done, let total):
             return "Transcribing \(done) of \(total)"
+        case .fixing:
+            return "Fixing transcript"
         case .finished:
             return "Finished"
         case .failed:

@@ -12,8 +12,14 @@ import SimbiKit
 public actor ImportPipeline {
     public struct Progress: Equatable, Sendable {
         public enum Stage: Equatable, Sendable {
+            /// Decoding into audio.webm — the timeline is still growing,
+            /// so playback stays hidden until this stage ends.
             case analyzing(seconds: TimeInterval)
+            /// Audio is final; the offline models are labeling speakers.
+            case diarizing
             case transcribing(done: Int, total: Int)
+            /// One end-of-import fixer pass over the whole transcript.
+            case fixing
             case finished
             case failed(String)
         }
@@ -28,6 +34,20 @@ public actor ImportPipeline {
     private let outbox: TranscriptOutbox
     private var running = false
     private var progressContinuation: AsyncStream<Progress>.Continuation?
+    /// Optional end-of-import fixer (media-import spec, amended): one pass
+    /// over the whole imported transcript after the upload drain; failures
+    /// never affect the import (degraded mode: fixing just doesn't happen).
+    private var fixer: TranscriptFixer?
+    /// The transcript content copied into the fixer's worktree at pass
+    /// start — the "before" side of the merge diff (same contract as
+    /// RecordingPipeline's).
+    private var fixerSnapshot: String?
+    private var fixerDoneContinuation: CheckedContinuation<Void, Never>?
+    /// Highest cue index this import reserved; the fixer pass covers 1..N.
+    private var lastImportedCue = 0
+    /// Bound on the end-of-import fixer wait — a hung Codex turn must not
+    /// wedge the import (same ceiling as the converter's turn timeout).
+    private static let fixerTimeout: Duration = .seconds(900)
 
     private var pendingDirURL: URL { NoteLayout.pendingDirURL(noteFolder: noteFolderURL) }
     private var audioFileURL: URL { NoteLayout.audioURL(noteFolder: noteFolderURL) }
@@ -65,6 +85,63 @@ public actor ImportPipeline {
         progressContinuation?.yield(Progress(fileName: fileName, stage: stage))
     }
 
+    /// Attaches the note's fixer before `run()` (nil = fixing disabled).
+    public func attachFixer(_ fixer: TranscriptFixer?) async {
+        self.fixer = fixer
+        await fixer?.setHost(self)
+    }
+
+    // MARK: - End-of-import fixer pass (media-import spec, amended)
+
+    /// One coalesced pass over cues 1..lastImportedCue: start (or resume)
+    /// the note's fixer thread, mark every imported cue new, and wait for
+    /// the thread to report done — bounded by `fixerTimeout`. Every failure
+    /// path returns without throwing: the import is already complete and
+    /// correct, fixing is best-effort polish.
+    private func runFixerPass(fileName: String) async {
+        guard let fixer, lastImportedCue > 0 else { return }
+        emit(fileName, .fixing)
+        await fixer.setEventSink { [weak self] event in
+            guard event == .done else { return }
+            Task { await self?.fixerPassEnded() }
+        }
+        do {
+            try await fixer.recordingStarted()
+        } catch {
+            Log.recording.warning("import fixer thread failed to start: \(error)")
+            return
+        }
+        // Persist the thread identity exactly like the recorder does, so
+        // recordings and imports keep sharing one fixer thread per note.
+        let fingerprint = await fixer.instructionsFingerprint
+        if let threadId = await fixer.threadId {
+            try? NoteRecordingState.update(noteFolder: noteFolderURL) { state in
+                state.fixerThreadId = threadId
+                state.fixerInstructionsVersion = TranscriptFixer.instructionsVersion
+                state.fixerInstructionsHash = fingerprint
+            }
+        }
+        let lastCue = lastImportedCue
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            fixerDoneContinuation = continuation
+            Task {
+                await fixer.cueAppended(index: lastCue)
+                await fixer.recordingStopped()
+            }
+            Task {
+                try? await Task.sleep(for: Self.fixerTimeout)
+                await self.fixerPassEnded()
+            }
+        }
+    }
+
+    /// Resumes the fixer wait exactly once (the `.done` event and the
+    /// timeout both funnel here; whichever is second finds nil).
+    private func fixerPassEnded() {
+        fixerDoneContinuation?.resume()
+        fixerDoneContinuation = nil
+    }
+
     /// Full import of the media file at `fileURL` — read in place from
     /// wherever the user's file lives; nothing is copied into the note
     /// folder (the decoded `audio.webm` IS the recording). Throws on
@@ -73,6 +150,7 @@ public actor ImportPipeline {
         guard !running else { throw ImportPipelineError.importAlreadyRunning }
         let fileName = fileURL.lastPathComponent
         running = true
+        lastImportedCue = 0
         defer { running = false }
         do {
             // Pre-flight, under the state lock, before the marker or any
@@ -111,6 +189,10 @@ public actor ImportPipeline {
             }
             try await runPhase2AndDrain(
                 fileName: fileName, entries: entries, pcm: pcm, base: base, session: session)
+            // One fixer pass over the whole imported transcript, after
+            // every cue is terminal and before the import reports done.
+            // Failures degrade to "no fixing" — never a failed import.
+            await runFixerPass(fileName: fileName)
             try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
                 state.activeImport = nil
                 state.imports[fileName]?.status = .done
@@ -167,6 +249,8 @@ public actor ImportPipeline {
         }
         guard !pcm.isEmpty else { throw ImportPipelineError.noAudio }
         try encoder.finish()
+        // Audio is final from here — the UI may offer playback now.
+        emit(fileName, .diarizing)
         let records = try await analyzer.analyze(pcm)
         return (pcm, ImportBlockBuilder.build(records: records))
     }
@@ -221,6 +305,7 @@ public actor ImportPipeline {
                     cueIndex = state.nextCueIndex
                     state.nextCueIndex += 1
                 }
+                lastImportedCue = max(lastImportedCue, cueIndex)
                 let sliceStart = block.startFrame * CutConstants.frameSamples
                 let sliceEnd = min(block.endFrame * CutConstants.frameSamples, pcm.count)
                 let webmURL = pendingDirURL.appending(path: "\(cueIndex).webm")
@@ -429,4 +514,52 @@ public enum ImportPipelineError: Error, Equatable {
     /// A leftover phase-2 marker must drain via `resumePhase2()` before a
     /// new import may claim the marker.
     case resumePending
+}
+
+// MARK: - Fixer merge (SPEC.md §5.2 snapshot-and-replay, import edition)
+
+extension ImportPipeline: TranscriptFixerHost {
+    /// Copies the live transcript into the fixer's worktree and remembers
+    /// it as the diff base — same single-writer contract as
+    /// `RecordingPipeline.fixerWillStartPass`.
+    public func fixerWillStartPass() {
+        let worktree = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
+        let live =
+            (try? String(
+                contentsOf: VTT.fileURL(noteFolder: noteFolderURL), encoding: .utf8))
+            ?? VTT.header(noteName: noteFolderURL.lastPathComponent)
+        fixerSnapshot = live
+        do {
+            try FileManager.default.createDirectory(
+                at: worktree, withIntermediateDirectories: true)
+            try live.write(
+                to: worktree.appending(path: VTT.fileName), atomically: true, encoding: .utf8)
+        } catch {
+            Log.recording.error("copying transcript into fixer worktree failed: \(error)")
+        }
+    }
+
+    /// Diffs the fixer's edited copy against the snapshot and replays the
+    /// changed cue payloads onto the live file, serialized on this actor —
+    /// the import's outbox stays `transcript.vtt`'s only writer.
+    @discardableResult
+    public func fixerDidCompletePass() -> Int {
+        guard let before = fixerSnapshot else { return 0 }
+        fixerSnapshot = nil
+        let copyURL = TranscriptFixer.worktreeURL(noteFolder: noteFolderURL)
+            .appending(path: VTT.fileName)
+        guard let after = try? String(contentsOf: copyURL, encoding: .utf8) else {
+            Log.recording.warning("fixer worktree transcript unreadable; merge skipped")
+            return 0
+        }
+        let edits = TranscriptOutbox.fixerEdits(before: before, after: after)
+        guard !edits.isEmpty else { return 0 }
+        do {
+            try outbox.applyEdits(edits)
+            return edits.count
+        } catch {
+            Log.recording.error("applying \(edits.count) fixer edits failed: \(error)")
+            return 0
+        }
+    }
 }
