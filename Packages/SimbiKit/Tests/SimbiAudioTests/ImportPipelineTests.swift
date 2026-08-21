@@ -36,6 +36,13 @@ private struct StubTranscriber: Transcriber {
     func transcribe(webmFile: URL) async throws -> String { "[import test]" }
 }
 
+/// A source URL for the decoder fakes: the path need not exist (fakes
+/// ignore it) and deliberately lives OUTSIDE the note folder — imports read
+/// the user's file wherever it is; nothing is copied into the note.
+private func mediaURL(_ name: String) -> URL {
+    FileManager.default.temporaryDirectory.appending(path: name)
+}
+
 private func makeNote() throws -> URL {
     let url = FileManager.default.temporaryDirectory
         .appending(path: "import-\(UUID().uuidString)")
@@ -91,7 +98,7 @@ struct ImportPipelinePhase1Tests {
             noteFolderURL: note, transcriber: StubTranscriber(),
             decoder: FakeDecoder(batches: [audio], thenThrow: false),
             analyzer: FakeAnalyzer(records: records))
-        try await pipeline.run(fileName: "clip.wav")
+        try await pipeline.run(fileURL: mediaURL("clip.wav"))
         let state = try NoteRecordingState.load(noteFolder: note)
         #expect(state.totalSamples == audio.count)
         #expect(state.sessionCount == 1)
@@ -111,7 +118,7 @@ struct ImportPipelinePhase1Tests {
             noteFolderURL: note, transcriber: StubTranscriber(),
             decoder: FakeDecoder(batches: [first], thenThrow: false),
             analyzer: FakeAnalyzer(records: records))
-        try await ok.run(fileName: "first.wav")
+        try await ok.run(fileURL: mediaURL("first.wav"))
         let baselineMs = try OpusWebMDecoder(fileURL: NoteLayout.audioURL(noteFolder: note))
             .endMilliseconds
         let baselineState = try NoteRecordingState.load(noteFolder: note)
@@ -121,7 +128,7 @@ struct ImportPipelinePhase1Tests {
             decoder: FakeDecoder(batches: [pcm(seconds: 3)], thenThrow: true),
             analyzer: FakeAnalyzer(records: []))
         await #expect(throws: (any Error).self) {
-            try await bad.run(fileName: "second.wav")
+            try await bad.run(fileURL: mediaURL("second.wav"))
         }
         let after = try NoteRecordingState.load(noteFolder: note)
         #expect(after.totalSamples == baselineState.totalSamples)
@@ -140,7 +147,7 @@ struct ImportPipelinePhase1Tests {
             noteFolderURL: note, transcriber: StubTranscriber(),
             decoder: FakeDecoder(batches: [pcm(seconds: 2)], thenThrow: true),
             analyzer: FakeAnalyzer(records: []))
-        await #expect(throws: (any Error).self) { try await bad.run(fileName: "clip.wav") }
+        await #expect(throws: (any Error).self) { try await bad.run(fileURL: mediaURL("clip.wav")) }
         #expect(!FileManager.default.fileExists(atPath: NoteLayout.audioURL(noteFolder: note).path))
     }
 
@@ -196,7 +203,7 @@ struct ImportPipelinePhase1Tests {
             decoder: FakeDecoder(batches: [pcm(seconds: 2)], thenThrow: false),
             analyzer: FakeAnalyzer(records: []))
         await #expect(throws: ImportPipelineError.recordingRecoveryPending) {
-            try await pipeline.run(fileName: "clip.wav")
+            try await pipeline.run(fileURL: mediaURL("clip.wav"))
         }
         #expect(try Data(contentsOf: audioURL) == bytesBefore)
         let state = try NoteRecordingState.load(noteFolder: note)
@@ -214,7 +221,7 @@ struct ImportPipelinePhase1Tests {
             decoder: FakeDecoder(batches: [pcm(seconds: 1)], thenThrow: false),
             analyzer: ThrowingPrepareAnalyzer())
         await #expect(throws: (any Error).self) {
-            try await pipeline.run(fileName: "clip.wav")
+            try await pipeline.run(fileURL: mediaURL("clip.wav"))
         }
         let state = try NoteRecordingState.load(noteFolder: note)
         #expect(state.imports["clip.wav"]?.status == .failed)
@@ -231,7 +238,7 @@ struct ImportPipelinePhase1Tests {
             decoder: FakeDecoder(batches: [], thenThrow: false),
             analyzer: FakeAnalyzer(records: []))
         await #expect(throws: ImportPipelineError.noAudio) {
-            try await pipeline.run(fileName: "empty.wav")
+            try await pipeline.run(fileURL: mediaURL("empty.wav"))
         }
         #expect(try NoteRecordingState.load(noteFolder: note).activeImport == nil)
     }
@@ -258,7 +265,7 @@ struct ImportPipelinePhase2Tests {
             transcriber: CountingTranscriber(log: log, failCues: []),
             decoder: FakeDecoder(batches: [audio], thenThrow: false),
             analyzer: FakeAnalyzer(records: twoSpeakerRecords))
-        try await pipeline.run(fileName: "meeting.m4a")
+        try await pipeline.run(fileURL: mediaURL("meeting.m4a"))
 
         let text = try String(
             contentsOf: VTT.fileURL(noteFolder: note), encoding: .utf8)
@@ -312,7 +319,7 @@ struct ImportPipelinePhase2Tests {
             transcriber: CountingTranscriber(log: log, failCues: []),
             decoder: FakeDecoder(batches: [audio], thenThrow: false),
             analyzer: FakeAnalyzer(records: records))
-        try await pipeline.run(fileName: "long.m4a")
+        try await pipeline.run(fileURL: mediaURL("long.m4a"))
         #expect(await log.maxInFlight <= ImportConstants.uploadMaxConcurrent)
         #expect(await log.maxInFlight > 1)
     }
@@ -328,7 +335,7 @@ struct ImportPipelinePhase2Tests {
             transcriber: CountingTranscriber(log: log, failCues: [1]),
             decoder: FakeDecoder(batches: [audio], thenThrow: false),
             analyzer: FakeAnalyzer(records: twoSpeakerRecords))
-        try await pipeline.run(fileName: "meeting.m4a")
+        try await pipeline.run(fileURL: mediaURL("meeting.m4a"))
         let text = try String(contentsOf: VTT.fileURL(noteFolder: note), encoding: .utf8)
         #expect(text.contains("[inaudible]"))
         let failed = try FileManager.default.contentsOfDirectory(
@@ -416,7 +423,7 @@ struct ImportPipelinePhase2Tests {
             decoder: FakeDecoder(batches: [pcm(seconds: 2)], thenThrow: false),
             analyzer: FakeAnalyzer(records: []))
         await #expect(throws: ImportPipelineError.resumePending) {
-            try await pipeline.run(fileName: "other.wav")
+            try await pipeline.run(fileURL: mediaURL("other.wav"))
         }
         let state = try NoteRecordingState.load(noteFolder: note)
         #expect(

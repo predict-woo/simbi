@@ -1,17 +1,7 @@
 import CodexKit
 import Foundation
 import Observation
-import SimbiAudio
 import SimbiKit
-
-/// Where a `files/` entry goes (media-import spec): decodable media to the
-/// import pipeline, unreadable media to a dead-end failed row, everything
-/// else to the anydoc/Codex document converter.
-enum FileRoute: Equatable {
-    case mediaImport
-    case unsupportedMedia
-    case documentConversion
-}
 
 /// Owns file import + conversion for one note (SPEC.md §5.3): copies
 /// dropped/picked files into `files/`, dispatches one converter thread per
@@ -22,23 +12,9 @@ enum FileRoute: Equatable {
 final class FilesModel {
     struct Row: Identifiable {
         let name: String
-        let route: FileRoute
-        /// Document-conversion status; nil for media rows.
-        let status: NoteRecordingState.FileConversion.Status?
-        /// Media-import status; nil for document and unsupported rows.
-        let importStatus: NoteRecordingState.MediaImport.Status?
+        let status: NoteRecordingState.FileConversion.Status
         let threadId: String?
         var id: String { name }
-    }
-
-    /// Pure routing decision, one name in, one route out (thin wrapper over
-    /// `MediaFileDecoder.kind(of:)` so the UI layer has a single spelling).
-    nonisolated static func route(for name: String) -> FileRoute {
-        switch MediaFileDecoder.kind(of: name) {
-        case .supported: .mediaImport
-        case .unsupported: .unsupportedMedia
-        case .document: .documentConversion
-        }
     }
 
     private static let models = PerNoteRegistry<FilesModel>()
@@ -172,12 +148,8 @@ final class FilesModel {
     }
 
     func retry(_ name: String) {
-        if Self.route(for: name) == .mediaImport {
-            ImportController.shared(noteFolderURL: noteFolderURL).retry(name)
-        } else {
-            Self.updateState(noteFolder: noteFolderURL) {
-                $0.conversions[name] = nil
-            }
+        Self.updateState(noteFolder: noteFolderURL) {
+            $0.conversions[name] = nil
         }
         refresh()
     }
@@ -185,13 +157,9 @@ final class FilesModel {
     /// Trashes the original and its converted markdown, and clears the
     /// conversion record so a re-added file with the same name converts
     /// fresh. Trash (not unlink) so a slip is recoverable, like Finder.
-    /// Media files have no context output — only the original goes, the
-    /// import record clears, and transcript cues already rendered stay
-    /// (they are part of the note's timeline now).
     func delete(_ name: String) {
-        let isMedia = Self.route(for: name) != .documentConversion
-        let urls = isMedia ? [fileURL(for: name)] : [fileURL(for: name), contextURL(for: name)]
-        for url in urls where FileManager.default.fileExists(atPath: url.path) {
+        for url in [fileURL(for: name), contextURL(for: name)]
+        where FileManager.default.fileExists(atPath: url.path) {
             do {
                 try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             } catch {
@@ -199,11 +167,7 @@ final class FilesModel {
             }
         }
         Self.updateState(noteFolder: noteFolderURL) {
-            if isMedia {
-                $0.imports[name] = nil
-            } else {
-                $0.conversions[name] = nil
-            }
+            $0.conversions[name] = nil
         }
         refresh()
     }
@@ -215,62 +179,23 @@ final class FilesModel {
             .sorted()
         let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         rows = names.map { name in
-            switch Self.route(for: name) {
-            case .mediaImport:
-                return mediaRow(name: name, state: state)
-            case .unsupportedMedia:
-                // Recognized media AVFoundation can't read: a dead-end
-                // failed row — no converter (it would produce garbage
-                // context) and no import (nothing can decode it).
-                return Row(
-                    name: name, route: .unsupportedMedia, status: nil, importStatus: nil,
-                    threadId: nil)
-            case .documentConversion:
-                return documentRow(name: name, state: state)
+            let hasContext = FileManager.default.fileExists(
+                atPath: contextURL(for: name).path)
+            let threadId = state.conversions[name]?.threadId
+            if activeJobs.contains(name) || externalTurns.contains(name) {
+                return Row(name: name, status: .converting, threadId: threadId)
             }
-        }
-    }
-
-    /// Media rows never touch the converter: no context/<name>.md will ever
-    /// exist for them, so the document path's "missing output → dispatch"
-    /// rule would re-dispatch them forever.
-    private func mediaRow(name: String, state: NoteRecordingState) -> Row {
-        let record = state.imports[name]
-        if record == nil && state.activeImport?.fileName != name {
-            // New file (or a retried one): hand it to the import queue. The
-            // controller dedups, so repeated refreshes are harmless.
-            ImportController.shared(noteFolderURL: noteFolderURL).enqueue(name)
-        }
-        return Row(
-            name: name, route: .mediaImport, status: nil,
-            importStatus: record?.status ?? .analyzing, threadId: nil)
-    }
-
-    private func documentRow(name: String, state: NoteRecordingState) -> Row {
-        let hasContext = FileManager.default.fileExists(
-            atPath: contextURL(for: name).path)
-        let threadId = state.conversions[name]?.threadId
-        if activeJobs.contains(name) || externalTurns.contains(name) {
-            return Row(
-                name: name, route: .documentConversion, status: .converting,
-                importStatus: nil, threadId: threadId)
-        }
-        switch state.conversions[name]?.status {
-        case .failed:
-            return Row(
-                name: name, route: .documentConversion, status: .failed,
-                importStatus: nil, threadId: threadId)
-        case .done where hasContext:
-            return Row(
-                name: name, route: .documentConversion, status: .done,
-                importStatus: nil, threadId: threadId)
-        default:
-            // New file, a "converting" record from a run that died, or a
-            // done record whose context file was deleted → (re)convert.
-            dispatch(name)
-            return Row(
-                name: name, route: .documentConversion, status: .converting,
-                importStatus: nil, threadId: threadId)
+            switch state.conversions[name]?.status {
+            case .failed:
+                return Row(name: name, status: .failed, threadId: threadId)
+            case .done where hasContext:
+                return Row(name: name, status: .done, threadId: threadId)
+            default:
+                // New file, a "converting" record from a run that died, or a
+                // done record whose context file was deleted → (re)convert.
+                dispatch(name)
+                return Row(name: name, status: .converting, threadId: threadId)
+            }
         }
     }
 

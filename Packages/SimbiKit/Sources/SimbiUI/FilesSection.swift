@@ -139,38 +139,7 @@ private struct FileTile: View {
 
     private var thumbnailOpacity: Double {
         if case .converting = row.status { return 0.35 }
-        if row.importStatus == .analyzing || row.importStatus == .transcribing { return 0.35 }
         return 1
-    }
-
-    /// One busy/failed/done summary across both routes so the overlay and
-    /// menu speak one language: conversions from `status`, media imports
-    /// from `importStatus`, unsupported media permanently failed.
-    private var isBusy: Bool {
-        row.status == .converting || row.importStatus == .analyzing
-            || row.importStatus == .transcribing
-    }
-
-    private var isFailed: Bool {
-        row.route == .unsupportedMedia || row.status == .failed || row.importStatus == .failed
-    }
-
-    /// Tooltip status word for the busy overlay (media rows distinguish the
-    /// two phases; conversions keep their old word).
-    private var busyHelp: String {
-        switch row.importStatus {
-        case .analyzing: "Analyzing"
-        case .transcribing: "Transcribing"
-        default: "Converting"
-        }
-    }
-
-    private var failedHelp: String {
-        switch row.route {
-        case .unsupportedMedia: "Format not supported for transcription"
-        case .mediaImport: "Import failed"
-        case .documentConversion: "Conversion failed"
-        }
     }
 
     var body: some View {
@@ -204,7 +173,7 @@ private struct FileTile: View {
         }
         .frame(width: Design.fileTileWidth)
         .contentShape(Rectangle())
-        .help(row.route == .unsupportedMedia ? failedHelp : row.name)
+        .help(row.name)
         .onTapGesture(count: 2) {
             NSWorkspace.shared.open(fileURL)
         }
@@ -225,10 +194,6 @@ private struct FileTile: View {
             if case .failed = row.status {
                 Button("Retry Conversion") { model.retry(row.name) }
             }
-            if row.importStatus == .failed {
-                Button("Retry Import") { model.retry(row.name) }
-            }
-            // Document rows only: media imports have no Codex thread.
             if row.threadId != nil {
                 Button("View Codex Thread") { model.openThreadViewer(row.name) }
             }
@@ -247,22 +212,21 @@ private struct FileTile: View {
     // Centered so status reads on any preview; the glass/material circle
     // guarantees contrast. 36/18 are one-off display-glyph values per
     // docs/design-system.md ("One-off display glyphs ... stay inline").
-    // Media rows reuse the conversion rows' exact busy/failed treatments;
-    // only the tooltip word differs (Analyzing/Transcribing).
     @ViewBuilder private var statusOverlay: some View {
-        if isBusy {
+        switch row.status {
+        case .converting:
             ProgressView()
                 .controlSize(.small)
                 .frame(width: 36, height: 36)
                 .floatingChrome(in: Circle())
-                .help(busyHelp)
-        } else if isFailed {
+        case .failed:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 18))
                 .foregroundStyle(Color.statusLive)
                 .frame(width: 36, height: 36)
                 .floatingChrome(in: Circle())
-                .help(failedHelp)
+        case .done:
+            EmptyView()
         }
     }
 }

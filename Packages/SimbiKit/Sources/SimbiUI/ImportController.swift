@@ -4,15 +4,19 @@ import Observation
 import SimbiAudio
 import SimbiKit
 
-/// Owns the media-import pipeline for one note: a FIFO of files/ names,
-/// one import at a time, mutual exclusion with the recorder in both
-/// directions (media-import spec). Shared per note like RecordingController.
+/// Owns the media-import pipeline for one note: uploaded files become the
+/// note's recording (decoded into audio.webm + transcript.vtt; the original
+/// is read in place, never copied into the note). One import at a time,
+/// mutual exclusion with the recorder in both directions (media-import
+/// spec). Shared per note like RecordingController.
 @MainActor
 @Observable
 public final class ImportController {
     public enum Status: Equatable {
         case idle
         case importing(file: String, detail: String)
+        /// Shown in the empty transcript state; cleared by the next upload.
+        case failed(message: String)
     }
 
     private static let controllers = PerNoteRegistry<ImportController>()
@@ -33,11 +37,11 @@ public final class ImportController {
     public private(set) var status: Status = .idle
     let noteFolderURL: URL
     private let pipeline: ImportPipeline
-    private var queue: [String] = []
-    /// The file the worker task currently owns; enqueue dedups against it
-    /// (the queue alone can't — pump pops the name before the import's
-    /// state.json record lands, and a refresh() in that window would
-    /// re-enqueue and import the file twice).
+    private var queue: [URL] = []
+    /// The file the worker task currently owns; upload requests dedup
+    /// against it (the queue alone can't — pump pops the URL before the
+    /// import's state.json record lands, and a second request in that
+    /// window would import the file twice).
     private var current: String?
 
     private init(noteFolderURL: URL) {
@@ -52,11 +56,10 @@ public final class ImportController {
 
     /// Recovery for a marker left by a crash or an in-session failure: a
     /// phase-1 marker rolls back; a phase-2 marker resumes uploading in
-    /// the background. Called from init (relaunch) and from retry — the
-    /// pipeline refuses to run over a leftover phase-2 marker
-    /// (`resumePending`), so the drain must be kicked before re-importing.
-    /// No-op while an import owns the worker slot: the marker then belongs
-    /// to the running import, not to a leftover.
+    /// the background — the pipeline refuses to run over a leftover
+    /// phase-2 marker (`resumePending`), so the drain must be kicked
+    /// before any new import. No-op while an import owns the worker slot:
+    /// the marker then belongs to the running import, not to a leftover.
     private func recoverLeftoverImportIfNeeded() {
         guard current == nil else { return }
         let state = NoteRecordingState.current(noteFolder: noteFolderURL)
@@ -70,7 +73,7 @@ public final class ImportController {
         } else {
             let file = active.fileName
             // The resume owns the worker machinery exactly like a
-            // normal import: holding `current` makes an enqueue during
+            // normal import: holding `current` makes an upload during
             // the resume defer into the queue instead of colliding
             // with the pipeline's running flag, and status stays
             // .importing for the whole drain so the recorder guard
@@ -90,31 +93,29 @@ public final class ImportController {
         }
     }
 
-    /// Queues a files/ entry for import (dedup; no-op while already queued
-    /// or running).
-    func enqueue(_ fileName: String) {
-        guard !queue.contains(fileName), current != fileName else { return }
-        queue.append(fileName)
+    /// The empty state's Upload Audio button: validates the format, then
+    /// queues the file to become the note's recording. Failures land in
+    /// `status` for the pane; pressing the button again is the retry.
+    func startUpload(fileURL: URL) {
+        guard MediaFileDecoder.kind(of: fileURL.lastPathComponent) == .supported else {
+            status = .failed(
+                message: "This format is not supported. Choose an audio or video file.")
+            return
+        }
+        let name = fileURL.lastPathComponent
+        guard !queue.contains(where: { $0.lastPathComponent == name }), current != name
+        else { return }
+        if case .failed = status { status = .idle }
+        // A leftover phase-2 marker (a previous import died after
+        // committing audio) drains first; the new upload queues behind it.
+        recoverLeftoverImportIfNeeded()
+        queue.append(fileURL)
         pump()
     }
 
-    /// Clears a failed record so the file re-imports. A leftover phase-2
-    /// marker (its run died after committing audio) is drained first; the
-    /// re-import then queues behind the resume via `current`.
-    func retry(_ fileName: String) {
-        recoverLeftoverImportIfNeeded()
-        do {
-            try NoteRecordingState.update(noteFolder: noteFolderURL) {
-                $0.imports[fileName] = nil
-            }
-        } catch {
-            Log.files.error("clearing import record for \(fileName) failed: \(error)")
-        }
-        enqueue(fileName)
-    }
-
     private func pump() {
-        guard current == nil, let fileName = queue.first else { return }
+        guard current == nil, let fileURL = queue.first else { return }
+        let fileName = fileURL.lastPathComponent
         current = fileName
         queue.removeFirst()
         Task {
@@ -130,15 +131,35 @@ public final class ImportController {
                         file: progress.fileName, detail: Self.detail(progress.stage))
                 }
             }
+            var failure: String?
             do {
-                try await pipeline.run(fileName: fileName)
+                try await pipeline.run(fileURL: fileURL)
             } catch {
                 Log.files.error("import of \(fileName) failed: \(error)")
+                failure = Self.failureMessage(for: error, fileName: fileName)
             }
             progressTask.cancel()
-            status = .idle
+            status = failure.map { .failed(message: $0) } ?? .idle
             current = nil
             pump()
+        }
+    }
+
+    private static func failureMessage(for error: Error, fileName: String) -> String {
+        switch error as? ImportPipelineError {
+        case .noAudio:
+            return "\(fileName) has no audio to import."
+        case .recordingRecoveryPending:
+            return "This note has an interrupted recording. Press Record once to recover it, then upload."
+        case .resumePending, .importAlreadyRunning:
+            return "Another import is still finishing. Try again in a moment."
+        case .audioFileMismatch:
+            return "The note's audio file does not match its records. Import is disabled for this note."
+        case nil:
+            if error is MediaFileDecoderError {
+                return "\(fileName) could not be decoded. Choose an audio or video file."
+            }
+            return "Importing \(fileName) failed: \(error.localizedDescription)"
         }
     }
 

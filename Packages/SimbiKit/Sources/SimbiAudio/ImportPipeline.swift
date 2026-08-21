@@ -65,9 +65,13 @@ public actor ImportPipeline {
         progressContinuation?.yield(Progress(fileName: fileName, stage: stage))
     }
 
-    /// Full import of `files/<fileName>`. Throws on failure after rollback.
-    public func run(fileName: String) async throws {
+    /// Full import of the media file at `fileURL` — read in place from
+    /// wherever the user's file lives; nothing is copied into the note
+    /// folder (the decoded `audio.webm` IS the recording). Throws on
+    /// failure after rollback.
+    public func run(fileURL: URL) async throws {
         guard !running else { throw ImportPipelineError.importAlreadyRunning }
+        let fileName = fileURL.lastPathComponent
         running = true
         defer { running = false }
         do {
@@ -96,7 +100,8 @@ public actor ImportPipeline {
                     fileName: fileName, n: session, baseSamples: base, phase: 1)
                 state.imports[fileName] = .init(status: .analyzing)
             }
-            let (pcm, entries) = try await runPhase1(fileName: fileName, base: base)
+            let (pcm, entries) = try await runPhase1(
+                fileURL: fileURL, fileName: fileName, base: base)
             try NoteRecordingState.update(noteFolder: noteFolderURL) { state in
                 state.totalSamples = base + pcm.count
                 state.sessionCount = session
@@ -131,9 +136,8 @@ public actor ImportPipeline {
     /// Decode → append-encode → analyze → build blocks. Nothing touches the
     /// VTT or the outbox in phase 1.
     private func runPhase1(
-        fileName: String, base: Int
+        fileURL: URL, fileName: String, base: Int
     ) async throws -> (pcm: [Float], entries: [ImportTimelineEntry]) {
-        let fileURL = NoteLayout.filesDirURL(noteFolder: noteFolderURL).appending(path: fileName)
         let encoder: OpusWebMEncoder
         if base == 0 || !FileManager.default.fileExists(atPath: audioFileURL.path) {
             encoder = try OpusWebMEncoder(fileURL: audioFileURL, mode: .create)

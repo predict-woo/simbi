@@ -68,6 +68,12 @@ struct TranscriptView: View {
     var onRenameSpeaker: ((String, String) -> Void)?
     /// Externally requested scroll-and-flash of one cue row (nil = none).
     var flash: CueFlash? = nil
+    /// Empty-state "Upload Audio" action (media-import spec, amended):
+    /// non-nil only when the note has no recording and no import is
+    /// running — an uploaded file becomes the note's recording.
+    var onUploadAudio: (() -> Void)? = nil
+    /// A failed upload's message, shown under the empty-state caption.
+    var uploadError: String? = nil
 
     @State private var flashedRow: Int?
     @State private var renameTarget: RenameTarget?
@@ -175,6 +181,19 @@ struct TranscriptView: View {
                             Text("Transcription needs the ChatGPT app. See the sidebar footer.")
                                 .foregroundStyle(Color.statusWarning)
                         }
+                        if let uploadError {
+                            Text(uploadError)
+                                .foregroundStyle(Color.statusWarning)
+                        }
+                    }
+                } actions: {
+                    if let onUploadAudio {
+                        Button {
+                            onUploadAudio()
+                        } label: {
+                            Label("Upload Audio", systemImage: "square.and.arrow.up")
+                        }
+                        .help("Import an existing audio or video file as this note's recording")
                     }
                 }
             }

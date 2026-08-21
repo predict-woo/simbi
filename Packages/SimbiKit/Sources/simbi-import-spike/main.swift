@@ -3,7 +3,7 @@
 //
 // Default: the full headless import pipeline against the REAL offline
 // models — synthesize a ~90 s two-voice dialogue, `afconvert` it to
-// files/meeting.m4a, run `ImportPipeline.run(fileName:)` with the real
+// a temp meeting.m4a, run `ImportPipeline.run(fileURL:)` with the real
 // `MediaFileDecoder` + `OfflineSpeechAnalyzer` and a stub transcriber
 // (`--real` swaps in `CodexTranscriber`), then validate the transcript,
 // audio.webm, state.json, and pending queue. `--note <path>` writes into
@@ -201,13 +201,13 @@ var dialogue: [Float] = []
 while dialogue.count < 85 * 16000 { dialogue.append(contentsOf: unit) }
 
 let wavURL = workDir.appending(path: "meeting.wav")
-let m4aURL = noteFolder.appending(path: "files/meeting.m4a")
+let m4aURL = workDir.appending(path: "meeting.m4a")
 try writeWAV(dialogue, to: wavURL)
 try? FileManager.default.removeItem(at: m4aURL)
 try run("/usr/bin/afconvert", ["-f", "m4af", "-d", "aac", wavURL.path, m4aURL.path])
 let m4aFile = try AVAudioFile(forReading: m4aURL)
 let m4aSeconds = Double(m4aFile.length) / m4aFile.processingFormat.sampleRate
-print(String(format: "files/meeting.m4a: %.1f s", m4aSeconds))
+print(String(format: "meeting.m4a: %.1f s", m4aSeconds))
 
 // --real: upload blocks through the real transcribe endpoint. Default is
 // a stub — the end-to-end path under test is decode → analyze → blocks →
@@ -233,7 +233,7 @@ let pipeline = ImportPipeline(
     decoder: MediaFileDecoder(), analyzer: analyzer)
 let importStart = Date()
 do {
-    try await pipeline.run(fileName: "meeting.m4a")
+    try await pipeline.run(fileURL: m4aURL)
 } catch {
     fail("run", "\(error)")
 }

@@ -24,6 +24,7 @@ struct NoteView: View {
     @State private var transcriptFlash: CueFlash?
     @State private var renameDialogShown = false
     @State private var renameText = ""
+    @State private var uploadPickerShown = false
 
     /// Renames the note folder — routed through FileTreeModel so the
     /// sidebar order and selection follow the folder to its new URL.
@@ -383,14 +384,42 @@ struct NoteView: View {
                         Log.ui.error("renaming speaker \(from) to \(to) failed: \(error)")
                     }
                 },
-                flash: transcriptFlash
+                flash: transcriptFlash,
+                onUploadAudio: canUploadAudio ? { uploadPickerShown = true } : nil,
+                uploadError: uploadErrorMessage
             )
+            .fileImporter(
+                isPresented: $uploadPickerShown,
+                allowedContentTypes: [.audiovisualContent]
+            ) { result in
+                if case .success(let url) = result {
+                    importer.startUpload(fileURL: url)
+                }
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // The capture bar floats over the transcript (and over the
             // empty state — it's the pane's one always-present control).
             .bottomFloatingBar { RecordingBar(recorder: recorder) }
         }
         .background(.background.secondary)
+    }
+
+    /// Upload is offered only for a note with no recording at all
+    /// (media-import spec, amended): the uploaded file becomes the note's
+    /// recording, so once any audio exists the timeline belongs to Record.
+    private var canUploadAudio: Bool {
+        guard recorder.status == .idle, !recorder.hasRecording, !playback.hasAudio else {
+            return false
+        }
+        if case .importing = importer.status { return false }
+        return true
+    }
+
+    /// A failed upload's message for the empty state (cleared by the next
+    /// upload attempt).
+    private var uploadErrorMessage: String? {
+        if case .failed(let message) = importer.status { return message }
+        return nil
     }
 
     /// Media-import status above the transcript, in the recording strip's
