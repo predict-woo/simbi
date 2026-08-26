@@ -179,6 +179,8 @@ public final class ImportController {
                 failure = Self.failureMessage(for: error, fileName: fileName)
             }
             progressTask.cancel()
+            // Drain any delivered update before committing the final UI state.
+            await progressTask.value
             decodingAudio = false
             fixingTranscript = false
             status = failure.map { .failed(message: $0) } ?? .idle
