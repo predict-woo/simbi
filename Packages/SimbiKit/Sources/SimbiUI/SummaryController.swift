@@ -48,14 +48,32 @@ public final class SummaryController {
             model: choice.model, effort: choice.effort)
         self.summaryExists = FileManager.default.fileExists(
             atPath: NoteLayout.summaryURL(noteFolder: noteFolderURL).path)
+        self.transcriptHasCues = VTT.transcriptHasCues(noteFolder: noteFolderURL)
         watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
-            self?.refreshSummaryExists()
+            self?.refreshFileState()
         }
     }
 
-    private func refreshSummaryExists() {
+    /// Internal (not private) so tests can drive the watcher path
+    /// synchronously.
+    func refreshFileState() {
+        let summaryExisted = summaryExists
         summaryExists = FileManager.default.fileExists(atPath: summaryFileURL.path)
+        transcriptHasCues = VTT.transcriptHasCues(noteFolder: noteFolderURL)
+        // Filesystem is truth: an external delete of summary.md (Finder,
+        // git, a chat thread) must tell the note view to drop the editor's
+        // held text, or closing the note resurrects the file. Idle-only:
+        // the fresh-regenerate delete lands here with status already
+        // .working (or .failed), and there the held text is the documented
+        // failed-run recovery.
+        if summaryExisted && !summaryExists && status == .idle {
+            summaryFileRemovedExternally?()
+        }
     }
+
+    /// The note view's hook to drop its AI-notes editor text after an
+    /// external delete; nil once the view is gone (nothing holds text then).
+    var summaryFileRemovedExternally: (() -> Void)?
 
     var summaryFileURL: URL { NoteLayout.summaryURL(noteFolder: noteFolderURL) }
 
@@ -70,6 +88,11 @@ public final class SummaryController {
     /// deletes (Finder, git, a chat thread) flip the strip live, not just
     /// in-app generations.
     private(set) var summaryExists: Bool
+
+    /// Whether the transcript on disk has at least one cue — stored and
+    /// watcher-refreshed like summaryExists, so late-draining uploads and
+    /// external edits flip the first-generation offer live.
+    private(set) var transcriptHasCues: Bool
 
     private var watcher: FileTreeWatcher?
 
@@ -87,6 +110,38 @@ public final class SummaryController {
         recordingActive: Bool
     ) -> Bool {
         enabled && transcriptHasCues && codexAvailable && !alreadyWorking && !recordingActive
+    }
+
+    /// Whether the note view offers a first-generation button (issue #3):
+    /// the note has a transcript worth summarizing but no AI notes and no
+    /// run in flight — the states where the tab strip (and so the
+    /// regenerate button) doesn't exist yet. Codex availability is
+    /// deliberately absent: like the regenerate button, the offer shows
+    /// disabled with an explanatory tooltip when Codex is degraded.
+    nonisolated static func shouldOfferFirstGeneration(
+        enabled: Bool, transcriptHasCues: Bool, summaryExists: Bool, statusIdle: Bool,
+        recordingActive: Bool
+    ) -> Bool {
+        enabled && transcriptHasCues && !summaryExists && statusIdle && !recordingActive
+    }
+
+    /// The offer predicate over this note's live state.
+    var canOfferFirstGeneration: Bool {
+        Self.shouldOfferFirstGeneration(
+            enabled: SimbiSettings.current().aiNotesEnabled,
+            transcriptHasCues: transcriptHasCues, summaryExists: summaryExists,
+            statusIdle: status == .idle,
+            recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
+    }
+
+    /// The first-generation button. Same guards as retry(); nothing to
+    /// delete, and beginRun() detects first-ness from disk so the
+    /// placeholder and tab strip appear through the existing paths.
+    func generateFirst() {
+        guard SimbiSettings.current().aiNotesEnabled, status != .working, codexAvailable,
+            !RecordingController.isCapturing(noteFolderURL: noteFolderURL)
+        else { return }
+        generate()
     }
 
     /// The recording controller's clean-stop hook.
