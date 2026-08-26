@@ -162,6 +162,12 @@ struct NoteView: View {
                 document?.saveNow()
                 aiDocument?.saveNow()
             }
+            // An external delete of summary.md drops the held editor text;
+            // otherwise onDisappear's saveNow would write the file right
+            // back. Weak like the flush hook: a gone view holds no text.
+            summary.summaryFileRemovedExternally = { [weak aiDocument] in
+                aiDocument?.text = ""
+            }
             // Opening a note that already has AI notes lands on them
             // (spec §4) — unless a recording is underway.
             if summary.summaryExists && recorder.status == .idle {
@@ -221,6 +227,13 @@ struct NoteView: View {
                     isWorking: summary.status == .working,
                     regenerateHelp: regenerateHelp,
                     onRegenerate: { summary.regenerate() })
+            } else if summary.canOfferFirstGeneration && recorder.status == .idle {
+                // Issue #3: a note with a transcript but no AI notes has no
+                // strip, so no generation entry point. Offer one in the exact
+                // spot the regenerate button occupies once the strip exists;
+                // pressing it flips status to .working, which swaps this row
+                // for the real strip mid-generation.
+                generateOfferRow
             }
             if tabStripVisible && selectedTab == .aiNotes {
                 aiNotesPane
@@ -232,6 +245,33 @@ struct NoteView: View {
             Divider()
             FilesSection(model: files)
         }
+    }
+
+    /// A strip-shaped row holding only the generate button. The hidden tab
+    /// label is a height ghost: it gives this row the strip's exact height
+    /// so the working-state handoff to the real strip doesn't shift the
+    /// editor.
+    private var generateOfferRow: some View {
+        HStack(spacing: Design.paneInset) {
+            Text("AI Notes")
+                .font(.body.weight(.semibold))
+                .padding(.vertical, Design.innerGap)
+                .hidden()
+            Spacer()
+            Button(action: { summary.generateFirst() }) {
+                Image(systemName: "sparkles")
+                    .font(.meta)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(HoverCircleButtonStyle(inset: Design.iconGap))
+            .disabled(!summary.codexAvailable)
+            .help(
+                summary.codexAvailable
+                    ? "Generate AI notes from the recording"
+                    : "AI notes need the ChatGPT app. See the sidebar footer.")
+        }
+        .padding(.horizontal, Design.paneInset)
+        .padding(.vertical, Design.stripPadding)
     }
 
     private var regenerateHelp: String {
