@@ -50,6 +50,7 @@ public struct Split<P: View, D: SplitDivider, S: View>: View {
     @State private var oldSize: CGSize?
     /// The previous position as we drag the `splitter`
     @State private var previousPosition: CGFloat?
+    @Environment(\.displayScale) private var displayScale
 
     public var body: some View {
         GeometryReader { geometry in
@@ -64,6 +65,10 @@ public struct Split<P: View, D: SplitDivider, S: View>: View {
             let minPLength = length * ((hidePrimary ? 0 : minPFraction) ?? 0)
             let minSLength = length * ((hideSecondary ? 0 : minSFraction) ?? 0)
             let spacing = spacing()
+            let pixelScale = max(displayScale, 1)
+            let alignToPixel: (CGFloat) -> CGFloat = {
+                ($0 * pixelScale).rounded() / pixelScale
+            }
             // Local edit (see VENDORED.md): also cap the primary side so the
             // secondary side's minimum always fits inside the geometry.
             // Upstream only clamps the fraction during drags, so a fraction
@@ -71,11 +76,17 @@ public struct Split<P: View, D: SplitDivider, S: View>: View {
             // `secondary` past the trailing edge, where .clipped() cut it
             // off instead of it holding its minimum size.
             let pLength = max(minPLength, min(length - minSLength - spacing / 2, pLength(in: size)))
-            let sLength = max(minSLength, sLength(in: size))
-            let pWidth = horizontal ? max(minPLength, min(width - spacing, pLength - spacing / 2)) : breadth
-            let pHeight = horizontal ? breadth : max(minPLength, min(height - spacing, pLength - spacing / 2))
-            let sWidth = horizontal ? max(minSLength, min(width - pLength, sLength - spacing / 2)) : breadth
-            let sHeight = horizontal ? breadth : max(minSLength, min(height - pLength, sLength - spacing / 2))
+            // Platform-backed children blur when a fractional split places their
+            // backing layers between pixels. Snap the primary edge, then give the
+            // secondary pane the exact remainder so the split still fills its bounds.
+            let pWidth =
+                horizontal
+                ? alignToPixel(max(minPLength, min(width - spacing, pLength - spacing / 2))) : breadth
+            let pHeight =
+                horizontal
+                ? breadth : alignToPixel(max(minPLength, min(height - spacing, pLength - spacing / 2)))
+            let sWidth = horizontal ? max(0, width - pWidth - spacing) : breadth
+            let sHeight = horizontal ? breadth : max(0, height - pHeight - spacing)
             let sOffset =
                 horizontal ? CGSize(width: pWidth + spacing, height: 0) : CGSize(width: 0, height: pHeight + spacing)
             let dCenter =
@@ -327,20 +338,6 @@ public struct Split<P: View, D: SplitDivider, S: View>: View {
                 return sideToHide.isSecondary ? length : 0
             } else {
                 return length * constrainedFraction
-            }
-        }
-    }
-
-    /// The length of `secondary` in the `layout` direction, without regard to any inset for the Splitter
-    private func sLength(in size: CGSize) -> CGFloat {
-        let length = layout.isHorizontal ? size.width : size.height
-        if let side = hide.side {
-            return side.isPrimary ? length : 0
-        } else {
-            if let sideToHide = sideToHide() {
-                return sideToHide.isPrimary ? length : 0
-            } else {
-                return length - pLength(in: size)
             }
         }
     }
