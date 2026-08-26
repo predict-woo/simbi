@@ -87,7 +87,7 @@ struct TranscriptView: View {
     /// bottom. Two prior mechanisms failed here: scroll-geometry
     /// preferences go stale (macOS doesn't re-fire them during user
     /// scrolling → the view yanked), and per-row onAppear/onDisappear
-    /// crashes outright (the LazyVStack cache reinserts rows during
+    /// crashes outright (the prior LazyVStack cache reinserts rows during
     /// NSHostingView.layout, and AppearanceEffect.didReinsert then requests
     /// a constraint update mid-layout-pass — AppKit throws).
     @State private var bottomRow: Int?
@@ -107,20 +107,30 @@ struct TranscriptView: View {
                 let activeRow = activeRow(in: document.entries)
                 let speakerSlots = Design.speakerSlots(names: speakers(in: document.entries))
                 ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: Design.rowGap) {
-                            ForEach(Array(document.entries.enumerated()), id: \.offset) { index, entry in
-                                entryView(
-                                    entry, row: index, isActive: index == activeRow,
-                                    speakerSlots: speakerSlots
-                                )
-                                .id(index)
-                            }
+                    // Native List avoids LazyVStack's estimated-height relayouts for long transcripts.
+                    List {
+                        ForEach(document.entries.indices, id: \.self) { index in
+                            entryView(
+                                document.entries[index], row: index, isActive: index == activeRow,
+                                speakerSlots: speakerSlots
+                            )
+                            .id(index)
+                            .listRowInsets(
+                                EdgeInsets(
+                                    // List contributes 8 pt; these restore the pane's 16 pt inset.
+                                    top: Design.rowGap / 2, leading: 8,
+                                    bottom: Design.rowGap / 2, trailing: 8)
+                            )
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
                         }
-                        .scrollTargetLayout()
-                        .padding(Design.paneInset)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .contentMargins(
+                        .vertical, Design.paneInset - Design.rowGap / 2,
+                        for: .scrollContent
+                    )
                     .scrollPosition(id: $bottomRow, anchor: .bottom)
                     // Tail-follow: only when the PREVIOUS last row was at the
                     // viewport bottom (slack of one row for a partially
