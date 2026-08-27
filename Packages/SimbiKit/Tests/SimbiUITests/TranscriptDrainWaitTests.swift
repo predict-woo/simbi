@@ -18,13 +18,11 @@ struct TranscriptDrainWaitTests {
 
     @Test("returns true as soon as a later poll sees the drain")
     func drainsDuringTheWait() async {
-        let clock = ContinuousClock()
-        let start = clock.now
+        let drain = SecondPollDrain()
         let drained = await TranscriptDrainWait.wait(
-            timeout: .seconds(10), pollInterval: .milliseconds(5)
-        ) { clock.now - start >= .milliseconds(20) }
+            timeout: .seconds(10), pollInterval: .zero
+        ) { await drain.isDrained }
         #expect(drained)
-        #expect(clock.now - start < .seconds(5))
     }
 
     @Test("a queue that never drains hits the bound and still completes")
@@ -44,5 +42,14 @@ struct TranscriptDrainWaitTests {
             timeout: .zero, pollInterval: .milliseconds(10)
         ) { false }
         #expect(!drained)
+    }
+}
+
+private actor SecondPollDrain {
+    private var polls = 0
+
+    var isDrained: Bool {
+        polls += 1
+        return polls == 2
     }
 }
