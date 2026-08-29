@@ -146,7 +146,8 @@ private struct FileTile: View {
         VStack(spacing: Design.innerGap) {
             FileThumbnail(
                 url: fileURL,
-                size: CGSize(width: Design.fileTileWidth, height: Design.fileThumbHeight)
+                size: CGSize(width: Design.fileTileWidth, height: Design.fileThumbHeight),
+                revision: row.fileRevision
             )
             .opacity(thumbnailOpacity)
             .background {

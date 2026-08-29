@@ -15,15 +15,22 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
     public let url: URL
     public let name: String
     public let kind: Kind
+    /// Stable across renames and moves on the same volume. The sidebar uses
+    /// it to keep an externally moved selection open at its new path.
+    public let fileIdentifier: Data?
     /// `nil` for leaves (notes and files); `[]` for an empty folder.
     public let children: [FileTreeNode]?
 
     public var id: URL { url }
 
-    public init(url: URL, name: String, kind: Kind, children: [FileTreeNode]?) {
+    public init(
+        url: URL, name: String, kind: Kind, fileIdentifier: Data? = nil,
+        children: [FileTreeNode]?
+    ) {
         self.url = url
         self.name = name
         self.kind = kind
+        self.fileIdentifier = fileIdentifier
         self.children = children
     }
 
@@ -32,6 +39,19 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
         for node in nodes {
             if node.id == id { return node }
             if let children = node.children, let hit = find(id, in: children) {
+                return hit
+            }
+        }
+        return nil
+    }
+
+    /// Depth-first search by the filesystem identity that survives a rename.
+    public static func find(fileIdentifier: Data, in nodes: [FileTreeNode]) -> FileTreeNode? {
+        for node in nodes {
+            if node.fileIdentifier == fileIdentifier { return node }
+            if let children = node.children,
+                let hit = find(fileIdentifier: fileIdentifier, in: children)
+            {
                 return hit
             }
         }
@@ -77,7 +97,7 @@ public enum FileTreeScanner {
         guard
             let entries = try? fm.contentsOfDirectory(
                 at: root,
-                includingPropertiesForKeys: [.isDirectoryKey],
+                includingPropertiesForKeys: [.isDirectoryKey, .fileResourceIdentifierKey],
                 options: .skipsHiddenFiles
             )
         else {
@@ -91,19 +111,30 @@ public enum FileTreeScanner {
         for entry in entries {
             // Read the value the directory listing prefetched BEFORE
             // standardizing — a fresh URL would discard the cache.
-            let isDirectory =
-                (try? entry.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+            let values = try? entry.resourceValues(
+                forKeys: [.isDirectoryKey, .fileResourceIdentifierKey])
+            let isDirectory = values?.isDirectory ?? false
+            let fileIdentifier = values?.fileResourceIdentifier as? Data
             let url = entry.standardizedFileURL
             let name = url.lastPathComponent
             if reservedNames.contains(name) { continue }
             if isDirectory {
                 if isNoteFolder(url) {
-                    folders.append(FileTreeNode(url: url, name: name, kind: .note, children: nil))
+                    folders.append(
+                        FileTreeNode(
+                            url: url, name: name, kind: .note,
+                            fileIdentifier: fileIdentifier, children: nil))
                 } else {
-                    folders.append(FileTreeNode(url: url, name: name, kind: .folder, children: scan(root: url)))
+                    folders.append(
+                        FileTreeNode(
+                            url: url, name: name, kind: .folder,
+                            fileIdentifier: fileIdentifier, children: scan(root: url)))
                 }
             } else {
-                files.append(FileTreeNode(url: url, name: name, kind: .file, children: nil))
+                files.append(
+                    FileTreeNode(
+                        url: url, name: name, kind: .file,
+                        fileIdentifier: fileIdentifier, children: nil))
             }
         }
 

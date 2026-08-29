@@ -77,6 +77,9 @@ private struct InstructionsEditorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if document.hasConflict {
+                FileConflictBanner(document: document)
+            }
             MarkdownEditor(
                 text: $document.text,
                 documentId: document.fileURL.path,

@@ -8,6 +8,12 @@ import SimbiKit
 @MainActor
 @Observable
 final class PlaybackController {
+    private struct AudioRevision: Equatable {
+        let modifiedAt: Date?
+        let size: UInt64?
+        let fileIdentifier: UInt64?
+    }
+
     private(set) var isPlaying = false
     /// Timeline seconds — polled while playing, the resume point while
     /// paused.
@@ -15,17 +21,22 @@ final class PlaybackController {
     /// Total timeline seconds; refreshed on play and `refreshDuration`
     /// (the file grows while recording).
     private(set) var duration: TimeInterval = 0
+    private(set) var hasAudio: Bool
 
     private let audioURL: URL
     private var playback: AudioPlayback?
     private var tickTask: Task<Void, Never>?
+    private var audioRevision: AudioRevision?
+    private var watcher: FileTreeWatcher?
 
     init(noteFolderURL: URL) {
         self.audioURL = NoteLayout.audioURL(noteFolder: noteFolderURL)
-    }
-
-    var hasAudio: Bool {
-        FileManager.default.fileExists(atPath: audioURL.path)
+        let revision = Self.revision(at: audioURL)
+        self.audioRevision = revision
+        self.hasAudio = revision != nil
+        watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
+            self?.refreshFileState()
+        }
     }
 
     func refreshDuration() {
@@ -95,6 +106,21 @@ final class PlaybackController {
         tickTask = nil
     }
 
+    /// Audio can be created, replaced, or removed outside Simbi. A loaded
+    /// decoder belongs to one exact file revision and must never outlive it.
+    func refreshFileState() {
+        let latest = Self.revision(at: audioURL)
+        guard latest != audioRevision else { return }
+        let hadPlayback = playback != nil
+        stop()
+        playback = nil
+        position = 0
+        duration = 0
+        audioRevision = latest
+        hasAudio = latest != nil
+        if hadPlayback && hasAudio { refreshDuration() }
+    }
+
     private func ensurePlayback() throws -> AudioPlayback {
         if let playback { return playback }
         let playback = try AudioPlayback(fileURL: audioURL)
@@ -110,5 +136,15 @@ final class PlaybackController {
         position = 0
         tickTask?.cancel()
         tickTask = nil
+    }
+
+    private static func revision(at url: URL) -> AudioRevision? {
+        guard let values = try? FileManager.default.attributesOfItem(atPath: url.path) else {
+            return nil
+        }
+        return AudioRevision(
+            modifiedAt: values[.modificationDate] as? Date,
+            size: (values[.size] as? NSNumber)?.uint64Value,
+            fileIdentifier: (values[.systemFileNumber] as? NSNumber)?.uint64Value)
     }
 }

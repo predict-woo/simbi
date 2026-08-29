@@ -10,10 +10,17 @@ import SimbiKit
 @MainActor
 @Observable
 final class FilesModel {
+    struct FileRevision: Hashable {
+        let modifiedAt: Date?
+        let size: Int?
+        let fileIdentifier: Data?
+    }
+
     struct Row: Identifiable {
         let name: String
         let status: NoteRecordingState.FileConversion.Status
         let threadId: String?
+        let fileRevision: FileRevision
         var id: String { name }
     }
 
@@ -179,24 +186,44 @@ final class FilesModel {
             .sorted()
         let state = NoteRecordingState.current(noteFolder: noteFolderURL)
         rows = names.map { name in
+            let fileRevision = Self.fileRevision(at: fileURL(for: name))
             let hasContext = FileManager.default.fileExists(
                 atPath: contextURL(for: name).path)
             let threadId = state.conversions[name]?.threadId
             if activeJobs.contains(name) || externalTurns.contains(name) {
-                return Row(name: name, status: .converting, threadId: threadId)
+                return Row(
+                    name: name, status: .converting, threadId: threadId,
+                    fileRevision: fileRevision)
             }
             switch state.conversions[name]?.status {
             case .failed:
-                return Row(name: name, status: .failed, threadId: threadId)
+                return Row(
+                    name: name, status: .failed, threadId: threadId,
+                    fileRevision: fileRevision)
             case .done where hasContext:
-                return Row(name: name, status: .done, threadId: threadId)
+                return Row(
+                    name: name, status: .done, threadId: threadId,
+                    fileRevision: fileRevision)
             default:
                 // New file, a "converting" record from a run that died, or a
                 // done record whose context file was deleted → (re)convert.
                 dispatch(name)
-                return Row(name: name, status: .converting, threadId: threadId)
+                return Row(
+                    name: name, status: .converting, threadId: threadId,
+                    fileRevision: fileRevision)
             }
         }
+    }
+
+    private static func fileRevision(at url: URL) -> FileRevision {
+        let values = try? url.resourceValues(
+            forKeys: [
+                .contentModificationDateKey, .fileSizeKey, .fileResourceIdentifierKey,
+            ])
+        return FileRevision(
+            modifiedAt: values?.contentModificationDate,
+            size: values?.fileSize,
+            fileIdentifier: values?.fileResourceIdentifier as? Data)
     }
 
     private func dispatch(_ name: String) {

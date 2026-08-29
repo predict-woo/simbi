@@ -7,6 +7,7 @@ import SwiftUI
 struct PlaybackBar: View {
     let playback: PlaybackController
     let noteFolderURL: URL
+    let hasTranscript: Bool
     /// Non-nil while the user drags the scrubber; committed on release.
     @State private var scrubPosition: TimeInterval?
     /// True for a beat after a successful copy (checkmark feedback).
@@ -49,7 +50,7 @@ struct PlaybackBar: View {
             }
             .buttonStyle(HoverCircleButtonStyle())
             .help("Copy transcript")
-            .disabled(!FileManager.default.fileExists(atPath: transcriptURL.path))
+            .disabled(!hasTranscript)
         }
         .padding(.horizontal, Design.paneInset)
         .padding(.vertical, Design.stripPadding)

@@ -7,6 +7,7 @@ import SwiftUI
 struct FileThumbnail: View {
     let url: URL
     let size: CGSize
+    let revision: FilesModel.FileRevision
 
     @State private var preview: NSImage?
 
@@ -15,30 +16,23 @@ struct FileThumbnail: View {
             .resizable()
             .scaledToFit()
             .frame(width: size.width, height: size.height)
-            .task(id: url) {
-                preview = await FileThumbnailLoader.shared.thumbnail(for: url, size: size)
+            .task(id: revision) {
+                preview = nil
+                preview = await FileThumbnailLoader.thumbnail(for: url, size: size)
             }
     }
 }
 
-/// Generates and caches Quick Look thumbnails. Files in `files/` are
-/// copied once at import and never modified, so the cache is keyed by
-/// path with no invalidation; a miss (unsupported type, generation
-/// failure) is cached as absent and the workspace icon stands.
-@MainActor
-private final class FileThumbnailLoader {
-    static let shared = FileThumbnailLoader()
-    private var cache: [String: NSImage?] = [:]
-
-    func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
-        if let cached = cache[url.path] { return cached }
+/// Generates a preview for one observed file revision. The view holds the
+/// image until FilesModel reports that the file changed on disk.
+private enum FileThumbnailLoader {
+    static func thumbnail(for url: URL, size: CGSize) async -> NSImage? {
         let request = QLThumbnailGenerator.Request(
             fileAt: url, size: size, scale: 2, representationTypes: .thumbnail)
         request.iconMode = true
         let image = try? await QLThumbnailGenerator.shared
             .generateBestRepresentation(for: request).nsImage
         guard !Task.isCancelled else { return nil }
-        cache[url.path] = image
         return image
     }
 }

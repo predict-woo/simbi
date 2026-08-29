@@ -150,46 +150,23 @@ struct SummaryControllerTests {
         #expect(SummaryController(noteFolderURL: url).transcriptHasCues)
     }
 
-    @Test("external summary.md delete while idle drops the held editor text")
+    @Test("external summary.md create and delete refresh existence")
     @MainActor
-    func externalDeleteNotifies() throws {
+    func externalChangesRefreshExistence() throws {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "simbi-sum-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: url) }
         let summaryURL = NoteLayout.summaryURL(noteFolder: url)
-        try "# notes".write(to: summaryURL, atomically: true, encoding: .utf8)
         let controller = SummaryController(noteFolderURL: url)
-        var fired = 0
-        controller.summaryFileRemovedExternally = { fired += 1 }
+        #expect(!controller.summaryExists)
 
+        try "# notes".write(to: summaryURL, atomically: true, encoding: .utf8)
+        controller.refreshFileState()
+        #expect(controller.summaryExists)
         try FileManager.default.removeItem(at: summaryURL)
         controller.refreshFileState()
-        #expect(fired == 1)
-        // No transition on a repeat refresh: fires once per disappearance.
-        controller.refreshFileState()
-        #expect(fired == 1)
-    }
-
-    @Test("the fresh-regenerate delete is not an external delete")
-    @MainActor
-    func freshRegenerateDeleteKeepsHeldText() throws {
-        let url = FileManager.default.temporaryDirectory
-            .appending(path: "simbi-sum-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: url) }
-        let summaryURL = NoteLayout.summaryURL(noteFolder: url)
-        try "# notes".write(to: summaryURL, atomically: true, encoding: .utf8)
-        let controller = SummaryController(noteFolderURL: url)
-        var fired = 0
-        controller.summaryFileRemovedExternally = { fired += 1 }
-
-        // generate(fresh:) deletes summary.md with status already .working;
-        // the held text is the failed-run recovery and must survive.
-        controller.markWorkingForTesting()
-        try FileManager.default.removeItem(at: summaryURL)
-        controller.refreshFileState()
-        #expect(fired == 0)
+        #expect(!controller.summaryExists)
     }
 
     @Test("failed state clears on note close")

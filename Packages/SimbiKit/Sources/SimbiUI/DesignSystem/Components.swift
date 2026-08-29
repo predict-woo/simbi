@@ -45,6 +45,53 @@ struct StatusBanner: View {
     }
 }
 
+/// Protects a dirty editor when another process changes its file. Clean
+/// editors reload silently; this appears only when choosing either side is
+/// necessarily destructive.
+struct FileConflictBanner: View {
+    let fileName: String
+    let reload: () -> Void
+    let overwrite: () -> Void
+
+    init(document: AutosavingDocument) {
+        self.fileName = document.fileURL.lastPathComponent
+        self.reload = document.reloadFromDisk
+        self.overwrite = document.overwriteDisk
+    }
+
+    init(
+        fileName: String, reload: @escaping () -> Void,
+        overwrite: @escaping () -> Void
+    ) {
+        self.fileName = fileName
+        self.reload = reload
+        self.overwrite = overwrite
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.meta)
+            Text("\(fileName) changed on disk.")
+                .font(.meta)
+            Spacer(minLength: 0)
+            Button("Reload") {
+                reload()
+            }
+            Button("Overwrite") {
+                overwrite()
+            }
+        }
+        .buttonStyle(.link)
+        .font(.metaSemibold)
+        .foregroundStyle(Color.statusWarning)
+        .padding(.horizontal, Design.paneInset)
+        .padding(.vertical, Design.stripPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.statusWarning.opacity(0.1))
+    }
+}
+
 /// Colored identity dot + name — the speaker treatment shared by the
 /// transcript rows and the recording header's live indicator.
 struct SpeakerChip: View {

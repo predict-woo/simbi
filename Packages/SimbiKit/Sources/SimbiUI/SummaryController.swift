@@ -6,9 +6,9 @@ import SimbiKit
 /// Owns AI-notes generation for one note (AI Notes spec §3): triggers the
 /// NoteSummarizer and exposes tab-strip state. summary.md is written by
 /// the summarizer thread directly (deliberate, for extensibility; user
-/// decision 2026-08-10) — the app only reads it, reloading the open
-/// editor via generationCount. Shared per note like RecordingController
-/// so a generation survives view recreation.
+/// decision 2026-08-10); AutosavingDocument watches and reloads it, while
+/// generationCount forces an immediate completion refresh. Shared per note
+/// like RecordingController so a generation survives view recreation.
 @MainActor
 @Observable
 public final class SummaryController {
@@ -33,8 +33,8 @@ public final class SummaryController {
     /// flight. This — not the watcher-backed summaryExists — is what keeps
     /// the first-generation placeholder up: the thread writes summary.md
     /// mid-turn, seconds before the turn completes and generationCount
-    /// reloads the editor, so a placeholder keyed to the file's existence
-    /// dropped early and flashed an empty editor across that gap.
+    /// confirms the editor refresh, so a placeholder keyed to the file's
+    /// existence dropped early and flashed an empty editor across that gap.
     private(set) var firstGenerationInFlight = false
 
     let noteFolderURL: URL
@@ -57,23 +57,9 @@ public final class SummaryController {
     /// Internal (not private) so tests can drive the watcher path
     /// synchronously.
     func refreshFileState() {
-        let summaryExisted = summaryExists
         summaryExists = FileManager.default.fileExists(atPath: summaryFileURL.path)
         transcriptHasCues = VTT.transcriptHasCues(noteFolder: noteFolderURL)
-        // Filesystem is truth: an external delete of summary.md (Finder,
-        // git, a chat thread) must tell the note view to drop the editor's
-        // held text, or closing the note resurrects the file. Idle-only:
-        // the fresh-regenerate delete lands here with status already
-        // .working (or .failed), and there the held text is the documented
-        // failed-run recovery.
-        if summaryExisted && !summaryExists && status == .idle {
-            summaryFileRemovedExternally?()
-        }
     }
-
-    /// The note view's hook to drop its AI-notes editor text after an
-    /// external delete; nil once the view is gone (nothing holds text then).
-    var summaryFileRemovedExternally: (() -> Void)?
 
     var summaryFileURL: URL { NoteLayout.summaryURL(noteFolder: noteFolderURL) }
 

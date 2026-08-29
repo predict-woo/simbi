@@ -106,6 +106,7 @@ public final class RecordingController {
     private var capture: MixedCapture?
     private var ingestTask: Task<Void, Never>?
     private var liveTask: Task<Void, Never>?
+    private var watcher: FileTreeWatcher?
 
     public init(noteFolderURL: URL) {
         self.noteFolderURL = noteFolderURL
@@ -121,6 +122,19 @@ public final class RecordingController {
         self.micEnabled = settings.micEnabled
         self.micDeviceUID = settings.micDeviceUID
         self.systemAudioEnabled = settings.systemAudioEnabled
+        watcher = FileTreeWatcher.observing(url: noteFolderURL) { [weak self] in
+            self?.refreshFileState()
+        }
+    }
+
+    /// state.json is also plain-file state. Adopt external bookkeeping while
+    /// idle; during capture the live pipeline remains its single writer.
+    func refreshFileState() {
+        guard status == .idle else { return }
+        let state = NoteRecordingState.current(noteFolder: noteFolderURL)
+        hasRecording = state.sessionCount > 0 || state.activeSession != nil
+        hasFixerThread = state.fixerThreadId != nil
+        elapsed = TimeInterval(state.totalSamples) / TimeInterval(CutConstants.sampleRate)
     }
 
     private func persistSources() {

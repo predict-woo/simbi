@@ -1,38 +1,153 @@
 import AppKit
 import CodexKit
+import Observation
 import SimbiAudio
 import SimbiKit
 import SwiftUI
+
+/// The controls view of settings.json. External edits reload while clean;
+/// a simultaneous local change must be resolved explicitly before either
+/// side can replace the other.
+@MainActor
+@Observable
+final class SettingsDocument {
+    private enum DiskSnapshot: Equatable {
+        case missing
+        case data(Data)
+
+        var settings: SimbiSettings? {
+            switch self {
+            case .missing: .default
+            case .data(let data): try? JSONDecoder().decode(SimbiSettings.self, from: data)
+            }
+        }
+    }
+
+    let fileURL: URL
+    var settings: SimbiSettings
+    var hasConflict: Bool { conflictingDiskSnapshot != nil }
+
+    private var diskSnapshot: DiskSnapshot
+    private var conflictingDiskSnapshot: DiskSnapshot?
+    private var watcher: FileTreeWatcher?
+
+    init(home: SimbiHome = SimbiHome()) {
+        fileURL = home.settingsFileURL
+        let snapshot = Self.readDiskSnapshot(at: fileURL) ?? .missing
+        diskSnapshot = snapshot
+        settings = snapshot.settings ?? .default
+        conflictingDiskSnapshot = snapshot.settings == nil ? snapshot : nil
+        watcher = FileTreeWatcher.observing(url: fileURL.deletingLastPathComponent()) {
+            [weak self] in
+            self?.refreshFromDisk()
+        }
+    }
+
+    func save() {
+        guard conflictingDiskSnapshot == nil, settings != diskSnapshot.settings else { return }
+        guard let current = Self.readDiskSnapshot(at: fileURL) else { return }
+        guard current == diskSnapshot else {
+            if settings == current.settings {
+                diskSnapshot = current
+                return
+            }
+            conflictingDiskSnapshot = current
+            return
+        }
+        do {
+            let data = try PersistedJSON.encoder().encode(settings)
+            try data.write(to: fileURL, options: .atomic)
+            diskSnapshot = .data(data)
+        } catch {
+            Log.files.error("saving settings.json failed: \(error)")
+        }
+    }
+
+    func refreshFromDisk() {
+        guard let latest = Self.readDiskSnapshot(at: fileURL), latest != diskSnapshot else {
+            return
+        }
+        guard let latestSettings = latest.settings else {
+            conflictingDiskSnapshot = latest
+            return
+        }
+        if settings == latestSettings {
+            diskSnapshot = latest
+            conflictingDiskSnapshot = nil
+            return
+        }
+        guard settings == diskSnapshot.settings else {
+            conflictingDiskSnapshot = latest
+            return
+        }
+        diskSnapshot = latest
+        conflictingDiskSnapshot = nil
+        settings = latestSettings
+    }
+
+    func reloadFromDisk() {
+        guard let latest = Self.readDiskSnapshot(at: fileURL), let latestSettings = latest.settings
+        else { return }
+        diskSnapshot = latest
+        conflictingDiskSnapshot = nil
+        settings = latestSettings
+    }
+
+    func overwriteDisk() {
+        guard conflictingDiskSnapshot != nil,
+            let latest = Self.readDiskSnapshot(at: fileURL)
+        else { return }
+        diskSnapshot = latest
+        conflictingDiskSnapshot = nil
+        save()
+    }
+
+    private static func readDiskSnapshot(at url: URL) -> DiskSnapshot? {
+        do {
+            return .data(try Data(contentsOf: url))
+        } catch {
+            guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
+            Log.files.error("reading settings.json after a file change failed: \(error)")
+            return nil
+        }
+    }
+}
 
 /// App settings (SPEC.md §5.5, §6) as the standard macOS tabbed settings
 /// window: a TabView inside the `Settings` scene renders as native toolbar
 /// tabs. This parent owns the single settings value (save-on-change) and
 /// the app-server model list; the panes are private views over bindings.
 public struct SettingsView: View {
-    @State private var settings: SimbiSettings = .current()
+    @State private var document = SettingsDocument()
     @State private var models: [CodexModels.Model] = []
     @State private var modelsUnavailable = false
 
     public init() {}
 
     public var body: some View {
-        TabView {
-            GeneralSettingsPane(settings: $settings)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            CodexSettingsPane(
-                settings: $settings, models: models, modelsUnavailable: modelsUnavailable
-            )
-            .tabItem { Label("Codex", systemImage: "sparkles") }
-            RecordingSettingsPane(settings: $settings)
-                .tabItem { Label("Recording", systemImage: "mic") }
+        @Bindable var document = document
+        VStack(spacing: 0) {
+            if document.hasConflict {
+                FileConflictBanner(
+                    fileName: document.fileURL.lastPathComponent,
+                    reload: document.reloadFromDisk,
+                    overwrite: document.overwriteDisk)
+            }
+            TabView {
+                GeneralSettingsPane(settings: $document.settings)
+                    .tabItem { Label("General", systemImage: "gearshape") }
+                CodexSettingsPane(
+                    settings: $document.settings, models: models,
+                    modelsUnavailable: modelsUnavailable
+                )
+                .tabItem { Label("Codex", systemImage: "sparkles") }
+                RecordingSettingsPane(settings: $document.settings)
+                    .tabItem { Label("Recording", systemImage: "mic") }
+            }
         }
         .frame(width: 460)
-        .onChange(of: settings) {
-            do {
-                try settings.save(to: SimbiHome().settingsFileURL)
-            } catch {
-                Log.ui.error("saving settings.json failed: \(error)")
-            }
+        .onChange(of: document.settings) {
+            document.save()
         }
         .task {
             models = await CodexModels.availableModels(client: CodexServices.appServer)

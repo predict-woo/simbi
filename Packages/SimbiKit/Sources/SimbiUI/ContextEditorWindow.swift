@@ -32,13 +32,18 @@ private struct ContextEditorView: View {
     @Bindable var document: AutosavingDocument
 
     var body: some View {
-        MarkdownEditor(
-            text: $document.text,
-            documentId: document.fileURL.path,
-            flavor: .note
-        )
-        .onChange(of: document.text) {
-            document.scheduleAutosave()
+        VStack(spacing: 0) {
+            if document.hasConflict {
+                FileConflictBanner(document: document)
+            }
+            MarkdownEditor(
+                text: $document.text,
+                documentId: document.fileURL.path,
+                flavor: .note
+            )
+            .onChange(of: document.text) {
+                document.scheduleAutosave()
+            }
         }
     }
 }

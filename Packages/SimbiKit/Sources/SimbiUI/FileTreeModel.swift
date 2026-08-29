@@ -11,10 +11,18 @@ import SimbiKit
 public final class FileTreeModel {
     public let home: SimbiHome
     public private(set) var nodes: [FileTreeNode] = []
-    public var selection: URL?
+    public var selection: URL? {
+        didSet {
+            guard selection != oldValue else { return }
+            selectedFileIdentifier = selection.flatMap {
+                FileTreeNode.find($0, in: nodes)?.fileIdentifier ?? Self.fileIdentifier(at: $0)
+            }
+        }
+    }
     public private(set) var bootstrapError: Error?
 
     private var watcher: FileTreeWatcher?
+    private var selectedFileIdentifier: Data?
 
     public init(home: SimbiHome = SimbiHome()) {
         self.home = home
@@ -41,6 +49,16 @@ public final class FileTreeModel {
 
     public func refresh() {
         nodes = FileTreeScanner.scan(root: home.rootURL)
+        if let selection, let node = FileTreeNode.find(selection, in: nodes) {
+            selectedFileIdentifier = node.fileIdentifier
+            return
+        }
+        if let selectedFileIdentifier,
+            let moved = FileTreeNode.find(fileIdentifier: selectedFileIdentifier, in: nodes)
+        {
+            selection = moved.url
+            return
+        }
         // Clear the selection only when the item is truly gone from disk —
         // a transient scan miss during heavy file churn (e.g. the recording
         // pipeline writing into the note folder) must not tear down the
@@ -50,6 +68,11 @@ public final class FileTreeModel {
         {
             self.selection = nil
         }
+    }
+
+    private static func fileIdentifier(at url: URL) -> Data? {
+        (try? url.resourceValues(forKeys: [.fileResourceIdentifierKey]))?
+            .fileResourceIdentifier as? Data
     }
 
     /// The folder new items land in: the selected organizational folder, the

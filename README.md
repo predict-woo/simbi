@@ -5,8 +5,8 @@
 <h1 align="center">Simbi</h1>
 
 <p align="center">
-  <strong>Use your ChatGPT subscription for notetaking.</strong><br>
-  Record, transcribe, summarize, and chat with your meetings on macOS.
+  <strong>Stop paying twice for AI.</strong><br>
+  Use your ChatGPT plan for live, speaker-labelled meeting transcripts, saved as plain files.
 </p>
 
 <p align="center">

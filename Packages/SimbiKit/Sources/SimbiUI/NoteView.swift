@@ -162,12 +162,6 @@ struct NoteView: View {
                 document?.saveNow()
                 aiDocument?.saveNow()
             }
-            // An external delete of summary.md drops the held editor text;
-            // otherwise onDisappear's saveNow would write the file right
-            // back. Weak like the flush hook: a gone view holds no text.
-            summary.summaryFileRemovedExternally = { [weak aiDocument] in
-                aiDocument?.text = ""
-            }
             // Opening a note that already has AI notes lands on them
             // (spec §4) — unless a recording is underway.
             if summary.summaryExists && recorder.status == .idle {
@@ -192,10 +186,9 @@ struct NoteView: View {
         }
         .onChange(of: summary.generationCount) {
             // The summarizer thread just rewrote summary.md on disk;
-            // refresh the open editor. Safe: the editor is hit-disabled
-            // while working.
-            aiDocument.text =
-                (try? String(contentsOf: aiDocument.fileURL, encoding: .utf8)) ?? ""
+            // force an immediate refresh in addition to the live document's
+            // coalesced watcher. Safe: the editor is hit-disabled while working.
+            aiDocument.refreshFromDisk()
         }
         // Recording deliberately continues if the view goes away (the
         // controller is shared per note); only the Stop button ends it.
@@ -238,9 +231,14 @@ struct NoteView: View {
             if tabStripVisible && selectedTab == .aiNotes {
                 aiNotesPane
             } else {
-                MarkdownEditor(
-                    text: $document.text, documentId: document.fileURL.path,
-                    onLinkClick: handleLinkClick)
+                VStack(spacing: 0) {
+                    if document.hasConflict {
+                        FileConflictBanner(document: document)
+                    }
+                    MarkdownEditor(
+                        text: $document.text, documentId: document.fileURL.path,
+                        onLinkClick: handleLinkClick)
+                }
             }
             Divider()
             FilesSection(model: files)
@@ -297,6 +295,9 @@ struct NoteView: View {
                 actionTitle: recorder.status == .idle ? "Try Again" : nil,
                 action: recorder.status == .idle ? { summary.retry() } : nil
             )
+        }
+        if aiDocument.hasConflict {
+            FileConflictBanner(document: aiDocument)
         }
         // Keyed to the run, not summary.md's existence: the thread writes
         // the file mid-turn, so a file-keyed placeholder dropped seconds
@@ -413,7 +414,9 @@ struct NoteView: View {
             // has audio to play (hidden while recording — playing the note
             // back then would feed the speakers into the mic).
             if (recorder.status == .idle && playback.hasAudio && !importer.decodingAudio) || Flags.uiPreview {
-                PlaybackBar(playback: playback, noteFolderURL: noteFolderURL)
+                PlaybackBar(
+                    playback: playback, noteFolderURL: noteFolderURL,
+                    hasTranscript: transcript.document != nil)
                 Divider()
             }
             TranscriptView(
