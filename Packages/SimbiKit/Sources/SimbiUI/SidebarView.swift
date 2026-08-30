@@ -68,8 +68,10 @@ struct SidebarView: View {
     private func contextMenu(for node: FileTreeNode?) -> NSMenu {
         let menu = NSMenu()
         guard let node else {
-            menu.addItem(HandlerMenuItem("New Note") { model.promptForNewNote() })
-            menu.addItem(HandlerMenuItem("New Folder") { model.createFolder() })
+            menu.addItem(
+                HandlerMenuItem("New Note") { model.promptForNewNote(in: model.home.rootURL) })
+            menu.addItem(
+                HandlerMenuItem("New Folder") { model.createFolder(in: model.home.rootURL) })
             return menu
         }
         if node.kind == .folder {
