@@ -24,7 +24,6 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/predict-woo/simbi-web/main/src/assets/app-window-dark.png">
-  <img src="https://raw.githubusercontent.com/predict-woo/simbi-web/main/src/assets/app-window.png" alt="Simbi showing AI Notes with timestamp citations beside a speaker-labelled transcript">
 </picture>
 
 Simbi is a free, open-source macOS app that records your microphone and system
