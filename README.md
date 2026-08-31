@@ -22,9 +22,7 @@
   · <a href="https://getsimbi.app">Website</a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/predict-woo/simbi-web/main/src/assets/app-window-dark.png">
-</picture>
+![Simbi app window](assets/readme.png)
 
 Simbi is a free, open-source macOS app that records your microphone and system
 audio, identifies speakers locally, and builds a live transcript. When the
