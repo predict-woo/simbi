@@ -3,6 +3,28 @@ import Foundation
 import Observation
 import SimbiKit
 
+/// Coalesces parallel file conversions into one context-ready event. A picker
+/// selection dispatches all of its files synchronously, so the transition back
+/// to zero active jobs is the batch boundary the rest of the app cares about.
+struct ContextConversionBatch {
+    private var active = 0
+    private var successful = 0
+
+    mutating func started() {
+        active += 1
+    }
+
+    /// Returns the successful-file count exactly once when the batch settles.
+    mutating func finished(successfully: Bool) -> Int? {
+        precondition(active > 0)
+        active -= 1
+        if successfully { successful += 1 }
+        guard active == 0 else { return nil }
+        defer { successful = 0 }
+        return successful > 0 ? successful : nil
+    }
+}
+
 /// Owns file import + conversion for one note (SPEC.md §5.3): copies
 /// dropped/picked files into `files/`, dispatches one converter thread per
 /// file, and exposes per-row status for the UI. Shared per note (like
@@ -33,9 +55,19 @@ final class FilesModel {
     private(set) var rows: [Row] = []
     private(set) var importError: String?
 
+    /// Fired once after all conversions in an import batch settle, carrying
+    /// the number that produced usable context. If the note view has not
+    /// attached its handler yet, the completed count is retained and delivered
+    /// when it does (fast conversions must not miss the AI-notes trigger).
+    var onContextBatchCompleted: ((Int) -> Void)? {
+        didSet { deliverPendingContextBatchIfPossible() }
+    }
+
     private let noteFolderURL: URL
     private let converter: FileConverter
     private var activeJobs: Set<String> = []
+    private var conversionBatch = ContextConversionBatch()
+    private var pendingCompletedContextFiles = 0
     /// Files whose conversion thread is running a turn the app did not
     /// start (typed in a viewer terminal). Suppresses refresh()'s
     /// stale-record re-dispatch while the turn runs; empty after a
@@ -109,16 +141,19 @@ final class FilesModel {
         else { return }
         switch effect {
         case .turnBegan(let file):
-            externalTurns.insert(file)
+            if externalTurns.insert(file).inserted {
+                conversionBatch.started()
+            }
             Self.updateState(noteFolder: noteFolderURL) {
                 $0.conversions[file]?.status = .converting
             }
         case .turnEnded(let file):
-            externalTurns.remove(file)
             let done = WorkerOutput.exists(at: contextURL(for: file))
+            let wasTracked = externalTurns.remove(file) != nil
             Self.updateState(noteFolder: noteFolderURL) {
                 $0.conversions[file]?.status = done ? .done : .failed
             }
+            if wasTracked { conversionFinished(successfully: done) }
         }
         refresh()
     }
@@ -228,11 +263,13 @@ final class FilesModel {
 
     private func dispatch(_ name: String) {
         activeJobs.insert(name)
+        conversionBatch.started()
         Self.updateState(noteFolder: noteFolderURL) {
             $0.conversions[name] = .init(status: .converting)
         }
         Task {
             let folder = noteFolderURL
+            var converted = false
             do {
                 try await converter.convert(fileName: name) { threadId in
                     Self.updateState(noteFolder: folder) {
@@ -243,6 +280,7 @@ final class FilesModel {
                     $0.conversions[name] = .init(
                         status: .done, threadId: $0.conversions[name]?.threadId)
                 }
+                converted = true
             } catch {
                 Log.files.error("converting \(name) failed: \(error)")
                 Self.updateState(noteFolder: folder) {
@@ -251,7 +289,21 @@ final class FilesModel {
                 }
             }
             activeJobs.remove(name)
+            conversionFinished(successfully: converted)
             refresh()
         }
+    }
+
+    private func conversionFinished(successfully: Bool) {
+        guard let completed = conversionBatch.finished(successfully: successfully) else { return }
+        pendingCompletedContextFiles += completed
+        deliverPendingContextBatchIfPossible()
+    }
+
+    private func deliverPendingContextBatchIfPossible() {
+        guard let onContextBatchCompleted, pendingCompletedContextFiles > 0 else { return }
+        let completed = pendingCompletedContextFiles
+        pendingCompletedContextFiles = 0
+        onContextBatchCompleted(completed)
     }
 }

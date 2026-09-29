@@ -1,13 +1,13 @@
 import Foundation
 import SimbiKit
 
-/// Pre-trusts a note folder in `~/.codex/config.toml` so the chat TUI
-/// skips its "Do you trust the contents of this directory?" gate on every
-/// note. Appends the same `[projects."<path>"]` entry codex writes when
+/// Pre-trusts the Simbi project folder in `~/.codex/config.toml` so the chat
+/// TUI skips its "Do you trust the contents of this directory?" gate.
+/// Appends the same `[projects."<path>"]` entry codex writes when
 /// the user picks "Yes, continue"; trust is per exact path — a parent
-/// entry does not cover children (verified against codex 0.147), so each
-/// note folder needs its own entry. `-c` overrides on the command line
-/// are ignored for the trust decision, hence the config file.
+/// entry does not cover children (verified against codex 0.147). `-c`
+/// overrides on the command line are ignored for the trust decision, hence
+/// the config file.
 public enum CodexTrust {
     public static func ensureTrusted(
         directory: URL, installation: CodexInstallation = .standard

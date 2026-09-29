@@ -2,8 +2,8 @@ import Foundation
 import SimbiKit
 
 /// Names a note whose title is still the default: one fresh read-only
-/// thread per attempt (cwd = note folder, `sandbox: read-only`), one turn
-/// whose input is the TITLE.md instructions. Unlike the summarizer the
+/// thread in the shared Simbi Codex project per attempt. Its task directory is
+/// the note folder and its sandbox is read-only. Unlike the summarizer the
 /// thread writes nothing — its final agent message IS the result, which
 /// `sanitizedTitle` turns into a folder-safe name.
 public actor NoteTitler {
@@ -14,6 +14,7 @@ public actor NoteTitler {
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         effort: String? = nil,
+        projectRootURL: URL = SimbiHome().rootURL,
         turnTimeout: Duration = .seconds(180),
         instructionsProvider: @escaping @Sendable () -> String = {
             AgentInstructions.title.contents(homeRootURL: SimbiHome().rootURL)
@@ -27,7 +28,9 @@ public actor NoteTitler {
         self.runner = CodexWorkerTurnRunner(
             client: client,
             spec: .init(
-                cwd: noteFolderURL, sandbox: "read-only", writableRoot: nil,
+                project: SimbiCodexProject(rootURL: projectRootURL),
+                noteFolderURL: noteFolderURL, taskDirectoryURL: noteFolderURL,
+                sandbox: "read-only", writableRoot: nil,
                 model: model, effort: effort, turnTimeout: turnTimeout))
     }
 
@@ -88,7 +91,7 @@ public actor NoteTitler {
     public func generateTitle() async throws -> String {
         let message = try await runner.run(
             instructions: instructionsProvider(),
-            threadName: "[simbi] title: \(noteFolderURL.lastPathComponent)")
+            role: "Note Title")
 
         guard let message else { throw CodexWorkerError.noOutput }
         if let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {

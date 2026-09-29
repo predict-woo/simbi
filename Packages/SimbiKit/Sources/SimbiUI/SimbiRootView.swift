@@ -94,9 +94,29 @@ public struct SimbiRootView: View {
         }
         // Creating the shared client at launch arms AppServerJanitor's
         // quit cleanup: quitting must kill every running codex server —
-        // including older sessions' orphans — even if this session never
-        // talks to codex. (No server is spawned by this; that stays lazy.)
-        .task { _ = CodexServices.appServer }
+        // including older sessions' orphans. Project reconciliation also
+        // starts the server here so existing Simbi threads become visible in
+        // Codex as soon as the app opens.
+        .task {
+            _ = CodexServices.appServer
+            do {
+                try await SimbiCodexDesktopProjectRegistrar.ensureProject(
+                    rootURL: model.home.rootURL)
+            } catch {
+                // A desktop-catalog failure must not prevent app-server
+                // assignment, which still keeps Simbi's worker threads usable.
+                Log.codex.warning("registering Codex desktop project failed: \(error)")
+            }
+            do {
+                try await SimbiCodexProjectOrganizer.reconcile(
+                    client: CodexServices.appServer, rootURL: model.home.rootURL)
+            } catch {
+                // Project organization is cosmetic; recording and
+                // transcription must remain available if Codex changes the
+                // experimental project API.
+                Log.codex.warning("organizing Codex threads failed: \(error)")
+            }
+        }
         // Decouple opening a note from clicking it: building NoteView (five
         // models, file reads, the markdown parse) is the expensive part, so
         // it runs a beat after the selection change. The short sleep lets the
@@ -117,6 +137,8 @@ public struct SimbiRootView: View {
         }
         .task {
             model.start()
+            LaunchAtLogin.apply(
+                enabled: SimbiSettings.current(home: model.home).launchAtLogin)
             // Load the diarizer + VAD models now so Record never waits on
             // them (screenshot mode stays offline).
             if !Flags.uiPreview {
@@ -231,24 +253,35 @@ private struct SidebarScrollProbe: NSViewRepresentable {
 private struct CodexStatusFooter: View {
     var body: some View {
         let available = CodexSetupModel.shared.state == .connected
-        Button {
-            CodexStatusWindowManager.shared.open()
-        } label: {
-            HStack(spacing: Design.iconGap) {
-                StatusDot(color: available ? .statusOK : .statusWarning)
-                Text(available ? "Codex connected" : "Codex unavailable: transcription off")
-                    .font(.meta)
-                    .foregroundStyle(
-                        available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
-                    )
-                    .lineLimit(1)
+        HStack(spacing: 0) {
+            Button {
+                CodexStatusWindowManager.shared.open()
+            } label: {
+                HStack(spacing: Design.iconGap) {
+                    StatusDot(color: available ? .statusOK : .statusWarning)
+                    Text(available ? "Codex connected" : "Codex unavailable: transcription off")
+                        .font(.meta)
+                        .foregroundStyle(
+                            available ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.statusWarning)
+                        )
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Design.footerInset)
+                .padding(.vertical, Design.stripPadding)
+                .contentShape(.rect)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Design.footerInset)
-            .padding(.vertical, Design.stripPadding)
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .help("Show Codex account status and usage")
+
+            SettingsLink {
+                Image(systemName: "gearshape")
+                    .accessibilityLabel("Settings")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .padding(.trailing, Design.footerInset)
+            .help("Settings…")
         }
-        .buttonStyle(.plain)
-        .help("Show Codex account status and usage")
     }
 }

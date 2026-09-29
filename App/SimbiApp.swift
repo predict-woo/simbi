@@ -24,7 +24,7 @@ struct SimbiApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Simbi", id: SimbiWindow.mainID) {
             SimbiRootView()
         }
         .commands {
@@ -54,5 +54,11 @@ struct SimbiApp: App {
         Settings {
             SettingsView()
         }
+        MenuBarExtra {
+            QuickCaptureMenuContent()
+        } label: {
+            QuickCaptureMenuBarLabel()
+        }
+        .menuBarExtraStyle(.window)
     }
 }

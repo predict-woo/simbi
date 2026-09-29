@@ -18,6 +18,16 @@ public enum CodexWorkerError: Error {
 /// Wire shapes shared by every worker turn (verified in
 /// Sources/simbi-appserver-spike/README.md).
 enum CodexTurn {
+    static func threadStartParams(
+        cwd: URL, sandbox: String, projectId: String?
+    ) -> [String: any Sendable] {
+        var params: [String: any Sendable] = [
+            "cwd": cwd.path, "approvalPolicy": "never", "sandbox": sandbox,
+        ]
+        if let projectId { params["projectId"] = projectId }
+        return params
+    }
+
     /// A single text input item for `turn/start`.
     static func textInput(_ text: String) -> [[String: any Sendable]] {
         [["type": "text", "text": text, "text_elements": [String]()]]
@@ -67,9 +77,20 @@ enum CodexTurn {
     static func startThread(
         client: AppServerClient, cwd: URL, sandbox: String, name: String
     ) async throws -> String {
+        let projectId: String?
+        do {
+            projectId = try await SimbiCodexProjectOrganizer.ensureProject(
+                client: client, rootURL: cwd)
+        } catch {
+            // Project organization is additive. A Codex app update must not
+            // be allowed to disable transcription or AI notes if its
+            // experimental project API changes.
+            Log.codex.warning("organizing Codex project failed; continuing unassigned: \(error)")
+            projectId = nil
+        }
         let resultData = try await client.request(
             method: "thread/start",
-            params: ["cwd": cwd.path, "approvalPolicy": "never", "sandbox": sandbox])
+            params: threadStartParams(cwd: cwd, sandbox: sandbox, projectId: projectId))
         let id = try threadId(fromStartResult: resultData)
         _ = try await client.request(
             method: "thread/name/set", params: ["threadId": id, "name": name])
@@ -96,7 +117,9 @@ public enum WorkerOutput {
 /// bookkeeping is per-thread.
 actor CodexWorkerTurnRunner {
     struct Spec: Sendable {
-        var cwd: URL
+        var project: SimbiCodexProject
+        var noteFolderURL: URL
+        var taskDirectoryURL: URL
         /// `thread/start` sandbox ("workspace-write" / "read-only").
         var sandbox: String
         /// Turn sandbox scope; nil inherits the thread's sandbox (titler).
@@ -160,7 +183,8 @@ actor CodexWorkerTurnRunner {
     /// §5.1: state.json records thread ids).
     func run(
         instructions: String,
-        threadName: String,
+        role: String,
+        detail: String? = nil,
         onThreadStarted: @Sendable (String) async -> Void = { _ in }
     ) async throws -> String? {
         if !bound {
@@ -183,7 +207,9 @@ actor CodexWorkerTurnRunner {
         }
 
         let threadId = try await CodexTurn.startThread(
-            client: client, cwd: spec.cwd, sandbox: spec.sandbox, name: threadName)
+            client: client, cwd: spec.project.rootURL, sandbox: spec.sandbox,
+            name: spec.project.threadName(
+                for: spec.noteFolderURL, role: role, detail: detail))
         activeThreads.insert(threadId)
         await onThreadStarted(threadId)
 
@@ -207,7 +233,11 @@ actor CodexWorkerTurnRunner {
         _ = try await client.request(
             method: "turn/start",
             params: CodexTurn.startParams(
-                threadId: threadId, text: instructions, writableRoot: spec.writableRoot,
+                threadId: threadId,
+                text: spec.project.instructions(
+                    for: spec.noteFolderURL, taskDirectoryURL: spec.taskDirectoryURL,
+                    task: instructions),
+                writableRoot: spec.writableRoot,
                 model: spec.model, effort: spec.effort))
         try await awaitTurnCompletion(threadId: threadId)
         return messages[threadId]

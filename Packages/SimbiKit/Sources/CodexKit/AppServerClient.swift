@@ -139,6 +139,18 @@ public actor AppServerClient {
         AppServerJanitor.shared.prepare(binaryPath: installation.binaryURL.path)
     }
 
+    /// Project methods and `thread/start.projectId` are capability-gated by
+    /// app-server. Keep the handshake shape testable because silently
+    /// dropping this flag makes every Simbi thread unassigned again.
+    nonisolated static func initializeParams(version: String) -> [String: any Sendable] {
+        [
+            "clientInfo": [
+                "name": "simbi", "title": "Simbi", "version": version,
+            ],
+            "capabilities": ["experimentalApi": true],
+        ]
+    }
+
     public func addNotificationHandler(
         _ handler: @escaping @Sendable (String, Data) -> Void
     ) {
@@ -287,15 +299,11 @@ public actor AppServerClient {
             await self?.readLoop(socketTask)
         }
 
+        let version =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
         _ = try await send(
-            method: "initialize",
-            params: [
-                "clientInfo": [
-                    "name": "simbi", "title": "Simbi",
-                    "version": Bundle.main.object(
-                        forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev",
-                ]
-            ])
+            method: "initialize", params: Self.initializeParams(version: version))
         try await write(["jsonrpc": "2.0", "method": "initialized"])
 
         let auth = try await send(

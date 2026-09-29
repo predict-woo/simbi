@@ -27,30 +27,33 @@ public enum FixerEvent: Equatable, Sendable {
 /// The per-note transcript-fixer thread (SPEC.md §5.2): a Codex worker
 /// thread that fixes ASR errors in newly appended cues and unifies speaker
 /// names. It works on a snapshot COPY of the transcript in
-/// `.simbi/fixer-worktree/` (its cwd and sole writable root) with plain
-/// apply_patch edits; the host diffs and merges each pass into the live
-/// file (see `TranscriptFixerHost`).
+/// `.simbi/fixer-worktree/` (its task directory and sole writable root) with
+/// plain apply_patch edits; the host diffs and merges each pass into the live
+/// file (see `TranscriptFixerHost`). Its thread belongs to the shared Simbi
+/// Codex project.
 ///
 /// Ping policy: ping when ≥ 1 new cue has been appended since the last pass
 /// AND the thread has no active turn; pings are coalesced. A final ping
 /// fires at recording stop.
 public actor TranscriptFixer {
-    /// The fixer's working directory: holds its refreshed working copy of
+    /// The fixer's task directory: holds its refreshed working copy of
     /// transcript.vtt, and nothing else.
     public static func worktreeURL(noteFolder: URL) -> URL {
         NoteLayout.fixerWorktreeURL(noteFolder: noteFolder)
     }
 
-    /// Bumped whenever the thread's *contract* (worktree cwd, merge
+    /// Bumped whenever the thread's *contract* (worktree task directory, merge
     /// behavior, ping protocol) changes incompatibly. A note's saved
     /// thread carries the instructions it was created with, so threads
     /// from an older version are retired and recreated instead of
     /// resumed; the instruction *text* (user-editable FIXER.md) is
     /// tracked separately via `instructionsFingerprint`. History: 1 =
-    /// snapshot-and-replay worktree, 2 = per-cue speaker-attribution fixes.
-    public static let instructionsVersion = 2
+    /// snapshot-and-replay worktree, 2 = per-cue speaker-attribution fixes,
+    /// 3 = shared Simbi Codex project with an explicit fixer task directory.
+    public static let instructionsVersion = 3
 
     private let noteFolderURL: URL
+    private let project: SimbiCodexProject
     private let client: AppServerClient
     /// Model override for fixer turns (SPEC.md §5.5); nil = thread default.
     private let model: String?
@@ -61,6 +64,9 @@ public actor TranscriptFixer {
     private let instructions: String
     /// Persisted by the caller in .simbi/state.json across app restarts.
     public private(set) var threadId: String?
+    /// A saved fixer from an older contract. It cannot be moved to the shared
+    /// project, so archive it once before creating its replacement.
+    private var retiredThreadId: String?
 
     private var turnActive = false
     private var lastPingedCue = 0
@@ -74,12 +80,16 @@ public actor TranscriptFixer {
 
     public init(
         noteFolderURL: URL, client: AppServerClient, savedThreadId: String?,
+        retiredThreadId: String? = nil,
         model: String? = nil, effort: String? = nil,
+        projectRootURL: URL = SimbiHome().rootURL,
         instructions: String = AgentInstructions.fixer.defaultContents
     ) {
         self.noteFolderURL = noteFolderURL
+        self.project = SimbiCodexProject(rootURL: projectRootURL)
         self.client = client
         self.threadId = savedThreadId
+        self.retiredThreadId = retiredThreadId
         self.model = model
         self.effort = effort
         self.instructions = instructions
@@ -107,7 +117,7 @@ public actor TranscriptFixer {
     /// resumes the note's existing thread (archive → unarchive → resume).
     public func recordingStarted() async throws {
         stopping = false
-        // The thread's cwd; must exist before thread/start.
+        // The task directory must exist before its first turn.
         do {
             try FileManager.default.createDirectory(
                 at: Self.worktreeURL(noteFolder: noteFolderURL), withIntermediateDirectories: true)
@@ -143,11 +153,21 @@ public actor TranscriptFixer {
             return
         }
 
+        if let retiredThreadId {
+            self.retiredThreadId = nil
+            do {
+                _ = try await client.request(
+                    method: "thread/archive", params: ["threadId": retiredThreadId])
+            } catch {
+                Log.codex.warning("archiving retired fixer thread failed: \(error)")
+            }
+        }
+
         threadId = try await CodexTurn.startThread(
             client: client,
-            cwd: Self.worktreeURL(noteFolder: noteFolderURL),
+            cwd: project.rootURL,
             sandbox: "workspace-write",
-            name: "[simbi] fixer: \(noteFolderURL.lastPathComponent)")
+            name: project.threadName(for: noteFolderURL, role: "Transcript Fixer"))
         try await startTurn(text: instructions)
     }
 
@@ -211,7 +231,11 @@ public actor TranscriptFixer {
             _ = try await client.request(
                 method: "turn/start",
                 params: CodexTurn.startParams(
-                    threadId: threadId, text: text,
+                    threadId: threadId,
+                    text: project.instructions(
+                        for: noteFolderURL,
+                        taskDirectoryURL: Self.worktreeURL(noteFolder: noteFolderURL),
+                        task: text),
                     writableRoot: Self.worktreeURL(noteFolder: noteFolderURL),
                     model: model, effort: effort))
         } catch {

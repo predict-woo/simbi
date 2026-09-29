@@ -11,6 +11,14 @@ import SimbiKit
 /// note titles, paths, and the context blurb out of shell-quoting territory
 /// entirely.
 public struct TerminalChatLaunch: Sendable, Equatable {
+    /// App-owned live-context contract. It is appended outside CHAT.md so
+    /// existing installs with a bootstrapped or customized template gain the
+    /// behavior too; user instructions still control every other chat detail.
+    private static let liveContextInstructions = """
+        Before every answer, re-list `context/` rather than relying only on the \
+        launch-time inventory. Read every newly added or changed markdown file \
+        there before responding.
+        """
     /// Ghostty runs this via `bash -c "exec -l <command>"` (`command =`
     /// config key), with two parsing traps verified against Ghostty 1.3:
     /// it prepends the `exec` itself (a leading `exec` here becomes
@@ -21,12 +29,13 @@ public struct TerminalChatLaunch: Sendable, Equatable {
     /// vars keep their quotes.
     ///
     /// Flags mirror the retired app-server chat: workspace-write sandbox,
-    /// on-request approvals, the whole Simbi home writable. Note context
+    /// on-request approvals, and the Simbi home as the shared Codex project.
+    /// Note context
     /// is injected as a developer message; a `-c` value that fails TOML
     /// parsing is taken as a literal string (codex --help), so no
     /// escaping is needed.
     public static let commandLine =
-        "$SIMBI_CODEX_BIN -C \"$SIMBI_NOTE_DIR\" --add-dir \"$SIMBI_HOME_ROOT\" "
+        "$SIMBI_CODEX_BIN -C \"$SIMBI_HOME_ROOT\" "
         + "-c developer_instructions=\"$SIMBI_CHAT_CONTEXT\" "
         + "-s workspace-write -a on-request"
 
@@ -61,9 +70,13 @@ public struct TerminalChatLaunch: Sendable, Equatable {
             ? "The note has no files yet."
             : "The note currently contains: " + files.map { "`\($0)`" }.joined(separator: ", ")
                 + "."
-        return AgentInstructions.chat.resolve(
+        let chatInstructions = AgentInstructions.chat.resolve(
             homeRootURL: homeRootURL,
             variables: ["note_path": notePath, "files": contents])
+        let project = SimbiCodexProject(rootURL: homeRootURL)
+        return project.instructions(
+            for: noteFolderURL, taskDirectoryURL: noteFolderURL,
+            task: chatInstructions + "\n\n" + liveContextInstructions)
     }
 
     /// Top-level note files plus one level of `context/` and `files/`,

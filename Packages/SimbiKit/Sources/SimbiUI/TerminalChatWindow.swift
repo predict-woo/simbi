@@ -109,20 +109,33 @@ final class ChatWindow: NSWindow, NSWindowDelegate {
 
         if CodexInstallation.standard.isBinaryInstalled {
             let terminal = TerminalView(frame: contentRect(forFrameRect: frame))
-            // Pre-trust the note folder so the TUI opens on the composer
+            let homeRootURL = SimbiHome().rootURL
+            // Pre-trust the shared project so the TUI opens on the composer
             // instead of the per-directory trust prompt.
-            CodexTrust.ensureTrusted(directory: noteFolderURL)
+            CodexTrust.ensureTrusted(directory: homeRootURL)
             let launch = TerminalChatLaunch.forNote(
-                noteFolderURL: noteFolderURL, homeRootURL: SimbiHome().rootURL)
+                noteFolderURL: noteFolderURL, homeRootURL: homeRootURL)
             terminal.delegate = self
             terminal.configuration = TerminalSurfaceOptions(
                 backend: .exec,
-                workingDirectory: noteFolderURL.path,
+                workingDirectory: homeRootURL.path,
                 envVars: launch.envVars)
             terminal.controller = TerminalChatServices.controller
             self.terminal = terminal
             contentView = terminal
             makeFirstResponder(terminal)
+
+            // The Codex CLI exposes no project-id flag and app-server does
+            // not infer membership from cwd. Give it time to persist the new
+            // session, then attach that session to the registered Simbi
+            // project. The second pass covers slower first launches.
+            Task {
+                for delay in [Duration.seconds(1), .seconds(5)] {
+                    try? await Task.sleep(for: delay)
+                    try? await SimbiCodexProjectOrganizer.reconcile(
+                        client: CodexServices.appServer, rootURL: homeRootURL)
+                }
+            }
         } else {
             contentView = NSHostingView(
                 rootView: StatusBanner(

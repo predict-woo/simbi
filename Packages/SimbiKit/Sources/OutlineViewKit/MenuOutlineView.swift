@@ -4,6 +4,14 @@ import SwiftUI
 // Local addition to the vendored package (see VENDORED.md): per-row context
 // menus, which upstream OutlineView does not support.
 
+/// A row cell that wants to follow the outline's single source of truth for
+/// pointer hover. The outline owns tracking so recycled rows cannot retain a
+/// stale hover state.
+@MainActor
+public protocol OutlineViewRowHoverable: AnyObject {
+    func setOutlineViewHovered(_ hovered: Bool)
+}
+
 /// `NSOutlineView` subclass that vends a context menu for the clicked row
 /// (or for the empty area below the rows, passing `nil`).
 final class MenuOutlineView: NSOutlineView {
@@ -121,7 +129,15 @@ final class MenuOutlineView: NSOutlineView {
     private func updateHover(to point: NSPoint?) {
         let target = point.map { row(at: $0) } ?? -1
         enumerateAvailableRowViews { rowView, row in
-            (rowView as? HoverHighlightRowView)?.isHovered = row == target
+            let hovered = row == target
+            (rowView as? HoverHighlightRowView)?.isHovered = hovered
+            if let cell = view(atColumn: 0, row: row, makeIfNecessary: false)
+                as? OutlineViewRowHoverable
+            {
+                MainActor.assumeIsolated {
+                    cell.setOutlineViewHovered(hovered)
+                }
+            }
         }
     }
 }

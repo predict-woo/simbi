@@ -7,11 +7,26 @@ extension NSPasteboard.PasteboardType {
     static let simbiSidebarItem = NSPasteboard.PasteboardType("com.simbi.sidebar-item")
 }
 
-/// Sidebar row for OutlineViewKit: a truncating name label (no icon).
+/// Sidebar row for OutlineViewKit: a truncating name label with compact
+/// hover actions. Pinned rows keep the pin action visible as a state marker.
 /// An `NSTableCellView` (not SwiftUI) because the outline view uses the
 /// cell's `textField` outlet for selection tinting.
-final class SidebarCellView: NSTableCellView {
-    init(node: FileTreeNode) {
+@MainActor
+final class SidebarCellView: NSTableCellView, OutlineViewRowHoverable {
+    private let deleteButton: SidebarDeleteButton
+    private let pinButton: SidebarPinButton
+    private let actions: NSStackView
+
+    init(
+        node: FileTreeNode,
+        isPinned: Bool,
+        onTogglePin: @escaping @MainActor () -> Void,
+        onDelete: @escaping @MainActor () -> Void
+    ) {
+        deleteButton = SidebarDeleteButton(nodeName: node.name, handler: onDelete)
+        pinButton = SidebarPinButton(
+            nodeName: node.name, isPinned: isPinned, handler: onTogglePin)
+        actions = NSStackView(views: [pinButton, deleteButton])
         super.init(frame: .zero)
 
         let label = NSTextField(labelWithString: node.name)
@@ -26,16 +41,122 @@ final class SidebarCellView: NSTableCellView {
         addSubview(label)
         textField = label
 
+        actions.orientation = .horizontal
+        actions.alignment = .centerY
+        actions.spacing = 2
+        actions.setContentHuggingPriority(.required, for: .horizontal)
+        actions.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(actions)
+
         label.translatesAutoresizingMaskIntoConstraints = false
+        actions.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: actions.leadingAnchor, constant: -4),
             label.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            actions.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+            actions.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
     required init?(coder: NSCoder) { nil }
+
+    func setOutlineViewHovered(_ hovered: Bool) {
+        pinButton.setHovered(hovered)
+        deleteButton.setHovered(hovered)
+    }
+}
+
+/// A compact pin/unpin affordance. Unpinned rows reveal it on hover; pinned
+/// rows keep it visible so the pin state is clear without relying on color.
+@MainActor
+private final class SidebarPinButton: NSButton {
+    private let handler: @MainActor () -> Void
+    private let nodeName: String
+    private var pinned: Bool
+    private var hovered = false
+
+    init(nodeName: String, isPinned: Bool, handler: @escaping @MainActor () -> Void) {
+        self.handler = handler
+        self.nodeName = nodeName
+        self.pinned = isPinned
+        super.init(frame: .zero)
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        isBordered = false
+        bezelStyle = .inline
+        focusRingType = .none
+        contentTintColor = .secondaryLabelColor
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        target = self
+        action = #selector(invoke)
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setHovered(_ hovered: Bool) {
+        self.hovered = hovered
+        updateVisibility()
+    }
+
+    private func updateAppearance() {
+        image = NSImage(
+            systemSymbolName: pinned ? "pin.fill" : "pin",
+            accessibilityDescription: pinned ? "Unpin from top" : "Pin to top")
+        let action = pinned ? "Unpin" : "Pin"
+        toolTip = "\(action) \(nodeName) \(pinned ? "from" : "to") top"
+        setAccessibilityLabel("\(action) \(nodeName) \(pinned ? "from" : "to") top")
+        updateVisibility()
+    }
+
+    private func updateVisibility() {
+        isHidden = !pinned && !hovered
+    }
+
+    @objc private func invoke() {
+        pinned.toggle()
+        updateAppearance()
+        handler()
+    }
+}
+
+/// A compact, visible delete affordance for every sidebar row. Deletion uses
+/// FileManager.trashItem, so users can recover recordings from macOS Trash.
+@MainActor
+private final class SidebarDeleteButton: NSButton {
+    private let handler: @MainActor () -> Void
+
+    init(nodeName: String, handler: @escaping @MainActor () -> Void) {
+        self.handler = handler
+        super.init(frame: .zero)
+        image = NSImage(
+            systemSymbolName: "trash.fill",
+            accessibilityDescription: "Move to Trash")
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        isBordered = false
+        bezelStyle = .inline
+        focusRingType = .none
+        contentTintColor = .systemRed
+        isHidden = true
+        setContentHuggingPriority(.required, for: .horizontal)
+        setContentCompressionResistancePriority(.required, for: .horizontal)
+        toolTip = "Move \(nodeName) to Trash"
+        setAccessibilityLabel("Move \(nodeName) to Trash")
+        target = self
+        action = #selector(invoke)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func setHovered(_ hovered: Bool) {
+        isHidden = !hovered
+    }
+
+    @objc private func invoke() { handler() }
 }
 
 /// `NSMenuItem` that runs a closure, so sidebar context menus can be built

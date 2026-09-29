@@ -26,6 +26,12 @@ public final class RecordingController {
         controllers.all.contains { $0.status.isCapturing }
     }
 
+    /// The note currently capturing, if any. The menubar recorder uses this
+    /// to stop a recording without opening the main window.
+    public static var activeNoteFolderURL: URL? {
+        controllers.all.first(where: { $0.status.isCapturing })?.noteFolderURL
+    }
+
     /// True while THIS note is capturing. Read-only — never creates a
     /// controller as a side effect. The summary controller uses it to
     /// refuse generation triggers mid-recording (AI Notes spec §3).
@@ -181,6 +187,13 @@ public final class RecordingController {
         }
     }
 
+    /// Starts this note's recording without requiring a visible NoteView.
+    /// Quick capture uses this entry point after creating the note folder.
+    public func startRecording() {
+        guard status == .idle else { return }
+        Task { await start() }
+    }
+
     private func start() async {
         status = .preparing
         // An import owns the note's timeline (state.json sessionCount /
@@ -208,15 +221,17 @@ public final class RecordingController {
                 let noteState = NoteRecordingState.current(noteFolder: noteFolderURL)
                 let fixerInstructions = AgentInstructions.fixer.resolve(
                     homeRootURL: SimbiHome().rootURL)
-                let savedThreadId =
+                let canResumeSavedThread =
                     noteState.fixerInstructionsVersion == TranscriptFixer.instructionsVersion
-                        && noteState.fixerInstructionsHash
-                            == AgentInstructions.fingerprint(fixerInstructions)
-                    ? noteState.fixerThreadId : nil
+                    && noteState.fixerInstructionsHash
+                        == AgentInstructions.fingerprint(fixerInstructions)
+                let savedThreadId = canResumeSavedThread ? noteState.fixerThreadId : nil
+                let retiredThreadId = canResumeSavedThread ? nil : noteState.fixerThreadId
                 let choice = settings[.fixer]
                 let fixer = TranscriptFixer(
                     noteFolderURL: noteFolderURL, client: CodexServices.appServer,
-                    savedThreadId: savedThreadId, model: choice.model,
+                    savedThreadId: savedThreadId, retiredThreadId: retiredThreadId,
+                    model: choice.model,
                     effort: choice.effort,
                     instructions: fixerInstructions)
                 let activity = fixerActivity

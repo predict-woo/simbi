@@ -5,6 +5,16 @@ import Testing
 
 @Suite("CodexTurn helpers")
 struct CodexTurnTests {
+    @Test("thread/start assigns the thread to the Simbi project")
+    func threadStartProjectShape() {
+        let params = CodexTurn.threadStartParams(
+            cwd: URL(filePath: "/Users/test/Simbi"), sandbox: "workspace-write",
+            projectId: "project-simbi")
+        #expect(params["cwd"] as? String == "/Users/test/Simbi")
+        #expect(params["sandbox"] as? String == "workspace-write")
+        #expect(params["projectId"] as? String == "project-simbi")
+    }
+
     @Test("startParams builds the shared turn/start shape")
     func startParamsShape() {
         let params = CodexTurn.startParams(

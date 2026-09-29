@@ -20,11 +20,15 @@ public final class RecordingActivity {
     public static let shared = RecordingActivity()
 
     public private(set) var isRecording = false
+    /// The note currently capturing, if any. Used by the menubar control to
+    /// offer a one-click stop and to show where the recording is going.
+    public private(set) var activeNoteURL: URL?
 
     private init() {}
 
     func refresh() {
         let live = RecordingController.isAnyRecording
+        activeNoteURL = RecordingController.activeNoteFolderURL
         guard live != isRecording else { return }
         isRecording = live
         if !live {

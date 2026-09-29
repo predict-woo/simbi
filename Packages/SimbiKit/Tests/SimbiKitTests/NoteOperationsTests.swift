@@ -110,5 +110,9 @@ struct NoteOperationsTests {
         #expect(!NoteOperations.isDefaultNoteName("Design sync"))
         #expect(!NoteOperations.isDefaultNoteName("New Note 2b"))
         #expect(!NoteOperations.isDefaultNoteName("2026-08-15 Note"))
+        #expect(NoteOperations.isDefaultNoteName("2026-08-15 09-30"))
+        #expect(NoteOperations.isDefaultNoteName("2026-08-15 09-30 2"))
+        #expect(!NoteOperations.isDefaultNoteName("2026-8-15 09-30"))
+        #expect(!NoteOperations.isDefaultNoteName("2026-08-15 9-30"))
     }
 }

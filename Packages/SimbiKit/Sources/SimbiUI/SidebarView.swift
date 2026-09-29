@@ -17,33 +17,56 @@ struct SidebarView: View {
     @State private var renameText = ""
 
     var body: some View {
-        OutlineView(
-            model.nodes,
-            children: \.children,
-            selection: selectedNode
-        ) { node in
-            SidebarCellView(node: node)
-        }
-        .outlineViewStyle(.sourceList)
-        .quietRowSelection()
-        // Folders are containers, not documents: clicking one toggles its
-        // expansion, and the selection only ever points at notes and files.
-        .selectableRows { $0.kind != .folder }
-        .hoverHighlight(color: NSColor(Color.hoverFill), cornerRadius: Design.Radius.row)
-        .dragDataSource { node in
-            let item = NSPasteboardItem()
-            item.setString(node.url.standardizedFileURL.path, forType: .simbiSidebarItem)
-            return item
-        }
-        .onDrop(of: [.simbiSidebarItem], receiver: SidebarDropReceiver(model: model))
-        .contextMenu { node in
-            contextMenu(for: node)
-        }
-        .renameAlert(isPresented: renameAlertPresented, name: $renameText) { name in
-            if let target = renameTarget {
-                model.rename(target.url, to: name)
+        VStack(spacing: 0) {
+            HStack(spacing: Design.innerGap) {
+                Text("Folders")
+                    .font(.headline)
+                Spacer()
+                Button("New Folder", systemImage: "folder.badge.plus") {
+                    model.promptForNewFolder(in: model.home.rootURL)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Create a new folder")
             }
-            renameTarget = nil
+            .padding(.horizontal, Design.paneInset)
+            .padding(.vertical, Design.stripPadding)
+
+            Divider()
+
+            OutlineView(
+                model.nodes,
+                children: \.children,
+                selection: selectedNode
+            ) { node in
+                SidebarCellView(
+                    node: node,
+                    isPinned: model.isPinned(node),
+                    onTogglePin: { model.togglePinned(node.url) },
+                    onDelete: { model.trash(node.url) })
+            }
+            .outlineViewStyle(.sourceList)
+            .quietRowSelection()
+            // Folders are containers, not documents: clicking one toggles its
+            // expansion, and the selection only ever points at notes and files.
+            .selectableRows { $0.kind != .folder }
+            .hoverHighlight(color: NSColor(Color.hoverFill), cornerRadius: Design.Radius.row)
+            .dragDataSource { node in
+                let item = NSPasteboardItem()
+                item.setString(node.url.standardizedFileURL.path, forType: .simbiSidebarItem)
+                return item
+            }
+            .onDrop(of: [.simbiSidebarItem], receiver: SidebarDropReceiver(model: model))
+            .contextMenu { node in
+                contextMenu(for: node)
+            }
+            .renameAlert(isPresented: renameAlertPresented, name: $renameText) { name in
+                if let target = renameTarget {
+                    model.rename(target.url, to: name)
+                }
+                renameTarget = nil
+            }
         }
     }
 
@@ -71,7 +94,9 @@ struct SidebarView: View {
             menu.addItem(
                 HandlerMenuItem("New Note") { model.promptForNewNote(in: model.home.rootURL) })
             menu.addItem(
-                HandlerMenuItem("New Folder") { model.createFolder(in: model.home.rootURL) })
+                HandlerMenuItem("New Folder") {
+                    model.promptForNewFolder(in: model.home.rootURL)
+                })
             return menu
         }
         if node.kind == .folder {
@@ -81,10 +106,19 @@ struct SidebarView: View {
                 })
             menu.addItem(
                 HandlerMenuItem("New Folder") {
-                    model.createFolder(in: node.url)
+                    model.promptForNewFolder(in: node.url)
                 })
             menu.addItem(.separator())
         }
+        let isPinned = model.isPinned(node)
+        let pinItem = HandlerMenuItem(isPinned ? "Unpin from Top" : "Pin to Top") {
+            model.togglePinned(node.url)
+        }
+        pinItem.image = NSImage(
+            systemSymbolName: isPinned ? "pin.slash" : "pin",
+            accessibilityDescription: isPinned ? "Unpin" : "Pin")
+        menu.addItem(pinItem)
+        menu.addItem(.separator())
         menu.addItem(
             HandlerMenuItem("Rename…") {
                 renameText = node.name

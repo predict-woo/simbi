@@ -43,7 +43,30 @@ struct SidebarOrderTests {
         #expect(SidebarOrder.apply(to: defaultOrder, in: folder).map(\.name) == ["c", "a", "b", "d"])
     }
 
-    @Test("prepend pins a name first, creating the order file if needed")
+    @Test("pins overlay manual order without changing it")
+    func pinOrder() throws {
+        let folder = try makeTempFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        func node(_ name: String) -> FileTreeNode {
+            FileTreeNode(url: folder.appending(path: name), name: name, kind: .note, children: nil)
+        }
+        let defaultOrder = [node("a"), node("b"), node("c"), node("d")]
+
+        SidebarOrder.write(["c", "a", "b"], in: folder)
+        SidebarOrder.pin("b", in: folder)
+        SidebarOrder.pin("a", in: folder)
+        #expect(SidebarOrder.readPinned(in: folder) == ["a", "b"])
+        #expect(SidebarOrder.apply(to: defaultOrder, in: folder).map(\.name) == ["a", "b", "c", "d"])
+
+        SidebarOrder.unpin("a", in: folder)
+        #expect(SidebarOrder.apply(to: defaultOrder, in: folder).map(\.name) == ["b", "c", "a", "d"])
+        SidebarOrder.unpin("b", in: folder)
+        #expect(SidebarOrder.apply(to: defaultOrder, in: folder).map(\.name) == ["c", "a", "b", "d"])
+        #expect(!FileManager.default.fileExists(atPath: SidebarOrder.pinsFileURL(in: folder).path))
+    }
+
+    @Test("prepend places a name first, creating the order file if needed")
     func prepend() throws {
         let folder = try makeTempFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -67,8 +90,10 @@ struct SidebarOrderTests {
         defer { try? FileManager.default.removeItem(at: folder) }
 
         SidebarOrder.write(["c", "a", "b"], in: folder)
+        SidebarOrder.pin("a", in: folder)
         SidebarOrder.renamed(from: "a", to: "renamed", in: folder)
         #expect(SidebarOrder.read(in: folder) == ["c", "renamed", "b"])
+        #expect(SidebarOrder.readPinned(in: folder) == ["renamed"])
 
         // Renaming something with no manual position is a no-op.
         SidebarOrder.renamed(from: "unknown", to: "other", in: folder)
@@ -76,6 +101,8 @@ struct SidebarOrderTests {
 
         SidebarOrder.removed("c", in: folder)
         #expect(SidebarOrder.read(in: folder) == ["renamed", "b"])
+        SidebarOrder.removed("renamed", in: folder)
+        #expect(SidebarOrder.readPinned(in: folder) == [])
     }
 
     @Test("scanner applies the stored order over the alphabetical default")

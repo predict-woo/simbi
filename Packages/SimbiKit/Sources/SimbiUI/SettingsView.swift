@@ -117,6 +117,13 @@ final class SettingsDocument {
 /// window: a TabView inside the `Settings` scene renders as native toolbar
 /// tabs. This parent owns the single settings value (save-on-change) and
 /// the app-server model list; the panes are private views over bindings.
+private enum SettingsLayout {
+    static let width: CGFloat = 460
+    /// Keep the native Settings window compact and stable when switching
+    /// between panes. The Codex pane scrolls within this shared height.
+    static let height: CGFloat = 440
+}
+
 public struct SettingsView: View {
     @State private var document = SettingsDocument()
     @State private var models: [CodexModels.Model] = []
@@ -141,13 +148,12 @@ public struct SettingsView: View {
                     modelsUnavailable: modelsUnavailable
                 )
                 .tabItem { Label("Codex", systemImage: "sparkles") }
-                RecordingSettingsPane(settings: $document.settings)
-                    .tabItem { Label("Recording", systemImage: "mic") }
             }
         }
-        .frame(width: 460)
+        .frame(width: SettingsLayout.width, height: SettingsLayout.height)
         .onChange(of: document.settings) {
             document.save()
+            LaunchAtLogin.apply(enabled: document.settings.launchAtLogin)
         }
         .task {
             models = await CodexModels.availableModels(client: CodexServices.appServer)
@@ -193,7 +199,9 @@ private struct GeneralSettingsPane: View {
                         Button("Change…") { chooseHomeFolder() }
                     }
                 }
+                Toggle("Launch Simbi at login", isOn: $settings.launchAtLogin)
             }
+            RecordingSettingsSection(settings: $settings)
             Section("Updates") {
                 Picker("Updates", selection: $updates.mode) {
                     ForEach(UpdateMode.allCases, id: \.self) { mode in
@@ -217,7 +225,6 @@ private struct GeneralSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
         .alert(
             "Relaunch Simbi to switch the notes folder?",
             isPresented: Binding(
@@ -305,7 +312,6 @@ private struct CodexSettingsPane: View {
             }
         }
         .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
         .alert(
             "Reset to default?",
             isPresented: Binding(
@@ -361,34 +367,31 @@ private struct CodexSettingsPane: View {
     }
 }
 
-/// Default recording sources (SPEC.md §3.1).
-private struct RecordingSettingsPane: View {
+/// Default recording sources (SPEC.md §3.1), kept with the general settings
+/// because they are device-level preferences rather than Codex behavior.
+private struct RecordingSettingsSection: View {
     @Binding var settings: SimbiSettings
 
     var body: some View {
-        Form {
-            Section("Recording") {
-                Picker("Microphone", selection: micSelection) {
-                    Text("Off").tag(MicChoice.off)
-                    Text("System default").tag(MicChoice.systemDefault)
-                    ForEach(microphones) { mic in
-                        Text(mic.name).tag(MicChoice.device(mic.id))
-                    }
-                    // A saved-but-unplugged mic stays selectable rather
-                    // than silently snapping to another option.
-                    if case .device(let uid) = micSelection.wrappedValue,
-                        !microphones.contains(where: { $0.id == uid })
-                    {
-                        Text("Saved microphone (not connected)").tag(MicChoice.device(uid))
-                    }
+        Section("Recording") {
+            Picker("Microphone", selection: micSelection) {
+                Text("Off").tag(MicChoice.off)
+                Text("System default").tag(MicChoice.systemDefault)
+                ForEach(microphones) { mic in
+                    Text(mic.name).tag(MicChoice.device(mic.id))
                 }
-                Toggle("Capture system audio", isOn: $settings.systemAudioEnabled)
-                    // The last active source can't be turned off.
-                    .disabled(!settings.micEnabled)
+                // A saved-but-unplugged mic stays selectable rather
+                // than silently snapping to another option.
+                if case .device(let uid) = micSelection.wrappedValue,
+                    !microphones.contains(where: { $0.id == uid })
+                {
+                    Text("Saved microphone (not connected)").tag(MicChoice.device(uid))
+                }
             }
+            Toggle("Capture system audio", isOn: $settings.systemAudioEnabled)
+                // The last active source can't be turned off.
+                .disabled(!settings.micEnabled)
         }
-        .formStyle(.grouped)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     private enum MicChoice: Hashable {

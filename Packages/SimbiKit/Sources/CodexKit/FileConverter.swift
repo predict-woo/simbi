@@ -2,9 +2,9 @@ import Foundation
 import SimbiKit
 
 /// Runs the per-file converter jobs for one note (SPEC.md §5.3): each
-/// imported file gets its own Codex thread (cwd = note folder,
-/// workspace-write sandbox) with one turn that converts `files/<name>` to
-/// `context/<name>.md`; the thread is archived when the job ends.
+/// imported file gets its own thread in the shared Simbi Codex project, with
+/// a workspace-write sandbox restricted to the note folder. One turn converts
+/// `files/<name>` to `context/<name>.md`; the thread is archived when it ends.
 public actor FileConverter {
     private let noteFolderURL: URL
     private let runner: CodexWorkerTurnRunner
@@ -21,6 +21,7 @@ public actor FileConverter {
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         effort: String? = nil,
+        projectRootURL: URL = SimbiHome().rootURL,
         turnTimeout: Duration = .seconds(900),  // generous — odd formats send the agent exploring
         anydocPath: String? = nil,
         shouldArchiveOnJobEnd: @escaping @Sendable (String) async -> Bool = { _ in true },
@@ -34,7 +35,9 @@ public actor FileConverter {
         self.runner = CodexWorkerTurnRunner(
             client: client,
             spec: .init(
-                cwd: noteFolderURL, sandbox: "workspace-write", writableRoot: noteFolderURL,
+                project: SimbiCodexProject(rootURL: projectRootURL),
+                noteFolderURL: noteFolderURL, taskDirectoryURL: noteFolderURL,
+                sandbox: "workspace-write", writableRoot: noteFolderURL,
                 model: model, effort: effort, turnTimeout: turnTimeout,
                 shouldArchiveOnEnd: shouldArchiveOnJobEnd))
     }
@@ -69,7 +72,7 @@ public actor FileConverter {
     ) async throws {
         let message = try await runner.run(
             instructions: instructions(fileName: fileName),
-            threadName: "[simbi] convert: \(fileName)",
+            role: "Convert", detail: fileName,
             onThreadStarted: onThreadStarted)
         if let message, let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {
             throw CodexWorkerError.reportedFailure(reason)

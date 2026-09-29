@@ -6,6 +6,48 @@ import Testing
 
 @Suite("SummaryController")
 struct SummaryControllerTests {
+    @Test("converted context generates now or defers until the note is quiet")
+    func contextRefreshGate() {
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false, recordingActive: false) == .generate)
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: true, recordingActive: false) == .defer)
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: true, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false, recordingActive: true) == .defer)
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: true, transcriptHasCues: true, codexAvailable: false,
+                alreadyWorking: false, recordingActive: false) == .defer)
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: false, transcriptHasCues: true, codexAvailable: true,
+                alreadyWorking: false, recordingActive: false) == .ignore)
+        #expect(
+            SummaryController.contextRefreshAction(
+                enabled: true, transcriptHasCues: false, codexAvailable: true,
+                alreadyWorking: false, recordingActive: false) == .ignore)
+    }
+
+    @Test("deferred context changes coalesce into one follow-up generation")
+    func contextRefreshCoalesces() {
+        var refresh = SummaryController.ContextRefreshCoordinator()
+
+        let first = refresh.request(.defer)
+        let second = refresh.request(.defer)
+        let resumed = refresh.resume(.generate)
+        let repeatedResume = refresh.resume(.generate)
+        #expect(!first)
+        #expect(!second)
+        #expect(resumed)
+        #expect(!repeatedResume)
+    }
+
     @Test("auto-generation gating")
     func autoGate() {
         #expect(

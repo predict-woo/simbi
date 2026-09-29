@@ -54,6 +54,20 @@ struct TitleControllerTests {
         #expect(!TitleController.isQuiet(fixerStatus: .off, summaryWorking: true))
     }
 
+    @Test("generated titles receive the note date prefix")
+    @MainActor
+    func datedTitle() {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = .current
+        components.year = 2026
+        components.month = 9
+        components.day = 19
+        let date = components.calendar!.date(from: components)!
+
+        #expect(TitleController.datedTitle("Design Sync", date: date) == "2026-09-19 - Design Sync")
+    }
+
     @Test("a note that never goes quiet is not renamed")
     @MainActor
     func renameSkippedWhenNeverQuiet() async {
@@ -87,7 +101,7 @@ struct TitleControllerTests {
         }
 
         await controller.awaitQuietThenApply("Design Sync")
-        #expect(renamedTo == "Design Sync")
+        #expect(renamedTo?.hasSuffix(" - Design Sync") == true)
         #expect(polls >= 3)
     }
 

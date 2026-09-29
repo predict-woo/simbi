@@ -15,6 +15,14 @@ import SimbiKit
 public final class TitleController {
     private static let controllers = PerNoteRegistry<TitleController>()
 
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     public static func shared(noteFolderURL: URL) -> TitleController {
         controllers.value(for: noteFolderURL, make: TitleController.init(noteFolderURL:))
     }
@@ -131,8 +139,15 @@ public final class TitleController {
             !RecordingController.isCapturing(noteFolderURL: noteFolderURL),
             let renameNote
         else { return }
+        let resourceValues = try? noteFolderURL.resourceValues(forKeys: [.creationDateKey])
+        let noteDate = resourceValues?.creationDate ?? .now
+        let datedTitle = Self.datedTitle(title, date: noteDate)
         let unique = NoteOperations.availableName(
-            title, in: noteFolderURL.deletingLastPathComponent())
+            datedTitle, in: noteFolderURL.deletingLastPathComponent())
         renameNote(unique)
+    }
+
+    static func datedTitle(_ title: String, date: Date) -> String {
+        "\(dateFormatter.string(from: date)) - \(title)"
     }
 }

@@ -78,7 +78,7 @@ public struct FileTreeNode: Identifiable, Hashable, Sendable {
 ///   internals (`files/`, `context/`, `.simbi/`, …) are never children;
 /// - hidden entries are skipped;
 /// - folders sort before loose files, each group alphabetically —
-///   unless the folder has a manual `SidebarOrder`, which wins.
+///   unless the folder has a manual `SidebarOrder` or pins, which win.
 public enum FileTreeScanner {
     public static let noteMarkerName = "note.md"
 

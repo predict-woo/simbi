@@ -162,6 +162,15 @@ struct NoteView: View {
                 document?.saveNow()
                 aiDocument?.saveNow()
             }
+            // File conversions are parallel, but FilesModel emits only after
+            // the whole picker/drop batch settles. One callback therefore
+            // means one in-place AI Notes update, never one run per file.
+            files.onContextBatchCompleted = { [weak summary] _ in
+                summary?.contextDidChange()
+            }
+            // A deferred refresh may have outlived the previous view (for
+            // example Codex reconnected while this note was closed).
+            summary.resumePendingContextRefresh()
             // Opening a note that already has AI notes lands on them
             // (spec §4) — unless a recording is underway.
             if summary.summaryExists && recorder.status == .idle {
@@ -183,6 +192,9 @@ struct NoteView: View {
             if status == .working {
                 selectedTab = .aiNotes
             }
+        }
+        .onChange(of: summary.codexAvailable) { _, available in
+            if available { summary.resumePendingContextRefresh() }
         }
         .onChange(of: summary.generationCount) {
             // The summarizer thread just rewrote summary.md on disk;

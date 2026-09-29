@@ -1,11 +1,11 @@
 import Foundation
 import SimbiKit
 
-/// Generates a note's AI notes (AI Notes spec §3): one fresh thread per
-/// generation (cwd = note folder, workspace-write sandbox), one turn whose
-/// input is the SUMMARY.md instructions. The thread reads note.md,
-/// transcript.vtt, context/*.md, and any current summary.md from its own
-/// cwd and writes summary.md itself by design (user decision 2026-08-10),
+/// Generates a note's AI notes (AI Notes spec §3): one fresh thread in the
+/// shared Simbi Codex project per generation, with its writable sandbox scoped
+/// to the note folder. The turn reads note.md,
+/// transcript.vtt, context/*.md, and any current summary.md from its task
+/// directory and writes summary.md itself by design (user decision 2026-08-10),
 /// converter-style; its final message is only a DONE/FAILED status reply.
 public actor NoteSummarizer {
     private let noteFolderURL: URL
@@ -17,6 +17,7 @@ public actor NoteSummarizer {
     public init(
         noteFolderURL: URL, client: AppServerClient, model: String? = nil,
         effort: String? = nil,
+        projectRootURL: URL = SimbiHome().rootURL,
         turnTimeout: Duration = .seconds(600),
         instructionsProvider: @escaping @Sendable () -> String = {
             AgentInstructions.summary.contents(homeRootURL: SimbiHome().rootURL)
@@ -29,7 +30,9 @@ public actor NoteSummarizer {
         self.runner = CodexWorkerTurnRunner(
             client: client,
             spec: .init(
-                cwd: noteFolderURL, sandbox: "workspace-write", writableRoot: noteFolderURL,
+                project: SimbiCodexProject(rootURL: projectRootURL),
+                noteFolderURL: noteFolderURL, taskDirectoryURL: noteFolderURL,
+                sandbox: "workspace-write", writableRoot: noteFolderURL,
                 model: model, effort: effort, turnTimeout: turnTimeout))
     }
 
@@ -39,7 +42,7 @@ public actor NoteSummarizer {
     public func generate() async throws {
         let message = try await runner.run(
             instructions: instructionsProvider(),
-            threadName: "[simbi] summary: \(noteFolderURL.lastPathComponent)")
+            role: "AI Notes")
 
         if let message, let reason = CodexWorkerTurnRunner.reportedFailure(in: message) {
             throw CodexWorkerError.reportedFailure(reason)

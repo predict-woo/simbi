@@ -87,13 +87,33 @@ public final class FileTreeModel {
         }
     }
 
+    /// Whether a sidebar item is pinned within its immediate parent folder.
+    public func isPinned(_ node: FileTreeNode) -> Bool {
+        SidebarOrder.isPinned(node.name, in: node.url.deletingLastPathComponent())
+    }
+
+    /// Toggles an item's pin without changing its filesystem location or
+    /// manual drag order. Pins are scoped to the item's current parent.
+    public func togglePinned(_ url: URL) {
+        let parent = url.deletingLastPathComponent()
+        let name = url.lastPathComponent
+        if SidebarOrder.isPinned(name, in: parent) {
+            SidebarOrder.unpin(name, in: parent)
+        } else {
+            SidebarOrder.pin(name, in: parent)
+        }
+        refresh()
+    }
+
     /// "New Note" with a name prompt (SPEC.md §6): the dialog opens with
     /// the default name prefilled and selected, so typing replaces it;
     /// Return creates, Esc cancels.
     public func promptForNewNote(in folder: URL? = nil) {
         let parent = folder ?? targetFolderForNewItems
         let suggested = NoteOperations.availableNoteName(in: parent)
-        guard let entered = NoteNamePrompt.run(suggestedName: suggested) else { return }
+        guard let entered = NamePrompt.run(title: "New Note", suggestedName: suggested) else {
+            return
+        }
         // "/" would silently nest the note; an emptied field falls back to
         // the default name rather than failing.
         var name =
@@ -110,6 +130,28 @@ public final class FileTreeModel {
             selection = url
         } catch {
             Log.files.error("creating note \(name) failed: \(error)")
+        }
+    }
+
+    public func promptForNewFolder(in folder: URL? = nil) {
+        let parent = folder ?? home.rootURL
+        let suggested = NoteOperations.availableName("New Folder", in: parent)
+        guard let entered = NamePrompt.run(title: "New Folder", suggestedName: suggested) else {
+            return
+        }
+        var name =
+            entered
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-")
+        if name.isEmpty {
+            name = suggested
+        }
+        name = NoteOperations.availableName(name, in: parent)
+        do {
+            _ = try NoteOperations.createFolder(named: name, in: parent)
+            refresh()
+        } catch {
+            Log.files.error("creating folder \\(name) failed: \\(error)")
         }
     }
 
@@ -221,11 +263,11 @@ public final class FileTreeModel {
 /// behaviors the dialog relies on — initial first responder selects the
 /// whole prefill, Return fires the default button, Esc cancels.
 @MainActor
-enum NoteNamePrompt {
+enum NamePrompt {
     /// Returns the entered name, or nil on cancel.
-    static func run(suggestedName: String) -> String? {
+    static func run(title: String, suggestedName: String) -> String? {
         let alert = NSAlert()
-        alert.messageText = "New Note"
+        alert.messageText = title
         alert.addButton(withTitle: "Create")
         alert.addButton(withTitle: "Cancel")
         let field = NSTextField(string: suggestedName)

@@ -18,6 +18,43 @@ public final class SummaryController {
         case failed(String)
     }
 
+    enum ContextRefreshAction: Equatable {
+        case ignore
+        case `defer`
+        case generate
+    }
+
+    struct ContextRefreshCoordinator {
+        private var pending = false
+
+        /// Records a newly converted batch and returns whether generation
+        /// should begin now.
+        mutating func request(_ action: ContextRefreshAction) -> Bool {
+            switch action {
+            case .ignore:
+                pending = false
+                return false
+            case .defer:
+                pending = true
+                return false
+            case .generate:
+                pending = false
+                return true
+            }
+        }
+
+        /// Re-evaluates the one coalesced pending request after conditions
+        /// change. Once consumed, repeated resumes are no-ops.
+        mutating func resume(_ action: ContextRefreshAction) -> Bool {
+            guard pending else { return false }
+            return request(action)
+        }
+
+        mutating func satisfy() {
+            pending = false
+        }
+    }
+
     private static let controllers = PerNoteRegistry<SummaryController>()
 
     public static func shared(noteFolderURL: URL) -> SummaryController {
@@ -36,6 +73,9 @@ public final class SummaryController {
     /// confirms the editor refresh, so a placeholder keyed to the file's
     /// existence dropped early and flashed an empty editor across that gap.
     private(set) var firstGenerationInFlight = false
+    /// Coalesces any number of converted-file batches that arrive while a
+    /// generation, recording, or temporary Codex outage prevents an update.
+    private var contextRefresh = ContextRefreshCoordinator()
 
     let noteFolderURL: URL
     private let summarizer: NoteSummarizer
@@ -98,6 +138,18 @@ public final class SummaryController {
         enabled && transcriptHasCues && codexAvailable && !alreadyWorking && !recordingActive
     }
 
+    /// Added files are useful only once their markdown conversion exists.
+    /// Generate immediately when the note is quiet; otherwise retain one
+    /// pending refresh regardless of how many batches arrive meanwhile.
+    nonisolated static func contextRefreshAction(
+        enabled: Bool, transcriptHasCues: Bool, codexAvailable: Bool,
+        alreadyWorking: Bool, recordingActive: Bool
+    ) -> ContextRefreshAction {
+        guard enabled, transcriptHasCues else { return .ignore }
+        if !codexAvailable || alreadyWorking || recordingActive { return .defer }
+        return .generate
+    }
+
     /// Whether the note view offers a first-generation button (issue #3):
     /// the note has a transcript worth summarizing but no AI notes and no
     /// run in flight — the states where the tab strip (and so the
@@ -140,7 +192,38 @@ public final class SummaryController {
                 alreadyWorking: status == .working,
                 recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
         else { return }
+        // This generation reads all converted context, so it also satisfies
+        // anything queued while the recording was active.
+        contextRefresh.satisfy()
         generate()
+    }
+
+    /// File conversion completion hook. The update is deliberately in-place
+    /// (`fresh: false`) so user edits in summary.md survive and the new context
+    /// is woven into the existing AI Notes.
+    func contextDidChange() {
+        refreshFileState()
+        let action = Self.contextRefreshAction(
+            enabled: SimbiSettings.current().aiNotesEnabled,
+            transcriptHasCues: transcriptHasCues,
+            codexAvailable: codexAvailable,
+            alreadyWorking: status == .working,
+            recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
+        if contextRefresh.request(action) { generate() }
+    }
+
+    /// Called when a condition that may have deferred a context refresh clears
+    /// (generation completion or Codex reconnect). A still-active recording
+    /// simply leaves the single pending bit set until its stop hook runs.
+    func resumePendingContextRefresh() {
+        refreshFileState()
+        let action = Self.contextRefreshAction(
+            enabled: SimbiSettings.current().aiNotesEnabled,
+            transcriptHasCues: transcriptHasCues,
+            codexAvailable: codexAvailable,
+            alreadyWorking: status == .working,
+            recordingActive: RecordingController.isCapturing(noteFolderURL: noteFolderURL))
+        if contextRefresh.resume(action) { generate() }
     }
 
     /// The tab strip's regenerate button and the failed banner's Try
@@ -229,6 +312,7 @@ public final class SummaryController {
             generationCount += 1
             status = .idle
         }
+        resumePendingContextRefresh()
     }
 
     // Test seams: status transitions without a live app-server.

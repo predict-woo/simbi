@@ -22,12 +22,12 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
     /// `{{ note_path }}` — the note's home-relative path; `{{ files }}` —
     /// a sentence inventorying the note's current files.
     case chat = "CHAT.md"
-    /// AI-notes summarizer instructions. No variables: the thread runs
-    /// with the note folder as cwd, reads the note, transcript, and any
+    /// AI-notes summarizer instructions. No variables: the thread uses
+    /// the note folder as its task directory, reads the note, transcript, and any
     /// current AI notes itself, and writes summary.md itself.
     case summary = "SUMMARY.md"
-    /// Note auto-titler instructions. No variables: the thread runs with
-    /// the note folder as cwd (read-only) and replies with the title as
+    /// Note auto-titler instructions. No variables: the thread uses
+    /// the note folder as its read-only task directory and replies with the title as
     /// its final message — nothing is written to disk.
     case title = "TITLE.md"
     /// Ground rules for any agent working in the Simbi home. No variables;
@@ -115,10 +115,10 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
     private static let defaultFixer = """
         You are the transcript fixer for this note. The file transcript.vtt in your \
-        working directory is YOUR WORKING COPY of the note's live WebVTT transcript — \
+        task directory is YOUR WORKING COPY of the note's live WebVTT transcript — \
         it is refreshed from the live file before every ping, and after each of your \
         turns I diff your copy against what you were given and merge the changed cue \
-        payloads into the live transcript myself. Never write outside your working \
+        payloads into the live transcript myself. Never write outside your task \
         directory. The note's own files are read-only ground truth for names and \
         jargon: ../../note.md, and ../../context/*.md if present.
 
@@ -176,8 +176,8 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         """
 
     private static let defaultChat = """
-        This session is attached to the Simbi note at {{ note_path }} (your working \
-        directory). Simbi notes keep a fixed layout: `note.md` is the user's note, \
+        This session is attached to the Simbi note at {{ note_path }} inside the shared \
+        Simbi project. Simbi notes keep a fixed layout: `note.md` is the user's note, \
         `transcript.vtt` is the meeting transcript with speaker labels, `context/` \
         holds markdown conversions of attached files, and `files/` holds the \
         original attachments.
@@ -192,7 +192,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
     private static let defaultSummary = """
         You write the AI notes for a Simbi note: a clean, scannable summary that \
-        fuses the user's own notes with the meeting transcript. Your working \
+        fuses the user's own notes with the meeting transcript. Your task \
         directory is the note folder. Read note.md (the user's own notes), \
         transcript.vtt (the speaker-labeled WebVTT transcript), and context/*.md \
         if present.
@@ -258,7 +258,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
         """
 
     private static let defaultTitle = """
-        You name a Simbi note that still has its default title. Your working \
+        You name a Simbi note that still has its default title. Your task \
         directory is the note folder; everything is read-only. Read note.md \
         (the user's own notes), transcript.vtt (the speaker-labeled WebVTT \
         transcript), and context/*.md if present, then choose a short, clean, \
@@ -266,7 +266,7 @@ public enum AgentInstructions: String, CaseIterable, Identifiable, Sendable {
 
         Rules:
         - 2 to 6 words, plain text: no quotes, no trailing period, no date, \
-        no "Meeting about" filler.
+        no "Meeting about" filler. Simbi adds the note date as a prefix.
         - Name the concrete subject, not the format: "Q3 Budget Review", not \
         "Team Meeting Notes".
         - The title becomes a folder name, so never use "/" or ":".
